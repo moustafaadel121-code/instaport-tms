@@ -7,6 +7,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <title>InstaPort</title>
 <link rel="manifest" href="manifest.json"/>
+<!-- Preconnect to speed up Supabase & fonts -->
+<link rel="preconnect" href="https://qugypjbwkhqkvmrntfus.supabase.co"/>
+<link rel="dns-prefetch" href="https://qugypjbwkhqkvmrntfus.supabase.co"/>
+<link rel="preconnect" href="https://cdn.jsdelivr.net"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
 
@@ -2790,8 +2796,9 @@ async function doLogin(){
     audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
     buildSB();
     var _startPage=u.role==='driver'?'my_trips':'dashboard';
-    document.getElementById('content').innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:var(--t2)"><div style="font-size:36px;margin-bottom:12px">⚙️</div><div style="font-size:13px;font-weight:600">Loading '+_tenantName+' data…</div></div>';
-    initApp().then(function(){nav(_startPage);}).catch(function(){toast('Offline — using local data','err');nav(_startPage);});
+    // Show dashboard instantly, silently refresh data from Supabase in background
+    nav(_startPage);
+    initApp().then(function(){nav(_startPage);}).catch(function(){});
     startTemp();
     if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
@@ -6555,8 +6562,9 @@ doLogin=async function(){
     audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
     buildSB();
     var _startPage2=u.role==='driver'?'my_trips':'dashboard';
-    document.getElementById('content').innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:var(--t2)"><div style="font-size:36px;margin-bottom:12px">⚙️</div><div style="font-size:13px;font-weight:600">Loading '+_tenantName+' data…</div></div>';
-    initApp().then(function(){nav(_startPage2);}).catch(function(){toast('Offline — using local data','err');nav(_startPage2);});
+    // Show dashboard instantly, then silently refresh data from Supabase
+    nav(_startPage2);
+    initApp().then(function(){nav(_startPage2);}).catch(function(){});
     startTemp();
   }finally{
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
