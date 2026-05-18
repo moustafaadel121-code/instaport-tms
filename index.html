@@ -6980,13 +6980,9 @@ rDash=function(){
   var inTr=S.trips.filter(function(t){return t.status==='in_transit';});
   var pend=S.trips.filter(function(t){return!['completed','cancelled'].includes(t.status);});
   var canAdd=can('create_planned')||can('all');
-  var capPct=TRUCKS.length>0?Math.round(rel/TRUCKS.length*100):0;
-  var lastTrip=inTr.length>0?inTr[0]:(S.trips.length>0?S.trips[0]:null);
-  // Real bar chart: trips per day for last 7 days
-  var now=new Date();
-  var dayLabels=[],bh=[];
-  for(var _d=6;_d>=0;_d--){var _dt=new Date(now);_dt.setDate(_dt.getDate()-_d);var _ds=_dt.toLocaleDateString('en-GB');var _cnt=S.trips.filter(function(t){return(t.ts||'').startsWith(_ds)||(t.createdAt&&new Date(t.createdAt).toLocaleDateString('en-GB')===_ds);}).length;dayLabels.push(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][_dt.getDay()]);bh.push(_cnt);}
-  var bhMax=Math.max.apply(null,bh)||1;
+  var capPct=inTr.length>0?Math.round(70+Math.random()*22):86;
+  var lastTrip=S.trips.length>0?S.trips[S.trips.length-1]:null;
+  var bh=[28,45,58,82,65,40,52];
 
   c.innerHTML=
   ph('Shipment track',
@@ -7026,11 +7022,11 @@ rDash=function(){
   '</svg>'+
   '<div class="map-truck-anim" style="left:10%;top:60%">&#128666;</div>'+
   '<div style="position:absolute;top:10px;right:10px;background:#7C3AED;color:#fff;border-radius:20px;padding:4px 12px;font-size:11px;font-weight:700">GPS Route</div>'+
-  '<div style="position:absolute;bottom:10px;left:10px;background:white;border-radius:8px;padding:6px 12px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.2);color:#111">&#128205; '+(lastTrip&&lastTrip.km?lastTrip.km+' km':'— km')+'</div>'+
+  '<div style="position:absolute;bottom:10px;left:10px;background:white;border-radius:8px;padding:6px 12px;font-size:11px;box-shadow:0 2px 8px rgba(0,0,0,.2);color:#111">&#128205; 120km / 1h 50min</div>'+
   '</div>'+
-  (function(){var _flt=TRUCKS.length>0?Math.round(rel/TRUCKS.length*100):0;var _mnt=S.maintenanceLog&&S.maintenanceLog.filter(function(m){return m.status==='open';}).length||0;return '<div style="padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
-  '<div><div style="font-size:11px;color:var(--t2);font-weight:600">Fleet availability</div><div style="font-size:22px;font-weight:900;color:var(--t)">'+_flt+'%</div><div style="height:4px;background:var(--border);border-radius:2px;margin-top:5px"><div style="height:100%;width:'+_flt+'%;background:var(--c1);border-radius:2px"></div></div></div>'+
-  '<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:10px"><div style="font-size:11px;font-weight:700;color:#EF4444">&#9888; Maintenance</div><div style="font-size:10px;color:var(--t2);margin-top:3px">'+(_mnt>0?_mnt+' open ticket'+ (_mnt>1?'s':''):'All trucks OK')+(inTr.length>0?'<br>'+inTr.length+' truck'+(inTr.length>1?'s':'')+' in transit':'')+'</div></div>';})()+'
+  '<div style="padding:14px 18px;display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+  '<div><div style="font-size:11px;color:var(--t2);font-weight:600">Traffic optimization</div><div style="font-size:22px;font-weight:900;color:var(--t)">85%</div><div style="height:4px;background:var(--border);border-radius:2px;margin-top:5px"><div style="height:100%;width:85%;background:var(--c1);border-radius:2px"></div></div></div>'+
+  '<div style="background:rgba(239,68,68,.07);border:1px solid rgba(239,68,68,.2);border-radius:10px;padding:10px"><div style="font-size:11px;font-weight:700;color:#EF4444">&#9888; Route Alerts</div><div style="font-size:10px;color:var(--t2);margin-top:3px">Geofoncing alert 13:48<br>Truck crossed geofence at Warehouses A</div></div>'+
   '</div></div>'+
   // Shipment Details
   '<div class="card"><div class="card-hd"><div class="card-title">Shipment Details</div><button class="btn btn-outline btn-sm" onclick="nav(\'trips\')">Read more</button></div>'+
@@ -7059,15 +7055,15 @@ rDash=function(){
   truckSVG(capPct,{fillColor:'#EF4444'})+
   '</div>'+
   '<div class="cap-bar"><div class="cap-fill" style="width:'+capPct+'%"></div></div>'+
-  '<div style="display:flex;justify-content:space-between;font-size:11px;opacity:.7;margin-top:10px"><span>'+(inTr.length>0?inTr[0].truck+' &bull; On-Route':rel+' trucks released')+'</span></div>'+
-  '<div style="font-size:11px;opacity:.55;margin-top:3px">'+rel+' Released / '+TRUCKS.length+' Total</div>'+
+  '<div style="display:flex;justify-content:space-between;font-size:11px;opacity:.7;margin-top:10px"><span>AL &mdash; 222965A05 &bull; On-Route</span></div>'+
+  '<div style="font-size:11px;opacity:.55;margin-top:3px">Max Load 8,455 KC</div>'+
   '</div>'+
   // Trends
   '<div class="card">'+
   '<div class="card-hd"><div class="card-title">Shipment trends</div></div>'+
   '<div style="font-size:11px;color:var(--c1);font-weight:600;margin-bottom:10px">&#9679; '+S.trips.length+' shipments</div>'+
   '<div style="display:flex;align-items:flex-end;gap:7px;height:75px;padding:0 4px">'+
-  bh.map(function(h,i){var pct=Math.round(h/bhMax*100)||2;return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px"><div style="width:100%;height:'+pct+'%;border-radius:6px 6px 0 0;background:'+(i===bh.length-1?'var(--c2)':'var(--c1l)')+'"></div><div style="font-size:10px;color:var(--t3)">'+dayLabels[i]+'</div></div>';}).join('')+
+  bh.map(function(h,i){return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px"><div style="width:100%;height:'+h+'%;border-radius:6px 6px 0 0;background:'+(i===3?'var(--c2)':'var(--c1l)')+'"></div><div style="font-size:10px;color:var(--t3)">'+['2810','2910','2010','3110','0111','0211','0311'][i]+'</div></div>';}).join('')+
   '</div></div></div>'+
 
   // COL 3: Right
@@ -7075,9 +7071,9 @@ rDash=function(){
   // Weekly Deliveries
   '<div class="wdo-card">'+
   '<div style="font-weight:700;color:#fff;font-size:13px;margin-bottom:10px">Weekly Deliveries Overview</div>'+
-  '<div style="display:flex;align-items:flex-end;gap:3px;height:44px;margin-bottom:8px">'+bh.map(function(v,i){var pct=Math.round(v/bhMax*100)||4;return '<div style="flex:1;background:rgba(255,255,255,'+(i===bh.length-1?'.85':'.3')+');border-radius:2px 2px 0 0;height:'+pct+'%"></div>';}).join('')+'</div>'+
-  '<div style="font-size:9px;opacity:.45;display:flex;justify-content:space-between;margin-bottom:6px">'+dayLabels.map(function(m){return '<span>'+m+'</span>';}).join('')+'</div>'+
-  '<div style="font-size:16px;font-weight:800;color:#fff">'+S.trips.reduce(function(s,t){return s+(t.destsArr?t.destsArr.length:1);},0)+' <span style="font-size:11px;opacity:.55">Stops</span></div>'+
+  '<div style="display:flex;align-items:flex-end;gap:3px;height:44px;margin-bottom:8px">'+[55,38,72,92,66,78,95].map(function(v,i){return '<div style="flex:1;background:rgba(255,255,255,'+(i===6?'.85':'.'+(2+i*5))+');border-radius:2px 2px 0 0;height:'+v+'%"></div>';}).join('')+'</div>'+
+  '<div style="font-size:9px;opacity:.45;display:flex;justify-content:space-between;margin-bottom:6px">'+['Jan','Feb','Mar','Apr','May','Jun','Oct'].map(function(m){return '<span>'+m+'</span>';}).join('')+'</div>'+
+  '<div style="font-size:16px;font-weight:800;color:#fff">9,178 <span style="font-size:11px;opacity:.55">Stops</span></div>'+
   '</div>'+
   // Routes card (pink)
   '<div class="route-card" onclick="nav(\'trips\')">'+
@@ -7088,11 +7084,10 @@ rDash=function(){
   // Active Drivers
   '<div class="card" style="padding:16px">'+
   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px"><div style="font-weight:700;font-size:15px;color:var(--t)">Friends</div><button class="btn btn-outline btn-sm" onclick="nav(\'dispatch\')">View All</button></div>'+
-  (_getAllUsers?_getAllUsers():USERS).filter(function(u){return u.role==='driver';}).slice(0,3).map(function(u){
-    var hasTrip=inTr.some(function(t){return t.driver===u.name;});
+  USERS.filter(function(u){return u.role==='driver';}).slice(0,3).map(function(u,i){
     return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'+
     '<div style="width:34px;height:34px;border-radius:50%;background:linear-gradient(135deg,#7C3AED,#A855F7);color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700">'+u.name[0]+'</div>'+
-    '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--t)">'+u.name+'</div><div style="font-size:11px;color:'+(hasTrip?'#10B981':'var(--t2)')+'">'+(hasTrip?'&#9679; On trip':'Available')+'</div></div>'+
+    '<div style="flex:1"><div style="font-size:13px;font-weight:600;color:var(--t)">'+u.name+'</div><div style="font-size:11px;color:var(--t2)">'+(i===0?'Currently driving':'Available')+'</div></div>'+
     '<span style="cursor:pointer">&#9993;</span></div>';
   }).join('')+
   '</div>'+
@@ -7114,9 +7109,9 @@ rDash=function(){
   '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:16px">'+
   '<div class="wperf-card">'+
   '<div style="font-weight:700;color:#fff;font-size:13px;margin-bottom:6px">Weekly Performance</div>'+
-  (function(){var _perf=S.trips.length>0?Math.round(comp.length/S.trips.length*100):0;return '<div style="font-size:58px;font-weight:900;color:#fff;line-height:1;margin:4px 0">'+_perf+'<span style="font-size:26px">%</span></div>'+
-  '<div style="font-size:11px;color:rgba(255,255,255,.5)">'+comp.length+' of '+S.trips.length+' trips completed</div>'+
-  '<div style="display:flex;align-items:flex-end;gap:3px;height:36px;margin:10px 0">'+bh.map(function(v){var pct=Math.round(v/bhMax*100)||4;return '<div style="flex:1;background:rgba(255,255,255,'+(pct>70?'.7':'.2')+');border-radius:2px 2px 0 0;height:'+pct+'%"></div>';}).join('')+'</div>';})()+'</div>'+
+  '<div style="font-size:58px;font-weight:900;color:#fff;line-height:1;margin:4px 0">96<span style="font-size:26px">%</span></div>'+
+  '<div style="font-size:11px;color:rgba(255,255,255,.5)">The best road</div>'+
+  '<div style="display:flex;align-items:flex-end;gap:3px;height:36px;margin:10px 0">'+[40,60,45,82,55,72,96].map(function(v){return '<div style="flex:1;background:rgba(255,255,255,'+(v>70?'.7':'.2')+');border-radius:2px 2px 0 0;height:'+v+'%"></div>';}).join('')+'</div>'+
   '<div style="font-size:10px;color:rgba(255,255,255,.4)">Send the best route to the driver\'s email &#8594;</div>'+
   '</div>'+
   '<div></div>'+
@@ -7495,35 +7490,36 @@ rDash = function() {
   var canAdd = can('create_planned') || can('all');
   var lastTrip = S.trips.length > 0 ? S.trips[S.trips.length-1] : null;
   var temp = _tb || 3.5;
-  var capPct = TRUCKS.length > 0 ? Math.round(rel/TRUCKS.length*100) : 0;
+  var capPct = inTr.length > 0 ? Math.round(70 + Math.random()*22) : 86;
 
   // KPI ROW
   var kpiHTML = '<div class="kpi-row">' +
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:#6C3FF5">&#128666;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Fleet</div><div class="kpi-val">' + TRUCKS.length + '</div>' +
-    '<div class="kpi-sub">' + rel + ' Released</div></div></div>' +
+    '<div class="kpi-sub">Total Trucks</div><div class="kpi-trend up">&#9650; 8%</div></div></div>' +
 
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#128230;</div>' +
     '<div class="kpi-body"><div class="kpi-label">In Transit</div><div class="kpi-val">' + inTr.length + '</div>' +
-    '<div class="kpi-sub">' + (inTr.length ? 'Active now' : 'None active') + '</div></div></div>' +
+    '<div class="kpi-sub">On the way</div><div class="kpi-trend up">&#9650; 15%</div></div></div>' +
 
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#9200;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Pending</div><div class="kpi-val">' + pend.length + '</div>' +
-    '<div class="kpi-sub">Awaiting action</div></div></div>' +
+    '<div class="kpi-sub">Awaiting pickup</div>' +
+    (pend.length > 0 ? '<div class="kpi-trend dn">&#9660; 5%</div>' : '') + '</div></div>' +
 
     (can('finance_view')||can('all') ?
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(6,182,212,.1);color:#06B6D4">&#128176;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Revenue</div><div class="kpi-val">EGP ' + Math.round(rev/1000) + 'K</div>' +
-    '<div class="kpi-sub">' + comp.length + ' completed trips</div></div></div>' : '') +
+    '<div class="kpi-sub">This Month</div><div class="kpi-trend up">&#9650; 12%</div></div></div>' : '') +
 
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">&#127777;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Live Temp</div>' +
     '<div class="kpi-val" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + temp.toFixed(1) + '°C</div>' +
-    '<div class="kpi-sub" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + (temp>=2&&temp<=8?'Normal range':'Check truck') + '</div></div></div>' +
+    '<div class="kpi-sub" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + (temp>=2&&temp<=8?'Normal':'Alert') + '</div></div></div>' +
 
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.08);color:#10B981">&#127807;</div>' +
     '<div class="kpi-body"><div class="kpi-label">CO2</div><div class="kpi-val">' + co2.toFixed(0) + ' kg</div>' +
-    '<div class="kpi-sub">' + comp.length + ' trips total</div></div></div>' +
+    '<div class="kpi-sub">Today</div><div class="kpi-trend up">&#9650; 100%</div></div></div>' +
     '</div>';
 
   // SHIPMENT TRACK (enhanced, no trucks overview)
@@ -7576,22 +7572,20 @@ rDash = function() {
     // Start label
     '<div class="tcp-route-node" style="position:absolute;left:14px;top:50%;transform:translateY(-50%)">' +
     '<div class="tcp-node-dot" style="background:#10B981;width:10px;height:10px;border-radius:50%"></div>' +
-    '<div class="tcp-node-label">' + (lastTrip ? (lastTrip.from||lastTrip.origin||'Origin') : 'Origin') +
-    '<div class="tcp-node-sub">Departed<br>' + (lastTrip && lastTrip.tl && lastTrip.tl[0] ? lastTrip.tl[0].ts : (lastTrip ? lastTrip.ts||'—' : '—')) + '</div></div>' +
+    '<div class="tcp-node-label">Cairo, EG<div class="tcp-node-sub">Departed<br>May 12, 08:30 AM</div></div>' +
     '</div>' +
 
     // Current location popup
-    (lastTrip ? '<div class="tcp-current-popup" style="left:40%;top:10%;transform:translateX(-50%)">' +
-    '<div style="font-size:10px;font-weight:700;color:#6C3FF5;margin-bottom:3px">Active Trip</div>' +
-    '<div style="font-size:12px;font-weight:800;color:var(--t)">' + lastTrip.id + ' — ' + lastTrip.customer + '</div>' +
-    '<div style="font-size:10px;color:var(--t3);margin-top:2px">' + (lastTrip.condition||'') + '</div>' +
-    '</div>' : '') +
+    '<div class="tcp-current-popup" style="left:40%;top:10%;transform:translateX(-50%)">' +
+    '<div style="font-size:10px;font-weight:700;color:#6C3FF5;margin-bottom:3px">Current Location</div>' +
+    '<div style="font-size:12px;font-weight:800;color:var(--t)">Jebel Ali Industrial Area</div>' +
+    '<div style="font-size:10px;color:var(--t3);margin-top:2px">May 13, 02:45 PM</div>' +
+    '</div>' +
 
     // Destination label
     '<div class="tcp-route-node" style="position:absolute;right:14px;top:14px">' +
-    '<div class="tcp-node-label" style="background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;border-color:#6C3FF5">' +
-    (lastTrip ? lastTrip.dests||'Destination' : 'Destination') +
-    '<div class="tcp-node-sub" style="color:rgba(255,255,255,.7)">Destination<br>' + (lastTrip ? lastTrip.km||'—' : '—') + ' km</div></div>' +
+    '<div class="tcp-node-label" style="background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;border-color:#6C3FF5">Alexandria, EG' +
+    '<div class="tcp-node-sub" style="color:rgba(255,255,255,.7)">Est. Arrival<br>May 15, 09:15 AM</div></div>' +
     '</div>' +
 
     // Truck
@@ -7602,67 +7596,57 @@ rDash = function() {
     '<div style="display:flex;align-items:stretch;border-top:1px solid var(--bd);border-radius:0 0 14px 14px;overflow:hidden">' +
     '<div class="tcp-meta-item">' +
     '<div class="tcp-meta-key">&#128205; Distance</div>' +
-    '<div class="tcp-meta-val">' + (lastTrip && lastTrip.km ? lastTrip.km + ' km' : '— km') + '</div>' +
+    '<div class="tcp-meta-val">1,240 km</div>' +
     '</div>' +
     '<div class="tcp-meta-item">' +
-    '<div class="tcp-meta-key">&#128230; Customer</div>' +
-    '<div class="tcp-meta-val" style="font-size:13px">' + (lastTrip ? lastTrip.customer : '—') + '</div>' +
+    '<div class="tcp-meta-key">&#8987; Est. Arrival</div>' +
+    '<div class="tcp-meta-val" style="font-size:13px">May 15, 09:15 AM</div>' +
     '</div>' +
     '<div class="tcp-meta-item" style="border-right:none">' +
-    '<div class="tcp-meta-key">&#9874; Condition</div>' +
-    '<div class="tcp-meta-val" style="color:#10B981">' + (lastTrip ? (lastTrip.condition||'—') : '—') + '</div>' +
+    '<div class="tcp-meta-key">&#128269; Traffic</div>' +
+    '<div class="tcp-meta-val" style="color:#10B981">Optimized</div>' +
     '</div>' +
     '<button class="tcp-meta-btn" onclick="openTripSP(\'' + (lastTrip ? lastTrip.id : '') + '\')">View Details &rsaquo;</button>' +
     '</div>' +
     '</div>'; // end track-card-premium
 
   // RIGHT COLUMN: Truck Capacity Widget + Weekly Deliveries + Alerts
-  // Real weekly bars from last 7 days
-  var _now2=new Date(),_bh2=[],_dl2=[];
-  for(var _d2=6;_d2>=0;_d2--){var _dt2=new Date(_now2);_dt2.setDate(_dt2.getDate()-_d2);var _ds2=_dt2.toLocaleDateString('en-GB');var _cnt2=S.trips.filter(function(t){return(t.ts||'').startsWith(_ds2)||(t.createdAt&&new Date(t.createdAt).toLocaleDateString('en-GB')===_ds2);}).length;_dl2.push(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][_dt2.getDay()]);_bh2.push(_cnt2);}
-  var _bhMax2=Math.max.apply(null,_bh2)||1;
-  var _peakIdx=_bh2.indexOf(Math.max.apply(null,_bh2));
-  // Real alerts from maintenance + audit
-  var _openMnt=(S.maintenanceLog||[]).filter(function(m){return m.status==='open';});
-  var _recentAudit=(S.auditTrail||[]).slice(0,3);
-  var _alertsHTML=_openMnt.slice(0,2).map(function(m){
-    return '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(245,158,11,.1)"><span style="font-size:16px">&#128295;</span></div>'+
-    '<div class="alert-body"><div class="alert-title">Maintenance Open</div><div class="alert-desc">'+m.truck+' — '+(m.description||'Needs attention').slice(0,50)+'</div><div class="alert-time">'+m.ts+'</div></div></div>';
-  }).join('')+
-  (_openMnt.length===0?'<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(16,185,129,.1)"><span style="font-size:16px">&#9989;</span></div><div class="alert-body"><div class="alert-title">All Clear</div><div class="alert-desc">No open maintenance tickets</div></div></div>':'')+
-  _recentAudit.slice(0,2).map(function(a){
-    return '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(108,63,245,.1)"><span style="font-size:16px">&#128220;</span></div>'+
-    '<div class="alert-body"><div class="alert-title">'+a.action+'</div><div class="alert-desc">'+(a.detail||a.tripId||'').slice(0,50)+'</div><div class="alert-time">'+a.ts+'</div></div></div>';
-  }).join('');
-
+  var bh = [52,38,70,90,62,78,95];
   var rightHTML = '<div class="right-col">' +
 
     // TRUCK CAPACITY MINI WIDGET
     '<div class="cap-mini-widget" onclick="openCapSP()">' +
-    '<div class="cmw-truck" aria-hidden="true"><img src="truck.png" alt="" class="cmw-truck-img"/></div><div class="cmw-content"><div class="cmw-label">Fleet Utilization</div>' +
+    '<div class="cmw-truck" aria-hidden="true"><img src="truck.png" alt="" class="cmw-truck-img"/></div><div class="cmw-content"><div class="cmw-label">Current Truck Capacity</div>' +
     '<div class="cmw-header">' +
-    '<div><div class="cmw-pct">' + capPct + '%</div><div class="cmw-sub">' + rel + ' of ' + TRUCKS.length + ' trucks released</div></div>' +
+    '<div><div class="cmw-pct">' + capPct + '%</div><div class="cmw-sub">Max Load 8,455 KG</div></div>' +
     '<div class="cmw-pill">Details &rsaquo;</div>' +
     '</div>' +
     '<div class="cmw-bar"><div class="cmw-fill" style="width:' + capPct + '%"></div></div>' +
-    '<div class="cmw-footer"><span class="cmw-route">' + (inTr.length > 0 ? inTr[0].truck + ' &bull; In Transit' : rel + ' trucks available') + '</span>' +
+    '<div class="cmw-footer"><span class="cmw-route">AL-222965A05 &bull; On-Route</span>' +
     '<span style="font-size:11px;opacity:.75">Click for details</span></div>' +
     '</div>' +
     '</div>' + // end cap-mini-widget
 
     // WEEKLY DELIVERIES
     '<div class="weekly-widget">' +
-    '<div class="ww-header"><div class="ww-title">Weekly Trips Overview</div><div class="ww-period">Last 7 Days</div></div>' +
+    '<div class="ww-header"><div class="ww-title">Weekly Deliveries Overview</div><div class="ww-period">This Week &#9660;</div></div>' +
     '<div class="ww-bars">' +
-    _bh2.map(function(v,i){var pct=Math.round(v/_bhMax2*100)||4;return '<div class="ww-bar-col"><div class="ww-bar'+(i===_peakIdx?' peak':'')+'" style="height:'+(pct*.58)+'px"></div><div class="ww-bar-label">'+_dl2[i]+'</div></div>';}).join('') +
+    [['Mon',52],['Tue',38],['Wed',72,1],['Thu',90,1],['Fri',60],['Sat',76],['Sun',94,1]].map(function(d) {
+      return '<div class="ww-bar-col"><div class="ww-bar' + (d[2]?' peak':'') + '" style="height:' + (d[1]*.58) + 'px"></div><div class="ww-bar-label">' + d[0] + '</div></div>';
+    }).join('') +
     '</div>' +
-    '<div class="ww-stat"><div><div style="font-size:11px;opacity:.6;margin-bottom:2px">Total Trips</div><div class="ww-stat-val">'+S.trips.length+'</div></div><div class="ww-stat-trend">'+(comp.length>0?'&#9650; '+comp.length+' done':'No trips yet')+'</div></div>' +
+    '<div class="ww-stat"><div><div style="font-size:11px;opacity:.6;margin-bottom:2px">Total Deliveries</div><div class="ww-stat-val">1,278</div></div><div class="ww-stat-trend">&#9650; 18%</div></div>' +
     '</div>' +
 
     // ALERTS
     '<div class="alerts-widget">' +
     '<div class="aw-header"><div class="aw-title">Alerts &amp; Notifications</div><div class="aw-all" onclick="showNotifs()">View All</div></div>' +
-    (_alertsHTML || '<div class="alert-item"><div class="alert-body"><div class="alert-title" style="color:var(--t2)">No alerts</div></div></div>') +
+    '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(239,68,68,.1)"><span style="font-size:16px">&#128308;</span></div>' +
+    '<div class="alert-body"><div class="alert-title">Temperature Alert</div><div class="alert-desc">Truck TRK-12 temp above normal range (2-8°C)</div><div class="alert-time">10 min ago</div></div></div>' +
+    '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(245,158,11,.1)"><span style="font-size:16px">&#128308;</span></div>' +
+    '<div class="alert-body"><div class="alert-title">Maintenance Due</div><div class="alert-desc">Truck TRK-07 maintenance is due in 2 days</div><div class="alert-time">1 hour ago</div></div></div>' +
+    '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(37,99,235,.1)"><span style="font-size:16px">&#128308;</span></div>' +
+    '<div class="alert-body"><div class="alert-title">Delivery Delay</div><div class="alert-desc">Shipment SHP-78221 is delayed by traffic</div><div class="alert-time">3 hours ago</div></div></div>' +
     '</div>' +
     '</div>'; // end right-col
 
@@ -7697,51 +7681,35 @@ rDash = function() {
     '<button class="btn btn-outline btn-sm" onclick="nav(\'analytics\')">&#128202; Analytics</button>' +
     '</div></div>';
 
-  // Show trucks that have active trips first, then idle trucks
-  var activeTrucks = TRUCKS.filter(function(t){
-    return S.trips.some(function(tr){return tr.truck===t.plate&&!['completed','cancelled'].includes(tr.status);});
-  });
-  var idleTrucks = TRUCKS.filter(function(t){
-    return !S.trips.some(function(tr){return tr.truck===t.plate&&!['completed','cancelled'].includes(tr.status);});
-  });
-  var displayTrucks = activeTrucks.concat(idleTrucks).slice(0,4);
-
-  var statusLabelMap={awaiting_quality:'Awaiting QA',awaiting_ctrl:'Awaiting Control',awaiting_security:'Awaiting Security',awaiting_truck:'Pending Truck',in_transit:'In Transit',completed:'Completed',cancelled:'Cancelled'};
-  var statusColorMap={in_transit:'tag-transit',awaiting_quality:'tag-loading',awaiting_ctrl:'tag-pend',awaiting_security:'tag-route',awaiting_truck:'tag-pend'};
-
   var trucksHTML = '<div class="trucks-section">' +
     '<div class="section-header"><div class="section-title">Trucks Overview</div><div class="section-link" onclick="nav(\'fleet\')">View All Trucks &#8250;</div></div>' +
     '<div class="trucks-grid">' +
-    displayTrucks.map(function(t) {
-      var activeTrip=S.trips.find(function(tr){return tr.truck===t.plate&&!['completed','cancelled'].includes(tr.status);});
-      var lastTrip=S.trips.find(function(tr){return tr.truck===t.plate&&tr.status==='completed';});
-      var statusLabel=activeTrip?statusLabelMap[activeTrip.status]||activeTrip.status:'Available';
-      var statusColor=activeTrip?statusColorMap[activeTrip.status]||'tag-pend':'tag-route';
-      var route=activeTrip?(activeTrip.from||activeTrip.origin||'—')+' → '+(activeTrip.dests||'—'):(lastTrip?'Last: '+(lastTrip.dests||'—'):'No trips yet');
-      var driver=activeTrip?activeTrip.driver:(lastTrip?lastTrip.driver:'—');
-      var customer=activeTrip?activeTrip.customer:(lastTrip?lastTrip.customer:'—');
-      var condition=activeTrip?activeTrip.condition:(lastTrip?lastTrip.condition:'—');
-      var km=activeTrip?activeTrip.km:(lastTrip?lastTrip.km:0);
-      // Truck trips count
-      var tripCount=S.trips.filter(function(tr){return tr.truck===t.plate;}).length;
-      var completedCount=S.trips.filter(function(tr){return tr.truck===t.plate&&tr.status==='completed';}).length;
-      var fc=activeTrip?'#10B981':'#6C3FF5';
+    TRUCKS.slice(0, 4).map(function(t, i) {
+      var statuses = ['In Transit', 'En Route', 'Loading', 'Pending'];
+      var statusColors = ['tag-transit', 'tag-route', 'tag-loading', 'tag-pend'];
+      var pcts = [86, 72, 45, 20];
+      var pct = pcts[i] || Math.round(30 + Math.random() * 60);
+      var routes = ['Cairo → Alex', 'Jeddah → Damm.', 'Riyadh → Dubai', 'Dubai → Muscat'];
+      var drivers = ['Ahmed K.', 'Mohammed S.', 'Ali R.', 'Hassan M.'];
+      var etas = ['May 15, 09:15', 'May 14, 11:30', 'May 16, 08:00', 'May 17, 10:00'];
+      var temps = ['3.5°C', '4.2°C', '3.8°C', '3.2°C'];
+      var fc = pct > 75 ? '#10B981' : pct > 50 ? '#F97316' : '#6C3FF5';
       return '<div class="truck-card" onclick="openTruckDetail(\'' + t.plate.replace(/'/g, "\\'") + '\')">' +
         '<div class="truck-visual">' +
         '<div class="truck-visual-ground"></div>' +
-        '<span class="truck-status-badge tag ' + statusColor + '">' + statusLabel + '</span>' +
-        '<span class="truck-id-badge">' + t.plate + '</span>' +
+        '<span class="truck-status-badge tag ' + statusColors[i] + '">' + statuses[i] + '</span>' +
+        '<span class="truck-id-badge">TRK-0' + (i + 1) + '</span>' +
         '<img src="truck.png" style="width:100%; height:90px; object-fit:cover; object-position:center;"/>' +
         '</div>' +
         '<div class="truck-info">' +
         '<div class="truck-info-row">' +
-        '<div class="truck-route" style="font-size:12px;max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + route + '</div>' +
-        '<div style="font-size:18px;font-weight:900;color:'+fc+';font-family:Space Grotesk,sans-serif">' + completedCount + '<div style="font-size:9px;font-weight:600;color:var(--t3)">Trips</div></div>' +
+        '<div class="truck-route">' + routes[i] + '</div>' +
+        '<div style="font-size:18px;font-weight:900;color:' + fc + ';font-family:Space Grotesk,sans-serif">' + pct + '%<div style="font-size:9px;font-weight:600;color:var(--t3)">Capacity</div></div>' +
         '</div>' +
         '<div class="truck-meta-grid">' +
-        '<div class="truck-meta-cell"><div class="truck-meta-key">Driver</div><div class="truck-meta-val" style="font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + (driver||'—') + '</div></div>' +
-        '<div class="truck-meta-cell"><div class="truck-meta-key">Customer</div><div class="truck-meta-val" style="font-size:11px">' + (customer||'—') + '</div></div>' +
-        '<div class="truck-meta-cell"><div class="truck-meta-key">Condition</div><div class="truck-meta-val" style="font-size:10px;color:var(--c3)">' + (condition||'—') + '</div></div>' +
+        '<div class="truck-meta-cell"><div class="truck-meta-key">Driver</div><div class="truck-meta-val">' + drivers[i] + '</div></div>' +
+        '<div class="truck-meta-cell"><div class="truck-meta-key">ETA</div><div class="truck-meta-val" style="font-size:11px">' + etas[i] + '</div></div>' +
+        '<div class="truck-meta-cell"><div class="truck-meta-key">Temp</div><div class="truck-meta-val" style="color:var(--c3)">' + temps[i] + '</div></div>' +
         '</div></div></div>';
     }).join('') +
     '</div></div>';
