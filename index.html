@@ -2965,7 +2965,7 @@ function calcTripCost(customer,km,type,condition,stops,waitHours,truckType,cargo
 // ══════════════════════════════════════════════════
 // DASHBOARD
 // ══════════════════════════════════════════════════
-function rDash(){
+function rDash(){try{
   var c=document.getElementById('content');
   var rel=TRUCKS.filter(function(t){return t.valid;}).length;
   var comp=S.trips.filter(function(t){return t.status==='completed';});
@@ -2993,7 +2993,7 @@ function rDash(){
   '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>ID</th><th>Customer</th><th>Type</th><th>Truck</th><th>KM</th>'+(can('finance_view')||can('all')?'<th>Cost</th>':'')+'<th>Status</th></tr></thead><tbody>'+
   S.trips.slice(-6).reverse().map(function(t){return '<tr><td style="font-weight:700;color:var(--c1);cursor:pointer" onclick="tripDet(\''+t.id+'\')">'+t.id+'</td><td>'+t.customer+'</td><td><span class="tag tag-info">'+t.type+'</span></td><td style="font-size:12px">'+(t.truck||'—')+'</td><td>'+(t.km||'—')+'</td>'+(can('finance_view')||can('all')?'<td style="font-weight:600;color:#059669">'+(t.cost?'EGP '+t.cost:'—')+'</td>':'')+'<td>'+stB(t.status)+'</td></tr>';}).join('')+
   '</tbody></table></div>')+'</div>';
-}
+}catch(e){document.getElementById('content').innerHTML='<div style="padding:40px;color:red;font-size:14px">Dashboard error: '+e.message+'<br><pre style="font-size:11px;margin-top:8px">'+e.stack+'</pre></div>';}}
 
 // ══════════════════════════════════════════════════
 // FLEET
