@@ -2292,6 +2292,11 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
       <div class="lcard-title">Register Organization</div>
       <div class="lcard-sub">Create your InstaPort workspace</div>
       <div class="lerr" id="reg-err" style="display:none">Please check your inputs.</div>
+      <label class="l-field-label">Invite Code <span style="font-size:11px;color:var(--t3)">(provided by InstaPort team)</span></label>
+      <div class="l-input-row">
+        <span class="l-input-ico">&#128273;</span>
+        <input id="reg-invite" type="text" placeholder="Enter your invite code" autocomplete="off"/>
+      </div>
       <label class="l-field-label">Organization Code <span style="font-size:11px;color:var(--t3)">(unique, lowercase, no spaces)</span></label>
       <div class="l-input-row">
         <span class="l-input-ico">&#127970;</span>
@@ -2460,13 +2465,19 @@ async function _loadTenant(orgCode){
 }
 
 /* ── Register a new organization ── */
+/* ── Valid invite codes — share these with paying clients only ── */
+var _INVITE_CODES=['INST-2026-XK9','INST-2026-QM7','INST-2026-BR4','INST-2026-ZT1','INST-2026-NW5'];
+
 async function doRegister(){
+  var inviteCode=(document.getElementById('reg-invite').value||'').trim().toUpperCase();
   var orgCode=(document.getElementById('reg-code').value||'').trim().toLowerCase().replace(/\s+/g,'-');
   var orgName=(document.getElementById('reg-name').value||'').trim();
   var adminName=(document.getElementById('reg-admin').value||'').trim();
   var adminUid=(document.getElementById('reg-uid').value||'').trim();
   var adminPin=(document.getElementById('reg-pin').value||'').trim();
   var errEl=document.getElementById('reg-err');errEl.style.display='none';
+  if(!inviteCode){errEl.textContent='Enter your invite code. Contact InstaPort to get one.';errEl.style.display='block';return;}
+  if(_INVITE_CODES.indexOf(inviteCode)===-1){errEl.textContent='Invalid invite code. Please contact the InstaPort team.';errEl.style.display='block';return;}
   if(!orgCode||!orgName||!adminName||!adminUid||!adminPin){errEl.textContent='All fields are required.';errEl.style.display='block';return;}
   if(!/^[a-z0-9][a-z0-9\-]{1,30}$/.test(orgCode)){errEl.textContent='Code must be 2-30 chars: lowercase letters, numbers, hyphens.';errEl.style.display='block';return;}
   var btn=document.getElementById('reg-btn');btn.disabled=true;btn.textContent='Creating…';
