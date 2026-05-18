@@ -2465,9 +2465,6 @@ async function _loadTenant(orgCode){
 }
 
 /* ── Register a new organization ── */
-/* ── Valid invite codes — share these with paying clients only ── */
-var _INVITE_CODES=['INST-2026-XK9','INST-2026-QM7','INST-2026-BR4','INST-2026-ZT1','INST-2026-NW5'];
-
 async function doRegister(){
   var inviteCode=(document.getElementById('reg-invite').value||'').trim().toUpperCase();
   var orgCode=(document.getElementById('reg-code').value||'').trim().toLowerCase().replace(/\s+/g,'-');
@@ -2477,8 +2474,13 @@ async function doRegister(){
   var adminPin=(document.getElementById('reg-pin').value||'').trim();
   var errEl=document.getElementById('reg-err');errEl.style.display='none';
   if(!inviteCode){errEl.textContent='Enter your invite code. Contact InstaPort to get one.';errEl.style.display='block';return;}
-  if(_INVITE_CODES.indexOf(inviteCode)===-1){errEl.textContent='Invalid invite code. Please contact the InstaPort team.';errEl.style.display='block';return;}
   if(!orgCode||!orgName||!adminName||!adminUid||!adminPin){errEl.textContent='All fields are required.';errEl.style.display='block';return;}
+  // Validate invite code against Supabase
+  if(!_sb){errEl.textContent='Cannot register while offline.';errEl.style.display='block';return;}
+  var ic=await _sb.from('invite_codes').select('*').eq('id',inviteCode).maybeSingle();
+  if(ic.error||!ic.data){errEl.textContent='Invalid invite code. Please contact the InstaPort team.';errEl.style.display='block';return;}
+  if(!ic.data.active){errEl.textContent='This invite code has been disabled. Please contact InstaPort.';errEl.style.display='block';return;}
+  if(ic.data.used_by&&ic.data.used_by!==''){errEl.textContent='This invite code has already been used. Each code works once.';errEl.style.display='block';return;}
   if(!/^[a-z0-9][a-z0-9\-]{1,30}$/.test(orgCode)){errEl.textContent='Code must be 2-30 chars: lowercase letters, numbers, hyphens.';errEl.style.display='block';return;}
   var btn=document.getElementById('reg-btn');btn.disabled=true;btn.textContent='Creating…';
   try{
@@ -2497,6 +2499,8 @@ async function doRegister(){
     // Seed spare parts
     var partRows=S.sparePartsStock.map(function(p){return{id:orgCode+'_'+p.id,tenant_id:orgCode,name:p.name,sku:p.sku,qty:p.qty,min_qty:p.minQty||0,unit:p.unit,cost:p.cost,supplier:p.supplier,category:p.category};});
     await _sb.from('spare_parts').insert(partRows);
+    // Mark invite code as used
+    await _sb.from('invite_codes').update({used_by:orgCode,used_at:new Date().toISOString(),active:false}).eq('id',inviteCode);
     toast('✅ Organization "'+orgName+'" created! You can now log in.','ok');
     // Pre-fill login form
     if(document.getElementById('uorg'))document.getElementById('uorg').value=orgCode;
@@ -2864,7 +2868,8 @@ function nav(page){
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
-    nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics};
+    nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
+    invite_mgmt:rInviteMgmt};
   (map[page]||rDash)();
 }
 
@@ -5051,6 +5056,73 @@ function rAnalytics(){
 }
 function expAnalytics(){var comp=S.trips.filter(function(t){return t.status==='completed';});var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(['Customer,Trips,Revenue EGP,CO2 kg'].concat(CUSTOMERS.map(function(cu){var trips=comp.filter(function(t){return t.customer===cu;});var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);return [cu,trips.length,rev.toFixed(2),co2.toFixed(2)].join(',');})).join('\n'));a.download='Analytics.csv';a.click();toast('Exported!','ok');}
 // ══════════════════════════════════════════════════
+// INVITE CODES MANAGEMENT — Super Admin Only
+// ══════════════════════════════════════════════════
+function rInviteMgmt(){
+  if(_tenantId!=='instaport'){toast('Super admin only','err');return;}
+  var c=document.getElementById('content');
+  c.innerHTML='<div class="page-head"><div><h2>🔑 Invite Codes</h2><div class="page-sub">Manage registration codes for new clients</div></div>'+
+    '<button class="btn btn-primary" onclick="genInviteCode()">+ Generate New Code</button></div>'+
+    '<div id="invite-list"><div style="text-align:center;padding:40px;color:var(--t3)">Loading...</div></div>';
+  loadInviteCodes();
+}
+async function loadInviteCodes(){
+  if(!_sb)return;
+  var r=await _sb.from('invite_codes').select('*').order('created_at',{ascending:false});
+  var el=document.getElementById('invite-list');if(!el)return;
+  if(r.error||!r.data||r.data.length===0){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--t3)">No codes yet. Click "Generate New Code" to create one.</div>';return;}
+  el.innerHTML='<div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
+    '<thead><tr style="border-bottom:1px solid var(--border);color:var(--t3)">'+
+    '<th style="padding:12px 16px;text-align:left">Code</th>'+
+    '<th style="padding:12px 16px;text-align:left">Label / Client</th>'+
+    '<th style="padding:12px 16px;text-align:left">Status</th>'+
+    '<th style="padding:12px 16px;text-align:left">Used By</th>'+
+    '<th style="padding:12px 16px;text-align:left">Used At</th>'+
+    '<th style="padding:12px 16px;text-align:left">Created</th>'+
+    '<th style="padding:12px 16px;text-align:left">Actions</th>'+
+    '</tr></thead><tbody>'+
+    r.data.map(function(ic){
+      var status=!ic.active?'<span style="background:#fee2e2;color:#dc2626;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">DISABLED</span>':
+        ic.used_by?'<span style="background:#fef3c7;color:#d97706;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">USED</span>':
+        '<span style="background:#dcfce7;color:#16a34a;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">ACTIVE</span>';
+      var usedAt=ic.used_at?new Date(ic.used_at).toLocaleDateString('en-GB'):'—';
+      var createdAt=ic.created_at?new Date(ic.created_at).toLocaleDateString('en-GB'):'—';
+      var toggleBtn=ic.active&&!ic.used_by?
+        '<button class="btn btn-sm btn-danger" onclick="toggleInviteCode(\''+ic.id+'\',false)" style="font-size:11px;padding:4px 10px">Disable</button>':
+        !ic.active&&!ic.used_by?'<button class="btn btn-sm btn-outline" onclick="toggleInviteCode(\''+ic.id+'\',true)" style="font-size:11px;padding:4px 10px">Enable</button>':'';
+      return '<tr style="border-bottom:1px solid var(--border)">'+
+        '<td style="padding:12px 16px;font-family:monospace;font-weight:700;font-size:14px;color:var(--c1)">'+ic.id+'</td>'+
+        '<td style="padding:12px 16px"><input type="text" value="'+(ic.label||'')+'" onblur="updateInviteLabel(\''+ic.id+'\',this.value)" style="background:transparent;border:none;color:var(--t);font-size:13px;width:140px;border-bottom:1px dashed var(--border);outline:none" placeholder="Add label..."/></td>'+
+        '<td style="padding:12px 16px">'+status+'</td>'+
+        '<td style="padding:12px 16px;color:var(--t2)">'+(ic.used_by||'—')+'</td>'+
+        '<td style="padding:12px 16px;color:var(--t2)">'+usedAt+'</td>'+
+        '<td style="padding:12px 16px;color:var(--t2)">'+createdAt+'</td>'+
+        '<td style="padding:12px 16px">'+toggleBtn+'</td>'+
+        '</tr>';
+    }).join('')+
+    '</tbody></table></div>';
+}
+async function genInviteCode(){
+  var chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  var part=Array.from({length:3},function(){return chars[Math.floor(Math.random()*chars.length)];}).join('');
+  var code='INST-'+new Date().getFullYear()+'-'+part;
+  var label=prompt('Label for this code (e.g. client name):','');
+  if(label===null)return;
+  var r=await _sb.from('invite_codes').insert({id:code,label:label||'',active:true});
+  if(r.error){toast('Error: '+r.error.message,'err');return;}
+  toast('Code created: '+code,'ok');
+  loadInviteCodes();
+}
+async function toggleInviteCode(id,active){
+  await _sb.from('invite_codes').update({active:active}).eq('id',id);
+  toast(active?'Code enabled':'Code disabled','ok');
+  loadInviteCodes();
+}
+async function updateInviteLabel(id,label){
+  await _sb.from('invite_codes').update({label:label}).eq('id',id);
+}
+
+// ══════════════════════════════════════════════════
 // ADMIN PANEL — Full Management System
 // ══════════════════════════════════════════════════
 function rAdmin(){
@@ -7116,8 +7188,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',invite_mgmt:'Invite Codes'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',invite_mgmt:'&#128273;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -7134,6 +7206,8 @@ buildSB = function() {
       badge + '</div>';
   }).join('') +
   '<div class="sb-divider"></div>' +
+  (_tenantId==='instaport'&&(S.role==='admin'||can('all'))?
+    '<div class="sbi'+(S.page==='invite_mgmt'?' active':'')+'" onclick="nav(\'invite_mgmt\')"><div class="sbi-icon">&#128273;</div><span class="sbi-label">Invite Codes</span></div>':'')+
   '<div class="sbi" onclick="toggleLang()"><div class="sbi-icon">&#127760;</div><span class="sbi-label">Language</span></div>';
 };
 
