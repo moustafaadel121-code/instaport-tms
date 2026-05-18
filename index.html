@@ -7088,44 +7088,7 @@ function runExport() {
   a.click(); closeM(); toast('Exported!', 'ok');
 }
 
-// ════ PATCH doLogin ════
-var _origDL = doLogin;
-doLogin = function() {
-  var val = document.getElementById('uid').value.trim();
-  var pin = document.getElementById('upin').value.trim();
-  var u = USERS.find(function(x) {
-    return (x.id === val || x.email === val || x.name.toLowerCase() === val.toLowerCase()) &&
-           x.pin === pin && x.active !== false;
-  });
-  if(!u) { document.getElementById('lerr').style.display = 'block'; return; }
-  document.getElementById('lerr').style.display = 'none';
-  S.user = u; S.role = u.role;
-  if(!S.pendingParts) S.pendingParts = [];
-
-  // Hide login, show app
-  var lg = document.getElementById('login');
-  lg.style.cssText = 'display:none!important';
-  var ap = document.getElementById('app');
-  ap.style.display = 'flex';
-  ap.style.flexDirection = 'row';
-
-  // Set user info
-  var initials = u.name.split(' ').map(function(x) { return x[0]; }).join('');
-  document.getElementById('tb-avatar').textContent = initials;
-  document.getElementById('tb-uname').textContent = u.name;
-  document.getElementById('tb-role').textContent = (RL && RL[u.role]) || u.role;
-  document.getElementById('sb-av').textContent = initials;
-  document.getElementById('sb-uname').textContent = u.name;
-  document.getElementById('sb-role').textContent = (RL && RL[u.role]) || u.role;
-
-  audit('LOGIN', u.name + ' signed in', '');
-  // Show settings button only for admin
-  var settingsBtn = document.getElementById('tb-settings-btn');
-  if(settingsBtn) settingsBtn.style.display = (u.role==='admin'||can('all')) ? 'flex' : 'none';
-  buildSB();
-  nav(u.role === 'driver' ? 'my_trips' : 'dashboard');
-  startTemp();
-};
+// (doLogin patch removed — multi-tenant version at line ~6522 is the active one)
 
 // ════ PATCH buildSB — Premium sidebar ════
 var _origBS = buildSB;
