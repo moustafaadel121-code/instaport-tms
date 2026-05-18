@@ -3504,20 +3504,22 @@ function apQConfirm(id,isInbound){
   var t=S.trips.find(function(x){return x.id===id;});
   var qa=S.qaAgr[t.customer]||{checkReq:7};var done=t.checklist.filter(Boolean).length;
   if(done<qa.checkReq){toast('Need '+qa.checkReq+'/8 ('+done+' done)','err');return;}
-  var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
-  t.qualityPin=true;t.status=isInbound?'completed':'awaiting_ctrl';
-  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound)':''),detail:done+'/8'});
-  audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
-  if(isInbound){
-    var rate=S.custModifiers[t.customer]&&S.custModifiers[t.customer].baseRate||8;
-    var km=t.actualKm||t.km||150;t.km=km;
-    var result=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
-    t.cost=result.cost;t.co2=result.co2;
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'Auto Calculated',detail:'KM: '+km+' · EGP '+t.cost+' · CO₂: '+t.co2+'kg'});
-    setTimeout(function(){aiAss(t);},500);
-    toast('Trip completed! EGP '+t.cost,'ok');
-  }else{notif(id+' quality ok');toast('Quality approved!','ok');}
-  rQuality();
+  requirePwd('Approve Quality — '+id,function(){
+    var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
+    t.qualityPin=true;t.status=isInbound?'completed':'awaiting_ctrl';
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound)':''),detail:done+'/8'});
+    audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
+    if(isInbound){
+      var rate=S.custModifiers[t.customer]&&S.custModifiers[t.customer].baseRate||8;
+      var km=t.actualKm||t.km||150;t.km=km;
+      var result=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
+      t.cost=result.cost;t.co2=result.co2;
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'Auto Calculated',detail:'KM: '+km+' · EGP '+t.cost+' · CO₂: '+t.co2+'kg'});
+      setTimeout(function(){aiAss(t);},500);
+      toast('Trip completed! EGP '+t.cost,'ok');
+    }else{notif(id+' quality ok');toast('Quality approved!','ok');}
+    rQuality();
+  });
 }
 function rejQM(id){
   openM('<div class="m-title">❌ Reject Trip '+id+'</div>'+
@@ -5456,22 +5458,24 @@ apQConfirm=function(id,isInbound){
   var t=S.trips.find(function(x){return x.id===id;});
   var qa=S.qaAgr[t.customer]||{checkReq:7};var done=t.checklist.filter(Boolean).length;
   if(done<qa.checkReq){toast('Need '+qa.checkReq+'/8 ('+done+' done)','err');return;}
-  var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
-  t.qualityPin=true;t.status=isInbound?'completed':'awaiting_ctrl';
-  stampTrip(t,isInbound?'completed':'awaiting_ctrl');
-  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound)':''),detail:done+'/8'});
-  audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
-  if(isInbound){
-    var km=t.actualKm||t.km||150;t.km=km;
-    var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
-    t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'Auto Calculated',detail:'KM:'+km+' EGP '+r.cost+' CO₂:'+r.co2+'kg'});
-    setTimeout(function(){aiAss(t);},500);
-    // Auto-hold if maintenance
-    if(t.type==='Non-Revenue'||t.customer==='Internal'){autoHoldTruckAfterTrip(t);}
-    toast('Trip completed! EGP '+r.cost,'ok');
-  }else{notif(id+' quality ok');toast('Quality approved!','ok');}
-  rQuality();
+  requirePwd('Approve Quality — '+id,function(){
+    var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
+    t.qualityPin=true;t.status=isInbound?'completed':'awaiting_ctrl';
+    stampTrip(t,isInbound?'completed':'awaiting_ctrl');
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound)':''),detail:done+'/8'});
+    audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
+    if(isInbound){
+      var km=t.actualKm||t.km||150;t.km=km;
+      var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
+      t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'Auto Calculated',detail:'KM:'+km+' EGP '+r.cost+' CO₂:'+r.co2+'kg'});
+      setTimeout(function(){aiAss(t);},500);
+      // Auto-hold if maintenance
+      if(t.type==='Non-Revenue'||t.customer==='Internal'){autoHoldTruckAfterTrip(t);}
+      toast('Trip completed! EGP '+r.cost,'ok');
+    }else{notif(id+' quality ok');toast('Quality approved!','ok');}
+    rQuality();
+  });
 };
 
 // ══════════════════════════════════════════════════
