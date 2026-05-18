@@ -5070,7 +5070,8 @@ async function loadInviteCodes(){
   if(!_sb)return;
   var r=await _sb.from('invite_codes').select('*').order('created_at',{ascending:false});
   var el=document.getElementById('invite-list');if(!el)return;
-  if(r.error||!r.data||r.data.length===0){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--t3)">No codes yet. Click "Generate New Code" to create one.</div>';return;}
+  if(r.error){el.innerHTML='<div style="text-align:center;padding:40px;color:#ef4444">Error: '+r.error.message+'</div>';return;}
+  if(!r.data||r.data.length===0){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--t3)">No codes yet. Click "Generate New Code" to create one.</div>';return;}
   el.innerHTML='<div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
     '<thead><tr style="border-bottom:1px solid var(--border);color:var(--t3)">'+
     '<th style="padding:12px 16px;text-align:left">Code</th>'+
@@ -5139,10 +5140,238 @@ function rAdmin(){
   '<div class="tab'+(tab==='settings'?' on':'')+'" onclick="S.adminTab=\'settings\';rAdmin()">⚙️ Settings</div>'+
   '<div class="tab'+(tab==='assignments'?' on':'')+'" onclick="S.adminTab=\'assignments\';rAdmin()">&#128101; AM Assign</div>'+
   '<div class="tab'+(tab==='sysconfig'?' on':'')+'" onclick="S.adminTab=\'sysconfig\';rAdmin()">&#9881; System</div>'+
+  '<div class="tab'+(tab==='import'?' on':'')+'" onclick="S.adminTab=\'import\';rAdmin()">&#128229; Import CSV</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport};
   (fn[tab]||rAdminUsers)();
+}
+
+// ══════════════════════════════════════════════════
+// IMPORT CSV — All Data Types
+// ══════════════════════════════════════════════════
+var _CSV_TEMPLATES={
+  users:{
+    label:'👥 Users',
+    columns:['employee_id','name','role','pin','email'],
+    roles:'admin, ops, quality, controlroom, security, finance, driver',
+    sample:'1001,John Smith,ops,1234,john@company.com\n1002,Sara Ali,quality,5678,sara@company.com',
+    desc:'Import team members. role must be one of: admin, ops, quality, controlroom, security, finance, driver'
+  },
+  customers:{
+    label:'🏢 Customers',
+    columns:['code','name','contact','phone','email'],
+    sample:'PBG,Pfizer BG,Ahmed Hassan,01012345678,ahmed@pfizer.com\nGSK,GlaxoSmithKline,Sara Ali,01098765432,sara@gsk.com',
+    desc:'Import customer accounts. code = short unique ID (used in trips)'
+  },
+  trucks:{
+    label:'🚛 Trucks',
+    columns:['plate','type','mfr','cooling','status','cal_expiry','remark'],
+    sample:'4789 أ ج ي,Jumbo,Chevrolet 2021,Carrier Xarios 500,Released,2027-01-01,\n852 ب أ ن,Dababa,Chevrolet 2019,ThermoKing C100,Released,2026-10-01,Ambient only',
+    desc:'Import fleet trucks. type: Jumbo, Dababa, Trailer, Truck Head. status: Released or Hold. cal_expiry: YYYY-MM-DD'
+  },
+  pricing:{
+    label:'💰 Pricing',
+    columns:['customer','route_type','condition','base_rate','per_km','min_cost'],
+    sample:'PBG,Outbound,Cold (2-8C),500,18,1200\nGSK,Outbound,Frozen (-18C),700,22,1500',
+    desc:'Import pricing rules per customer. condition: Cold (2-8C), Frozen (-18C), Ambient (15-25C)'
+  },
+  spare_parts:{
+    label:'🔩 Spare Parts',
+    columns:['name','sku','qty','min_qty','unit','cost','supplier','category'],
+    sample:'Compressor Belt,CX5-CB-01,5,2,pcs,850,Carrier Egypt,Cooling\nEngine Oil 15W-40,OIL-15W-4,30,10,cans,220,Total Egypt,Engine',
+    desc:'Import spare parts inventory.'
+  },
+  am_assign:{
+    label:'👥 AM Assign',
+    columns:['customer','account_manager','phone','email'],
+    sample:'PBG,Mostafa Salah,01012345678,mostafa@instaport.com\nGSK,Alaa Hassan,01098765432,alaa@instaport.com',
+    desc:'Assign account managers to customers.'
+  },
+  price_lists:{
+    label:'📋 Customer Price Lists',
+    columns:['customer','item','description','unit_price','currency'],
+    sample:'PBG,Cold Trip Cairo-Alex,Outbound Cold 220km,4800,EGP\nPBG,Frozen Trip Cairo-Giza,Outbound Frozen 45km,1950,EGP',
+    desc:'Detailed price list per customer and service.'
+  }
+};
+
+function rAdminImport(){
+  var el=document.getElementById('admin-content');if(!el)return;
+  var type=S.importType||'users';
+  var tpl=_CSV_TEMPLATES[type];
+  var tabs=Object.keys(_CSV_TEMPLATES).map(function(k){
+    return '<div class="tab'+(type===k?' on':'')+'" onclick="S.importType=\''+k+'\';rAdminImport()" style="white-space:nowrap">'+_CSV_TEMPLATES[k].label+'</div>';
+  }).join('');
+
+  el.innerHTML=
+    '<div class="tabs" style="flex-wrap:wrap;gap:4px;margin-bottom:20px">'+tabs+'</div>'+
+    '<div class="g2" style="gap:20px">'+
+    // LEFT: Instructions & template
+    '<div class="card" style="min-width:0">'+
+    '<div class="card-hd"><div class="card-title">'+tpl.label+' — CSV Format</div>'+
+    '<button class="btn btn-sm btn-outline" onclick="downloadCSVTemplate(\''+type+'\')">⬇ Download Template</button></div>'+
+    '<p style="font-size:13px;color:var(--t2);margin-bottom:16px">'+tpl.desc+'</p>'+
+    '<div style="background:var(--surf2);border-radius:8px;padding:16px;margin-bottom:16px">'+
+    '<div style="font-size:11px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">REQUIRED COLUMNS (in order):</div>'+
+    '<div style="font-family:monospace;font-size:13px;color:var(--c1);font-weight:700">'+tpl.columns.join(', ')+'</div>'+
+    '</div>'+
+    '<div style="background:var(--surf2);border-radius:8px;padding:16px">'+
+    '<div style="font-size:11px;color:var(--t3);margin-bottom:8px;letter-spacing:1px">SAMPLE DATA:</div>'+
+    '<pre style="font-size:12px;color:var(--t2);white-space:pre-wrap;margin:0">'+tpl.columns.join(',')+'\n'+tpl.sample+'</pre>'+
+    '</div>'+
+    '</div>'+
+    // RIGHT: Upload
+    '<div class="card" style="min-width:0">'+
+    '<div class="card-hd"><div class="card-title">Upload CSV File</div></div>'+
+    '<div id="import-drop" style="border:2px dashed var(--border);border-radius:12px;padding:48px 24px;text-align:center;cursor:pointer;transition:.2s;margin-bottom:20px" '+
+      'onclick="document.getElementById(\'csv-file-input\').click()" '+
+      'ondragover="event.preventDefault();this.style.borderColor=\'var(--c1)\'" '+
+      'ondragleave="this.style.borderColor=\'var(--border)\'" '+
+      'ondrop="handleCSVDrop(event,\''+type+'\')">' +
+    '<div style="font-size:40px;margin-bottom:12px">📂</div>'+
+    '<div style="font-size:15px;font-weight:600;margin-bottom:6px">Click to select or drag & drop</div>'+
+    '<div style="font-size:12px;color:var(--t3)">.csv files only</div>'+
+    '</div>'+
+    '<input type="file" id="csv-file-input" accept=".csv" style="display:none" onchange="handleCSVFile(event,\''+type+'\')"/>'+
+    '<div id="import-preview" style="display:none">'+
+    '<div class="card-hd" style="margin-bottom:12px"><div class="card-title" id="import-preview-title">Preview</div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<button class="btn btn-sm btn-outline" onclick="document.getElementById(\'import-preview\').style.display=\'none\'">Cancel</button>'+
+    '<button class="btn btn-sm btn-primary" id="import-confirm-btn" onclick="confirmCSVImport(\''+type+'\')">✅ Import to Supabase</button>'+
+    '</div></div>'+
+    '<div id="import-preview-table" style="overflow:auto;max-height:320px"></div>'+
+    '</div>'+
+    '<div id="import-result" style="margin-top:16px"></div>'+
+    '</div>'+
+    '</div>';
+}
+
+function downloadCSVTemplate(type){
+  var tpl=_CSV_TEMPLATES[type];
+  var csv=tpl.columns.join(',')+'\n'+tpl.sample;
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
+  a.download='template_'+type+'.csv';
+  a.click();
+  toast('Template downloaded','ok');
+}
+
+var _csvParsed=[];
+function handleCSVDrop(e,type){
+  e.preventDefault();
+  document.getElementById('import-drop').style.borderColor='var(--border)';
+  var f=e.dataTransfer.files[0];
+  if(f)readCSVFile(f,type);
+}
+function handleCSVFile(e,type){
+  var f=e.target.files[0];
+  if(f)readCSVFile(f,type);
+}
+function readCSVFile(file,type){
+  if(!file.name.endsWith('.csv')){toast('Please upload a .csv file','err');return;}
+  var reader=new FileReader();
+  reader.onload=function(e){parseCSVPreview(e.target.result,type);};
+  reader.readAsText(file);
+}
+function parseCSVPreview(text,type){
+  var tpl=_CSV_TEMPLATES[type];
+  var lines=text.split('\n').map(function(l){return l.trim();}).filter(Boolean);
+  if(lines.length<2){toast('CSV must have a header row and at least one data row','err');return;}
+  // Auto-detect if first row is header
+  var firstRow=lines[0].toLowerCase().replace(/\s/g,'');
+  var hasHeader=tpl.columns.some(function(c){return firstRow.indexOf(c.toLowerCase().replace(/\s/g,''))>-1;});
+  var dataRows=hasHeader?lines.slice(1):lines;
+  _csvParsed=dataRows.map(function(row){
+    var vals=row.split(',').map(function(v){return v.trim().replace(/^"|"$/g,'');});
+    var obj={};
+    tpl.columns.forEach(function(col,i){obj[col]=vals[i]||'';});
+    return obj;
+  }).filter(function(r){return Object.values(r).some(function(v){return v;});});
+  if(_csvParsed.length===0){toast('No valid rows found','err');return;}
+  // Show preview table
+  var prev=document.getElementById('import-preview');
+  var tbl=document.getElementById('import-preview-table');
+  var title=document.getElementById('import-preview-title');
+  title.textContent='Preview — '+_csvParsed.length+' rows ready to import';
+  tbl.innerHTML='<table style="width:100%;border-collapse:collapse;font-size:12px">'+
+    '<thead><tr style="background:var(--surf2)">'+
+    tpl.columns.map(function(c){return '<th style="padding:8px 12px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap">'+c+'</th>';}).join('')+
+    '</tr></thead><tbody>'+
+    _csvParsed.slice(0,20).map(function(row,i){
+      return '<tr style="border-bottom:1px solid var(--border);background:'+(i%2===0?'transparent':'var(--surf2)')+'">'+
+        tpl.columns.map(function(c){return '<td style="padding:7px 12px;white-space:nowrap">'+row[c]+'</td>';}).join('')+
+        '</tr>';
+    }).join('')+
+    '</tbody></table>'+
+    (_csvParsed.length>20?'<div style="padding:10px 12px;font-size:12px;color:var(--t3)">...and '+(_csvParsed.length-20)+' more rows</div>':'');
+  prev.style.display='block';
+}
+
+async function confirmCSVImport(type){
+  if(!_sb){toast('Not connected to Supabase','err');return;}
+  if(!_csvParsed||_csvParsed.length===0){toast('No data to import','err');return;}
+  var btn=document.getElementById('import-confirm-btn');
+  btn.disabled=true;btn.textContent='Importing…';
+  var result=document.getElementById('import-result');
+  result.innerHTML='';
+  try{
+    var rows=_csvParsed.map(function(r){
+      var row=Object.assign({},r,{tenant_id:_tenantId});
+      // Type-specific transformations
+      if(type==='trucks'){
+        row.valid=!row.status||row.status.toLowerCase()==='released';
+        row.flagged=false;
+        if(!row.cal_expiry)delete row.cal_expiry;
+      }
+      if(type==='users'){
+        row.employee_id=row.employee_id||row.id||'';
+        row.active=true;
+        delete row.id;
+      }
+      if(type==='spare_parts'){
+        row.qty=parseInt(row.qty)||0;
+        row.min_qty=parseInt(row.min_qty)||0;
+        row.cost=parseFloat(row.cost)||0;
+        row.id=_tenantId+'_SP_'+Date.now()+'_'+Math.random().toString(36).slice(2,6);
+      }
+      if(type==='pricing'){
+        row.base_rate=parseFloat(row.base_rate)||0;
+        row.per_km=parseFloat(row.per_km)||0;
+        row.min_cost=parseFloat(row.min_cost)||0;
+      }
+      if(type==='price_lists'){
+        row.unit_price=parseFloat(row.unit_price)||0;
+      }
+      return row;
+    });
+    var tableMap={users:'users',customers:'customers',trucks:'trucks',pricing:'pricing_rules',spare_parts:'spare_parts',am_assign:'am_assignments',price_lists:'customer_price_lists'};
+    var tableName=tableMap[type];
+    // Upsert in batches of 50
+    var total=0,errors=[];
+    for(var i=0;i<rows.length;i+=50){
+      var batch=rows.slice(i,i+50);
+      var r=await _sb.from(tableName).upsert(batch,{ignoreDuplicates:false});
+      if(r.error){errors.push(r.error.message);}
+      else{total+=batch.length;}
+    }
+    if(errors.length>0){
+      result.innerHTML='<div style="background:#fee2e2;border:1px solid #fca5a5;border-radius:10px;padding:16px;color:#dc2626;font-size:13px">'+
+        '⚠️ Imported '+total+' rows with errors:<br>'+errors.slice(0,3).join('<br>')+'</div>';
+    } else {
+      result.innerHTML='<div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:16px;color:#16a34a;font-size:14px;font-weight:600">'+
+        '✅ Successfully imported '+total+' rows into Supabase!</div>';
+      _csvParsed=[];
+      document.getElementById('import-preview').style.display='none';
+      toast('✅ '+total+' rows imported!','ok');
+      // Refresh local data
+      initApp();
+    }
+  }catch(e){
+    result.innerHTML='<div style="background:#fee2e2;border-radius:10px;padding:16px;color:#dc2626;font-size:13px">Error: '+e.message+'</div>';
+  }finally{
+    btn.disabled=false;btn.textContent='✅ Import to Supabase';
+  }
 }
 
 // ── USERS ──
