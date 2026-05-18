@@ -2526,9 +2526,10 @@ async function initApp(){
       _sb.from('maintenance').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}),
       _sb.from('spare_parts').select('*').eq('tenant_id',_tenantId),
       _sb.from('audit_log').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}).limit(300),
-      _sb.from('trucks').select('*').eq('tenant_id',_tenantId)
+      _sb.from('trucks').select('*').eq('tenant_id',_tenantId),
+      _sb.from('am_assignments').select('*').eq('tenant_id',_tenantId)
     ]);
-    var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4];
+    var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4],r6=results[5];
     // Trips
     if(!r1.error&&r1.data&&r1.data.length){
       S.trips.length=0;
@@ -2560,6 +2561,11 @@ async function initApp(){
       }else{
         _sb.from('trucks').insert(TRUCKS.map(function(t){return{plate:t.plate,tenant_id:_tenantId,type:t.type,mfr:t.mfr,cooling:t.cooling,status:t.status,valid:t.valid,remark:t.remark||'',cal_expiry:t.calExpiry,flagged:t.flagged||false};}));
       }
+    }
+    // AM Assignments
+    if(r6&&!r6.error&&r6.data&&r6.data.length){
+      if(!S.customerAssignments)S.customerAssignments={};
+      r6.data.forEach(function(r){if(r.customer&&r.account_manager){S.customerAssignments[r.customer]=r.account_manager;}});
     }
   }catch(e){
     console.error('initApp error',e);
@@ -6404,7 +6410,7 @@ function openCustomerAssignment(){
   if(!can('all')&&S.role!=='admin'){toast('Admin access required','err');return;}
   if(!S.customerAssignments)S.customerAssignments={};
 
-  var ams=USERS.filter(function(u){return u.role==='acct_mgr'&&u.active!==false;});
+  var ams=_getAMs();
 
   openM('<div class="m-title">&#128101; Customer Assignments</div>'+
     '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Assign customers to account managers. Each AM sees only their assigned customers.</div>'+
@@ -6412,7 +6418,7 @@ function openCustomerAssignment(){
     '<div style="overflow-y:auto;max-height:440px">'+
     CUSTOMERS.map(function(cu){
       var assignedUid=S.customerAssignments[cu]||'';
-      var assignedUser=USERS.find(function(u){return u.id===assignedUid;});
+      var assignedUser=_findUser(assignedUid);
       var cuTrips=S.trips.filter(function(t){return t.customer===cu;});
       var cuRev=cuTrips.filter(function(t){return t.status==='completed';}).reduce(function(s,t){return s+(+t.cost||0);},0);
       return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 14px;border:1px solid var(--bd);border-radius:12px;margin-bottom:8px;background:var(--surf)">'+
@@ -6555,53 +6561,84 @@ function openAdminConfig(){
 }
 
 
+function _getAllUsers(){return (_tenantUsers&&_tenantUsers.length?_tenantUsers:USERS).filter(function(u){return u.active!==false;});}
+function _getAMs(){return _getAllUsers().filter(function(u){return u.role!=='driver';});}
+function _findUser(uid){return _getAllUsers().find(function(u){return String(u.id)===String(uid)||String(u.employee_id)===String(uid);});}
+
 function rAdminAssignments(){
   var el=document.getElementById('admin-content');if(!el)return;
   if(!S.customerAssignments)S.customerAssignments={};
-  var ams=USERS.filter(function(u){return u.role==='acct_mgr'&&u.active!==false;});
+  var ams=_getAMs();
+  var cuList=CUSTOMERS;
   var assignedCount=Object.keys(S.customerAssignments||{}).filter(function(c){return S.customerAssignments[c];}).length;
   el.innerHTML=
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
-    '<div><div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Customer &#8212; AM Assignments</div>'+
-    '<div style="font-size:12px;color:var(--t2);margin-top:3px">Assign customers to Account Managers. AMs only see their assigned customers.</div></div>'+
-    '<button class="btn btn-outline btn-sm" onclick="exportAssignments()">&#11015; Export CSV</button></div>'+
+    '<div><div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Customer — AM Assignments</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-top:3px">Assign each customer to an account manager. Saved to Supabase instantly.</div></div>'+
+    '<button class="btn btn-outline btn-sm" onclick="exportAssignments()">⬇ Export CSV</button></div>'+
     '<div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">'+
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:#6C3FF5">&#128101;</div>'+
-    '<div class="kpi-body"><div class="kpi-label">Account Managers</div><div class="kpi-val">'+ams.length+'</div></div></div>'+
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#10003;</div>'+
-    '<div class="kpi-body"><div class="kpi-label">Assigned</div><div class="kpi-val">'+assignedCount+' / '+CUSTOMERS.length+'</div></div></div>'+
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#8212;</div>'+
-    '<div class="kpi-body"><div class="kpi-label">Unassigned</div><div class="kpi-val">'+(CUSTOMERS.length-assignedCount)+'</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:#6C3FF5">👤</div>'+
+    '<div class="kpi-body"><div class="kpi-label">Team Members</div><div class="kpi-val">'+ams.length+'</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">✅</div>'+
+    '<div class="kpi-body"><div class="kpi-label">Assigned</div><div class="kpi-val">'+assignedCount+' / '+cuList.length+'</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">—</div>'+
+    '<div class="kpi-body"><div class="kpi-label">Unassigned</div><div class="kpi-val">'+(cuList.length-assignedCount)+'</div></div></div>'+
     '</div>'+
     (ams.length===0?
       '<div style="background:var(--bg);border-radius:16px;padding:40px;text-align:center;color:var(--t2)">'+
-      '<div style="font-size:36px;margin-bottom:10px">&#128101;</div>'+
-      '<div style="font-size:15px;font-weight:700">No Account Managers Found</div>'+
-      '<div style="font-size:12px;margin-top:6px">Create users with role "acct_mgr" in the Users tab first.</div></div>' :
+      '<div style="font-size:36px;margin-bottom:10px">👤</div>'+
+      '<div style="font-size:15px;font-weight:700">No Users Found</div>'+
+      '<div style="font-size:12px;margin-top:6px">Add users in the Users tab first.</div></div>' :
       '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px">'+
-      CUSTOMERS.map(function(cu){
+      cuList.map(function(cu){
         var uid=(S.customerAssignments||{})[cu]||'';
-        var am=uid?USERS.find(function(u){return u.id===uid;}):null;
+        var am=uid?_findUser(uid):null;
         var trips=S.trips.filter(function(t){return t.customer===cu;});
         var rev=trips.filter(function(t){return t.status==='completed';}).reduce(function(s,t){return s+(+t.cost||0);},0);
-        return '<div style="background:var(--surf);border:1.5px solid '+(am?'rgba(108,63,245,.25)':'var(--bd)')+';border-radius:14px;overflow:hidden;box-shadow:var(--sh-sm)">'+
+        return '<div style="background:var(--surf);border:1.5px solid '+(am?'rgba(108,63,245,.3)':'var(--bd)')+';border-radius:14px;overflow:hidden">'+
           '<div style="padding:12px 16px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px">'+
           '<div style="width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center">'+cu[0]+'</div>'+
           '<div style="flex:1"><div style="font-weight:800;color:var(--t);font-size:13px">'+cu+'</div>'+
-          '<div style="font-size:11px;color:var(--t3)">'+trips.length+' trips &bull; EGP '+Math.round(rev/1000*10)/10+'K</div></div>'+
-          '<button class="btn btn-outline btn-sm" style="font-size:10px;padding:4px 8px" data-cu="'+cu+'" onclick="openCustomerActivity(this.dataset.cu)">&#128202;</button>'+
+          '<div style="font-size:11px;color:var(--t3)">'+trips.length+' trips · EGP '+Math.round(rev/1000*10)/10+'K</div></div>'+
           '</div>'+
           '<div style="padding:12px 16px">'+
-          '<select data-cu="'+cu+'" onchange="assignCustomer(this);rAdminAssignments()" style="width:100%;font-size:13px;padding:9px 12px;border:1.5px solid var(--bd);border-radius:10px;color:var(--t);background:var(--bg);outline:none;font-family:inherit">'+
-          '<option value="">-- Unassigned --</option>'+
-          ams.map(function(u){return '<option value="'+u.id+'"'+(uid===u.id?' selected':'')+'>'+u.name+'</option>';}).join('')+
+          '<label style="font-size:11px;color:var(--t3);letter-spacing:.5px;text-transform:uppercase;display:block;margin-bottom:6px">Account Manager</label>'+
+          '<select data-cu="'+cu+'" onchange="assignCustomerSupa(this)" style="width:100%;font-size:13px;padding:9px 12px;border:1.5px solid var(--bd);border-radius:10px;color:var(--t);background:var(--bg);outline:none;font-family:inherit">'+
+          '<option value="">— Unassigned —</option>'+
+          ams.map(function(u){
+            var dispId=u.employee_id||u.id;
+            return '<option value="'+dispId+'"'+(uid===String(dispId)?' selected':'')+'>'+u.name+' ('+u.role+')</option>';
+          }).join('')+
           '</select>'+
-          (am?'<div style="margin-top:8px;padding:7px 10px;background:rgba(108,63,245,.06);border-radius:8px;display:flex;align-items:center;gap:7px">'+
-          '<div style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#6C3FF5,#9B7FF8);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">'+am.name[0]+'</div>'+
-          '<div style="font-size:12px;font-weight:700;color:var(--t)">'+am.name+'</div></div>':
-          '<div style="margin-top:8px;font-size:11px;color:var(--t3);font-style:italic;padding:4px 2px">No AM assigned</div>')+
+          (am?'<div style="margin-top:8px;padding:7px 10px;background:rgba(108,63,245,.06);border-radius:8px;display:flex;align-items:center;gap:8px">'+
+          '<div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#6C3FF5,#9B7FF8);color:#fff;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center">'+am.name[0]+'</div>'+
+          '<div><div style="font-size:12px;font-weight:700;color:var(--t)">'+am.name+'</div>'+
+          '<div style="font-size:10px;color:var(--t3)">'+am.role+'</div></div></div>':
+          '<div style="margin-top:8px;font-size:11px;color:var(--t3);font-style:italic">No AM assigned yet</div>')+
           '</div></div>';
       }).join('')+'</div>');
+}
+
+async function assignCustomerSupa(sel){
+  var cu=sel.dataset.cu;
+  var uid=sel.value;
+  if(!S.customerAssignments)S.customerAssignments={};
+  var u=uid?_findUser(uid):null;
+  if(uid){S.customerAssignments[cu]=uid;}
+  else{delete S.customerAssignments[cu];}
+  // Save to Supabase
+  if(_sb&&_tenantId){
+    if(uid){
+      await _sb.from('am_assignments').upsert({tenant_id:_tenantId,customer:cu,account_manager:u?u.name:'',phone:'',email:''},{onConflict:'tenant_id,customer'});
+    } else {
+      await _sb.from('am_assignments').delete().eq('tenant_id',_tenantId).eq('customer',cu);
+    }
+  }
+  audit('ASSIGN_CUSTOMER',cu+' → '+(u?u.name:'Unassigned'),'');
+  toast(cu+' → '+(u?u.name:'Unassigned'),'ok');
+  // Refresh the card border only — no full re-render
+  var card=sel.closest('div[style*="border-radius:14px"]');
+  if(card)card.style.border='1.5px solid '+(uid?'rgba(108,63,245,.3)':'var(--bd)');
 }
 
 function rAdminSysConfig(){
@@ -6638,10 +6675,10 @@ function rAdminSysConfig(){
 
 function exportAssignments(){
   if(!S.customerAssignments)S.customerAssignments={};
-  var rows=['Customer,Account Manager,AM ID,Total Trips,Revenue EGP'];
+  var rows=['Customer,Account Manager,Total Trips,Revenue EGP'];
   CUSTOMERS.forEach(function(cu){
     var uid=S.customerAssignments[cu]||'';
-    var u=uid?USERS.find(function(x){return x.id===uid;}):null;
+    var u=uid?_findUser(uid):null;
     var trips=S.trips.filter(function(t){return t.customer===cu;});
     var rev=trips.filter(function(t){return t.status==='completed';}).reduce(function(s,t){return s+(+t.cost||0);},0);
     rows.push([cu,u?u.name:'Unassigned',uid||'',trips.length,rev.toFixed(2)].join(','));
