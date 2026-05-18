@@ -2494,15 +2494,19 @@ function showLogin(){document.getElementById('reg-panel').style.display='none';d
 
 /* ── Tenant-scoped data loader ── */
 async function initApp(){
-  if(!_sb||!_tenantId)return;
+  if(!_sb){toast('❌ Supabase not connected','err');return;}
+  if(!_tenantId){toast('❌ No tenant ID set','err');return;}
   _supabaseLoading=true;
   var contentEl=document.getElementById('content');
   if(contentEl)contentEl.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:var(--t2)"><div style="font-size:36px;margin-bottom:12px">⚙️</div><div style="font-size:13px;font-weight:600">Loading '+_tenantName+' data…</div></div>';
   try{
     var r1=await _sb.from('trips').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false});
-    if(!r1.error&&r1.data&&r1.data.length){
+    if(r1.error){toast('❌ Trips error: '+r1.error.message,'err');}
+    else if(!r1.data||!r1.data.length){toast('⚠️ No trips found for '+_tenantId,'err');}
+    else{
       S.trips.length=0;
       r1.data.forEach(function(r){Array.prototype.push.call(S.trips,{id:r.id,customer:r.customer,type:r.type,dir:r.dir,condition:r.condition,from:r.origin,dests:r.dests,destsArr:r.dests_arr||[],km:r.km,cost:r.cost,co2:r.co2,costBreakdown:r.cost_breakdown,truck:r.truck,driver:r.driver,driverNote:r.driver_note||'',actualKm:r.actual_km,status:r.status,checklist:r.checklist||Array(8).fill(false),qualityPin:r.quality_pin||false,aiReport:r.ai_report,attachments:r.attachments||[],tl:r.timeline||[],ts:r.ts,createdBy:r.created_by,pricePlan:r.price_plan||'',notes:r.notes||''});});
+      toast('✅ Loaded '+S.trips.length+' trips','ok');
     }
     var r2=await _sb.from('maintenance').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false});
     if(!r2.error&&r2.data&&r2.data.length){
