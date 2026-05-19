@@ -12,6 +12,9 @@
 <link rel="dns-prefetch" href="https://qugypjbwkhqkvmrntfus.supabase.co"/>
 <link rel="preconnect" href="https://cdn.jsdelivr.net"/>
 <link rel="preconnect" href="https://fonts.googleapis.com"/>
+<!-- Leaflet (OpenStreetMap — free, no API key) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Inter:wght@300;400;500;600;700&family=Noto+Sans+Arabic:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
@@ -2557,7 +2560,7 @@ async function initApp(){
     // Trucks
     if(!r5.error){
       if(r5.data&&r5.data.length){
-        r5.data.forEach(function(r){var t=TRUCKS.find(function(x){return x.plate===r.plate;});if(t){t.status=r.status;t.valid=r.valid;t.remark=r.remark||'';t.flagged=r.flagged||false;if(r.cal_expiry)t.calExpiry=r.cal_expiry;}});
+        r5.data.forEach(function(r){var t=TRUCKS.find(function(x){return x.plate===r.plate;});if(t){t.status=r.status;t.valid=r.valid;t.remark=r.remark||'';t.flagged=r.flagged||false;if(r.cal_expiry)t.calExpiry=r.cal_expiry;t.odometerKm=r.odometer_km||0;t.lastMaintKm=r.last_maint_km||0;t.maintIntervalKm=r.maint_interval_km||10000;}});
       }else{
         _sb.from('trucks').insert(TRUCKS.map(function(t){return{plate:t.plate,tenant_id:_tenantId,type:t.type,mfr:t.mfr,cooling:t.cooling,status:t.status,valid:t.valid,remark:t.remark||'',cal_expiry:t.calExpiry,flagged:t.flagged||false};}));
       }
@@ -2587,7 +2590,7 @@ async function syncTruck(truck){
   if(!_sb||!truck||!truck.plate||!_tenantId)return;
   if(!navigator.onLine){toast('Offline — truck not synced to cloud','err');return;}
   try{
-    await _sb.from('trucks').upsert({plate:truck.plate,tenant_id:_tenantId,type:truck.type,mfr:truck.mfr,cooling:truck.cooling,status:truck.status,valid:truck.valid,remark:truck.remark||'',cal_expiry:truck.calExpiry,flagged:truck.flagged||false},{onConflict:'plate,tenant_id'});
+    await _sb.from('trucks').upsert({plate:truck.plate,tenant_id:_tenantId,type:truck.type,mfr:truck.mfr,cooling:truck.cooling,status:truck.status,valid:truck.valid,remark:truck.remark||'',cal_expiry:truck.calExpiry,flagged:truck.flagged||false,odometer_km:truck.odometerKm||0,last_maint_km:truck.lastMaintKm||0,maint_interval_km:truck.maintIntervalKm||10000},{onConflict:'plate,tenant_id'});
   }catch(e){console.error('syncTruck',e);toast('Sync error — check connection','err');}
 }
 
@@ -2613,6 +2616,191 @@ async function syncPart(part){
   }catch(e){console.error('syncPart',e);}
 }
 // ══════════════════════════════════════════════════
+// ════ EGYPT LOGISTICS LOCATIONS (map presets) ════
+// ══════════════════════════════════════════════════
+var _EG_LOCS={
+  'Cairo - Obour City':[30.2286,31.5714],'Cairo - Nasr City':[30.0650,31.3422],
+  'Cairo - 6th October':[29.9602,30.9311],'Cairo - New Cairo':[30.0300,31.4700],
+  'Cairo - Maadi':[29.9602,31.2569],'Cairo - Heliopolis':[30.0902,31.3404],
+  'Cairo - Downtown':[30.0444,31.2357],'Cairo - Shubra':[30.1153,31.2429],
+  'Cairo - Zaytoun':[30.0782,31.3104],'Giza':[30.0131,31.2089],
+  'Alexandria':[31.2001,29.9187],'Mansoura':[31.0409,31.3785],
+  'Tanta':[30.7865,31.0004],'Port Said':[31.2565,32.2841],
+  'Suez':[29.9668,32.5498],'Ismailia':[30.5965,32.2715],
+  'Zagazig':[30.5877,31.5022],'Damietta':[31.4165,31.8133],
+  'Beni Suef':[29.0661,31.0994],'Fayoum':[29.3084,30.8428],
+  'Minia':[28.0871,30.7618],'Assiut':[27.1809,31.1837],
+  'Sohag':[26.5590,31.6957],'Luxor':[25.6872,32.6396],
+  'Aswan':[24.0889,32.8998],'Hurghada':[27.2579,33.8116],
+  'Sharm El Sheikh':[27.9158,34.3300],'Damanhur':[31.0341,30.4686],
+  'Kafr El Sheikh':[31.1082,30.9388],'Minya':[28.0871,30.7618],
+  'Qena':[26.1651,32.7160],'Asyut':[27.1809,31.1837]
+};
+function _egCoords(name){
+  if(!name)return null;
+  if(_EG_LOCS[name])return _EG_LOCS[name];
+  var lc=name.toLowerCase();
+  var k=Object.keys(_EG_LOCS).find(function(k){return lc.indexOf(k.split(' ')[k.split(' ').length-1].toLowerCase())>=0||k.toLowerCase().indexOf(lc.split(' ')[0])>=0;});
+  return k?_EG_LOCS[k]:null;
+}
+
+// ════ OSRM FREE ROUTING ════
+async function _osrmRoute(lat1,lng1,lat2,lng2){
+  try{
+    var url='https://router.project-osrm.org/route/v1/driving/'+lng1+','+lat1+';'+lng2+','+lat2+'?overview=full&geometries=geojson';
+    var r=await fetch(url,{headers:{'User-Agent':'InstaPort-TMS/1.0'}});
+    if(!r.ok)return null;
+    var d=await r.json();
+    if(d.code!=='Ok'||!d.routes||!d.routes.length)return null;
+    return{distance:Math.round(d.routes[0].distance/1000),duration:Math.round(d.routes[0].duration/60),coords:d.routes[0].geometry.coordinates.map(function(c){return[c[1],c[0]];})};
+  }catch(e){return null;}
+}
+function _straightKm(lat1,lng1,lat2,lng2){
+  var R=6371,dLat=(lat2-lat1)*Math.PI/180,dLng=(lng2-lng1)*Math.PI/180;
+  var a=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)*Math.sin(dLng/2);
+  return Math.round(2*R*Math.asin(Math.sqrt(a))*1.35); // ×1.35 road factor
+}
+
+// ════ DASHBOARD LEAFLET MAP ════
+var _dashMap=null;
+function _destroyDashMap(){if(_dashMap){try{_dashMap.remove();}catch(e){}  _dashMap=null;}}
+async function _initDashMap(){
+  var el=document.getElementById('tcp-leaflet');
+  if(!el||!window.L)return;
+  _destroyDashMap();
+  _dashMap=L.map('tcp-leaflet',{zoomControl:true,attributionControl:false,scrollWheelZoom:false}).setView([30.0444,31.2357],6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18,attribution:'© OpenStreetMap'}).addTo(_dashMap);
+  L.control.attribution({prefix:'© <a href="https://openstreetmap.org">OSM</a>'}).addTo(_dashMap);
+  var gIcon=L.divIcon({html:'<div style="width:13px;height:13px;background:#10B981;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(16,185,129,.8)"></div>',iconSize:[13,13],iconAnchor:[6,6],className:''});
+  var pIcon=L.divIcon({html:'<div style="width:13px;height:13px;background:#6C3FF5;border:2px solid #fff;border-radius:50%;box-shadow:0 0 6px rgba(108,63,245,.8)"></div>',iconSize:[13,13],iconAnchor:[6,6],className:''});
+  var tIcon=L.divIcon({html:'<div style="font-size:18px;line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))">&#128666;</div>',iconSize:[22,22],iconAnchor:[11,11],className:''});
+  var active=S.trips.filter(function(t){return t.status==='in_transit';});
+  var toPlot=active.length?active:S.trips.filter(function(t){return!['completed','cancelled'].includes(t.status);}).slice(0,3);
+  var bounds=[];
+  toPlot.slice(0,5).forEach(function(trip){
+    var fc=_egCoords(trip.from);
+    var destName=(trip.destsArr&&trip.destsArr.length)?trip.destsArr[trip.destsArr.length-1]:trip.dests;
+    var tc=_egCoords(destName);
+    if(fc){L.marker(fc,{icon:gIcon}).addTo(_dashMap).bindPopup('<b>&#128994; '+trip.from+'</b><br>Trip: '+trip.id+'<br>'+trip.customer);bounds.push(fc);}
+    if(tc){L.marker(tc,{icon:pIcon}).addTo(_dashMap).bindPopup('<b>&#128308; '+(destName||'Dest')+'</b><br>'+trip.id+'<br>'+trip.condition);bounds.push(tc);}
+    if(fc&&tc){
+      L.polyline([fc,tc],{color:'#6C3FF5',weight:2,opacity:0.3,dashArray:'5,5'}).addTo(_dashMap);
+      _osrmRoute(fc[0],fc[1],tc[0],tc[1]).then(function(rt){
+        if(!rt||!_dashMap)return;
+        L.polyline(rt.coords,{color:'#6C3FF5',weight:3,opacity:.85}).addTo(_dashMap);
+        if(trip.status==='in_transit'){var mid=rt.coords[Math.floor(rt.coords.length/2)]||fc;L.marker(mid,{icon:tIcon,zIndexOffset:1000}).addTo(_dashMap).bindPopup('<b>&#128666; '+( trip.truck||'Truck')+'</b><br>Driver: '+(trip.driver||'&#8212;')+'<br>'+trip.condition+'<br><a onclick="openTripSP(\''+trip.id+'\');return false;" href="#" style="color:#6C3FF5;font-weight:700">View Trip &#8250;</a>');}
+      });
+    }
+  });
+  if(toPlot.length===0){var eg=[30.0444,31.2357];L.marker(eg,{icon:pIcon}).addTo(_dashMap).bindPopup('No active trips<br><a onclick="nav(\'forecast\');return false;" href="#" style="color:#6C3FF5">Create one &#8250;</a>').openPopup();}
+  if(bounds.length>1)_dashMap.fitBounds(bounds,{padding:[30,30],maxZoom:10});
+  else if(bounds.length===1)_dashMap.setView(bounds[0],9);
+}
+
+// ════ TRIP MAP PICKER ════
+var _tripMap=null,_tripFromMarker=null,_tripToMarker=null,_tripRouteLine=null;
+var _mpPickedFrom=null,_mpPickedTo=null;
+function _destroyTripMap(){if(_tripMap){try{_tripMap.remove();}catch(e){}  _tripMap=null;_tripFromMarker=null;_tripToMarker=null;_tripRouteLine=null;}}
+function _initTripMap(){
+  var el=document.getElementById('trip-map-el');
+  if(!el||!window.L)return;
+  _destroyTripMap();
+  _tripMap=L.map('trip-map-el',{zoomControl:false,attributionControl:false,scrollWheelZoom:false}).setView([30.0444,31.2357],6);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:18}).addTo(_tripMap);
+  _tripMap.on('click',function(e){_tripMapClick(e.latlng.lat,e.latlng.lng);});
+  setTimeout(function(){if(_tripMap)_tripMap.invalidateSize();},200);
+}
+function _tripMapClick(lat,lng){
+  var nearest=null,minD=Infinity;
+  Object.keys(_EG_LOCS).forEach(function(k){var c=_EG_LOCS[k];var d=Math.pow(c[0]-lat,2)+Math.pow(c[1]-lng,2);if(d<minD){minD=d;nearest=k;}});
+  var name=nearest||'Custom';
+  var fromEl=document.getElementById('tf');
+  if(fromEl&&!fromEl.value){
+    fromEl.value=name;
+    var c=_EG_LOCS[name]||[lat,lng];
+    _setTripMarker('from',c[0],c[1],name);
+    toast('Origin set: '+name,'ok');
+    _autoRouteTrip();
+  } else if(_dests&&_dests.length&&!_dests[0]){
+    _dests[0]=name;
+    rDestList();
+    var c2=_EG_LOCS[name]||[lat,lng];
+    _setTripMarker('to',c2[0],c2[1],name);
+    toast('Destination set: '+name,'ok');
+    _autoRouteTrip();
+  }
+}
+function _setTripMarker(type,lat,lng,name){
+  if(!_tripMap||!window.L)return;
+  var gI=L.divIcon({html:'<div style="width:14px;height:14px;background:#10B981;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(16,185,129,.9)"></div>',iconSize:[14,14],iconAnchor:[7,7],className:''});
+  var rI=L.divIcon({html:'<div style="width:14px;height:14px;background:#EF4444;border:3px solid #fff;border-radius:50%;box-shadow:0 0 8px rgba(239,68,68,.9)"></div>',iconSize:[14,14],iconAnchor:[7,7],className:''});
+  if(type==='from'){if(_tripFromMarker)_tripMap.removeLayer(_tripFromMarker);_tripFromMarker=L.marker([lat,lng],{icon:gI}).addTo(_tripMap).bindPopup('<b>&#128994; Origin</b><br>'+name);}
+  else{if(_tripToMarker)_tripMap.removeLayer(_tripToMarker);_tripToMarker=L.marker([lat,lng],{icon:rI}).addTo(_tripMap).bindPopup('<b>&#128308; Destination</b><br>'+name);}
+}
+async function _autoRouteTrip(){
+  var fromName=(document.getElementById('tf')||{}).value||'';
+  var dests=(_dests||[]).filter(function(d){return d.trim();});
+  var toName=dests.length?dests[dests.length-1]:'';
+  if(!fromName||!toName)return;
+  var fc=_egCoords(fromName),tc=_egCoords(toName);
+  if(!fc||!tc)return;
+  _setTripMarker('from',fc[0],fc[1],fromName);
+  _setTripMarker('to',tc[0],tc[1],toName);
+  var dlbl=document.getElementById('dlbl');
+  if(dlbl)dlbl.innerHTML='<span style="color:#6C3FF5">&#9679; Calculating route...</span>';
+  var route=await _osrmRoute(fc[0],fc[1],tc[0],tc[1]);
+  var km=route?route.distance:_straightKm(fc[0],fc[1],tc[0],tc[1]);
+  if(_tripMap){
+    if(_tripRouteLine)_tripMap.removeLayer(_tripRouteLine);
+    var pts=route?route.coords:[fc,tc];
+    _tripRouteLine=L.polyline(pts,{color:'#6C3FF5',weight:3,opacity:.85}).addTo(_tripMap);
+    _tripMap.fitBounds(_tripRouteLine.getBounds(),{padding:[20,20]});
+  }
+  var ki=document.getElementById('tkm');if(ki&&ki.value==150||!ki.value){if(ki)ki.value=km;}
+  if(dlbl)dlbl.innerHTML='<span style="color:#10B981;font-weight:700">&#10003;</span> '+fromName+' &#8594; '+toName+' &bull; <strong>'+km+' km</strong>'+(route?' &bull; ~'+Math.floor(route.duration/60)+'h '+route.duration%60+'min':'');
+  calcC();
+}
+
+// ════ MAINTENANCE KM TRACKING ════
+function _truckDueKm(truck){
+  var odo=truck.odometerKm||0;
+  var last=truck.lastMaintKm||0;
+  var interval=truck.maintIntervalKm||10000;
+  return odo-last;
+}
+function _truckMaintAlert(truck){
+  var due=_truckDueKm(truck);
+  var interval=truck.maintIntervalKm||10000;
+  if(due>=interval)return{level:'overdue',msg:'Overdue by '+(due-interval)+' km',pct:Math.min(Math.round(due/interval*100),100)};
+  if(due>=interval*0.85)return{level:'warning',msg:(interval-due)+' km until service',pct:Math.round(due/interval*100)};
+  return null;
+}
+function _getMaintAlerts(){
+  return TRUCKS.filter(function(t){return _truckMaintAlert(t)!==null;}).map(function(t){var a=_truckMaintAlert(t);return{truck:t,alert:a};});
+}
+function _addTruckOdometer(plate,km){
+  var t=TRUCKS.find(function(x){return x.plate===plate;});
+  if(!t)return;
+  t.odometerKm=(t.odometerKm||0)+(+km||0);
+  var a=_truckMaintAlert(t);
+  if(a&&a.level==='overdue'){
+    toast('&#9888; Truck '+plate+' is OVERDUE for maintenance! ('+_truckDueKm(t)+' km since last service)','err');
+    S.notifs.push({msg:'Maintenance OVERDUE: '+plate+' — '+_truckDueKm(t)+' km since last service',type:'alert',ts:new Date().toLocaleString('en-GB')});
+    var nc=document.getElementById('notif-cnt');if(nc)nc.style.display='flex';
+  } else if(a&&a.level==='warning'){
+    toast('&#128295; Truck '+plate+': maintenance due in '+(t.maintIntervalKm||10000)-_truckDueKm(t)+' km','info');
+  }
+  syncTruck(t);
+}
+function resetTruckMaint(plate){
+  requirePwd('Reset Maintenance KM — '+plate,function(){
+    var t=TRUCKS.find(function(x){return x.plate===plate;});if(!t)return;
+    t.lastMaintKm=t.odometerKm||0;
+    syncTruck(t);
+    toast('Maintenance reset for '+plate+'. Next service in '+(t.maintIntervalKm||10000)+' km','ok');
+    if(S.page==='fleet')nav('fleet');
+  });
+}
 
 // InstaPort v4 Enterprise
 // ══════════════════════════════════════════════════
@@ -2870,6 +3058,7 @@ function buildSB(){
     '<div class="sb-bottom"><div class="sbi" onclick="toggleDark()"><span class="sbi-icon">🌙</span>Dark Mode</div><div class="sbi" onclick="logout()"><span class="sbi-icon">🚪</span>Log Out</div></div>';
 }
 function nav(page){
+  _destroyDashMap();_destroyTripMap();
   S.page=page;buildSB();document.getElementById('content').innerHTML='';
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
@@ -3189,15 +3378,14 @@ function openTrip(){
   '<div class="fg"><label>Pricing Plan</label><select id="tc-plan" onchange="calcC()"><option value="">Default Plan</option></select></div>'+
   '<div class="fg"><label>Type</label><select id="tt" onchange="calcC()">'+types.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div></div>'+
   '<div class="frow"><div class="fg"><label>Direction</label><select id="td"><option>Outbound</option><option>Inbound</option></select></div><div class="fg"><label>Condition</label><select id="tco" onchange="calcC()">'+getConditionOptions()+'</select></div></div>'+
-  '<div class="fg f1"><label>Origin *</label><input id="tf" placeholder="EPX Warehouse, Cairo..."/></div>'+
+  '<div class="fg f1"><label>Origin *</label>'+
+  '<div style="display:flex;gap:6px"><input id="tf" placeholder="e.g. Cairo - Obour City" list="eg-locs-list" oninput="_autoRouteTrip()" style="flex:1"/>'+
+  '<datalist id="eg-locs-list">'+Object.keys(_EG_LOCS).map(function(k){return'<option value="'+k+'">';}).join('')+'</datalist>'+
+  '</div></div>'+
   '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:12px;font-weight:600">Destinations</label><button class="btn btn-outline btn-sm" onclick="addDest()">+ Add Stop</button></div>'+
   '<div id="dest-list"></div>'+
-  '<div style="background:linear-gradient(135deg,#EEF2FF,#F0F9FF);border:1px solid var(--border);border-radius:var(--r);height:110px;position:relative;overflow:hidden;margin-bottom:12px">'+
-  '<div style="position:absolute;inset:0;background-image:linear-gradient(rgba(124,58,237,.05) 1px,transparent 1px),linear-gradient(90deg,rgba(124,58,237,.05) 1px,transparent 1px);background-size:24px 24px;"></div>'+
-  '<svg id="rsv" style="position:absolute;inset:0;width:100%;height:100%"><path id="rp" d="" stroke="#7C3AED" stroke-width="2" fill="none" stroke-dasharray="5,4"/></svg>'+
-  '<div id="gps-pins"></div>'+
-  '<div style="position:absolute;top:8px;right:8px;background:var(--c1);color:white;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600">GPS Route</div>'+
-  '<div style="position:absolute;bottom:8px;left:8px;background:white;border-radius:6px;padding:4px 8px;font-size:11px;box-shadow:var(--shadow)" id="dlbl">Enter destinations</div></div>'+
+  '<div id="trip-map-el" style="width:100%;height:220px;border-radius:10px;overflow:hidden;border:1px solid var(--bd);margin-bottom:8px;z-index:0;position:relative"></div>'+
+  '<div id="dlbl" style="font-size:11px;color:var(--t2);padding:4px 8px;background:var(--bg);border-radius:6px;margin-bottom:12px;min-height:20px">&#128205; Select origin &amp; destination — or click map to set points</div>'+
   '<div class="frow"><div class="fg"><label>Est. KM *</label><input type="number" id="tkm" value="150" oninput="calcC()"/></div><div class="fg"><label>Waiting Hours</label><input type="number" id="twait" value="0" step="0.5" oninput="calcC()"/></div></div>'+
   '<div class="frow"><div class="fg"><label>Truck Type</label><select id="ttype" onchange="calcC()">'+getTruckTypeOptions()+'</select></div><div class="fg"><label>Cargo Weight (kg)</label><input type="number" id="tcw" value="0" step="100" min="0" oninput="calcC()"/></div></div>'+
   // Cost breakdown panel
@@ -3210,22 +3398,28 @@ function openTrip(){
   '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="subTrip()">Create Shipment</button></div>');
   document.getElementById('tc').addEventListener('change',calcC);
   rDestList();
+  setTimeout(_initTripMap, 150);
 }
 function addDest(){_dests.push('');rDestList();}
 function remDest(i){if(_dests.length>1){_dests.splice(i,1);rDestList();}}
 function rDestList(){
   var el=document.getElementById('dest-list');if(!el)return;
-  el.innerHTML=_dests.map(function(d,i){var col=i===0?'var(--c4)':i===_dests.length-1?'var(--c2)':'var(--c1)';return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center"><div style="width:22px;height:22px;border-radius:50%;background:'+col+';color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div><input style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;outline:none" placeholder="Destination '+(i+1)+'..." value="'+d+'" oninput="_dests['+i+']=this.value;updRoute()"/>'+(_dests.length>1?'<div style="width:28px;height:28px;border:1px solid #FECACA;background:#FEF2F2;border-radius:var(--r);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--c5);font-size:12px" onclick="remDest('+i+')">x</div>':'')+'</div>';}).join('');updRoute();}
+  el.innerHTML=_dests.map(function(d,i){var col=i===0?'var(--c4)':i===_dests.length-1?'var(--c2)':'var(--c1)';return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center"><div style="width:22px;height:22px;border-radius:50%;background:'+col+';color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div><input style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;outline:none" placeholder="Destination '+(i+1)+'..." list="eg-locs-list" value="'+d+'" oninput="_dests['+i+']=this.value;updRoute()"/>'+(_dests.length>1?'<div style="width:28px;height:28px;border:1px solid #FECACA;background:#FEF2F2;border-radius:var(--r);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--c5);font-size:12px" onclick="remDest('+i+')">x</div>':'')+'</div>';}).join('');updRoute();}
 function updRoute(){
-  var pts=_dests.filter(function(d){return d.trim();}).length+1;var estKm=_dests.filter(function(d){return d.trim();}).length*80+120;
-  var sv=document.getElementById('rsv');var rp=document.getElementById('rp');var pins=document.getElementById('gps-pins');var dl=document.getElementById('dlbl');
-  if(!sv||!rp)return;
-  var w=400,h=110;var xpts=[];for(var i=0;i<pts;i++)xpts.push(20+i*(w-40)/(pts-1||1));
-  var ypts=xpts.map(function(x,i){return h*0.3+Math.sin(i*1.2)*h*0.2;});
-  rp.setAttribute('d',xpts.map(function(x,i){return (i===0?'M':'L')+x+','+ypts[i];}).join(' '));
-  if(pins)pins.innerHTML=xpts.map(function(x,i){return '<div style="position:absolute;left:'+x+'px;top:'+ypts[i]+'px;transform:translate(-50%,-50%);font-size:'+(i===0||i===xpts.length-1?16:12)+'px">'+(i===0?'🟢':i===xpts.length-1?'🔴':'🔵')+'</div>';}).join('');
-  if(dl)dl.textContent=pts+' stops, Est. '+estKm+' km';
-  var ki=document.getElementById('tkm');if(ki)ki.value=estKm;
+  var fromName=(document.getElementById('tf')||{}).value||'';
+  var dests=_dests.filter(function(d){return d.trim();});
+  var dl=document.getElementById('dlbl');
+  if(!fromName||!dests.length){if(dl)dl.textContent='&#128205; Select origin & destination — or click map to set points';calcC();return;}
+  // Try OSRM if coords known, else estimate
+  var fc=_egCoords(fromName),tc=_egCoords(dests[dests.length-1]);
+  if(fc&&tc){
+    _autoRouteTrip();
+  } else {
+    var estKm=dests.length*80+120;
+    var ki=document.getElementById('tkm');if(ki)ki.value=estKm;
+    if(dl)dl.textContent=dests.length+1+' stops, Est. '+estKm+' km';
+    calcC();
+  }
   calcC();
 }
 function calcC(){
@@ -7425,11 +7619,14 @@ function compT(id) {
     var t = S.trips.find(function(x) { return x.id === id; });
     if(!t) return;
     t.status = 'completed';
-    var r = calcTripCost(t.customer, t.actualKm || t.km || 0, t.type, t.condition, (t.destsArr || []).length, 0);
+    var tripKm = t.actualKm || t.km || 0;
+    var r = calcTripCost(t.customer, tripKm, t.type, t.condition, (t.destsArr || []).length, 0);
     t.cost = r.cost; t.co2 = r.co2; t.costBreakdown = r.breakdown;
     t.tl.push({ ts: new Date().toLocaleString('en-GB'), user: S.user.name, action: 'Completed', detail: 'EGP ' + r.cost });
     audit('COMPLETE', '', id);
-    toast('Completed! EGP ' + r.cost, 'ok');
+    // ── Update truck odometer ──
+    if(t.truck && tripKm > 0) { _addTruckOdometer(t.truck, tripKm); }
+    toast('Completed! EGP ' + r.cost + ' · ' + tripKm + ' km logged', 'ok');
     nav('trips');
   });
 }
@@ -7516,7 +7713,9 @@ rDash = function() {
   var bhMax2=Math.max.apply(null,bh2)||1;
   var perf2=S.trips.length>0?Math.round(comp.length/S.trips.length*100):0;
   var openMnt2=(S.maintTickets||[]).filter(function(m){return m.status==='open';});
-  var alertsHTML2=openMnt2.slice(0,2).map(function(m){return '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(245,158,11,.1)"><span style="font-size:16px">&#128295;</span></div><div class="alert-body"><div class="alert-title">Maintenance Open</div><div class="alert-desc">'+m.truck+' — '+(m.desc||'Needs attention').slice(0,45)+'</div><div class="alert-time">'+m.ts+'</div></div></div>';}).join('')+(openMnt2.length===0?'<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(16,185,129,.1)"><span style="font-size:16px">&#9989;</span></div><div class="alert-body"><div class="alert-title">All Clear</div><div class="alert-desc">No open maintenance tickets</div></div></div>':'')+(S.auditTrail||[]).slice(0,2).map(function(a){return '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(108,63,245,.1)"><span style="font-size:16px">&#128220;</span></div><div class="alert-body"><div class="alert-title">'+a.action+'</div><div class="alert-desc">'+(a.detail||'').slice(0,45)+'</div><div class="alert-time">'+a.ts+'</div></div></div>';}).join('');
+  var _kmAlerts=_getMaintAlerts();
+  var kmAlertHTML=_kmAlerts.slice(0,3).map(function(item){var col=item.alert.level==='overdue'?'rgba(239,68,68,.1)':'rgba(245,158,11,.1)';var ico=item.alert.level==='overdue'?'&#128308;':'&#9888;&#65039;';var odo=item.truck.odometerKm||0;var last=item.truck.lastMaintKm||0;var interval=item.truck.maintIntervalKm||10000;return '<div class="alert-item"><div class="alert-icon-wrap" style="background:'+col+'"><span style="font-size:16px">'+ico+'</span></div><div class="alert-body"><div class="alert-title">KM Maintenance '+(item.alert.level==='overdue'?'OVERDUE':'Due Soon')+'</div><div class="alert-desc">'+item.truck.plate+' — '+item.alert.msg+' ('+Math.round(odo-last)+'/'+interval+' km)</div><div class="alert-time"><a onclick="resetTruckMaint(\''+item.truck.plate.replace(/'/g,"\\'")+'\')" href="#" style="color:#6C3FF5;font-weight:600" onclick="return false">Reset after service &#8250;</a></div></div></div>';}).join('');
+  var alertsHTML2=kmAlertHTML+openMnt2.slice(0,2).map(function(m){return '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(245,158,11,.1)"><span style="font-size:16px">&#128295;</span></div><div class="alert-body"><div class="alert-title">Maintenance Open</div><div class="alert-desc">'+m.truck+' — '+(m.desc||'Needs attention').slice(0,45)+'</div><div class="alert-time">'+m.ts+'</div></div></div>';}).join('')+(kmAlertHTML.length===0&&openMnt2.length===0?'<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(16,185,129,.1)"><span style="font-size:16px">&#9989;</span></div><div class="alert-body"><div class="alert-title">All Clear</div><div class="alert-desc">No open tickets or KM alerts</div></div></div>':'')+(S.auditTrail||[]).slice(0,1).map(function(a){return '<div class="alert-item"><div class="alert-icon-wrap" style="background:rgba(108,63,245,.1)"><span style="font-size:16px">&#128220;</span></div><div class="alert-body"><div class="alert-title">'+a.action+'</div><div class="alert-desc">'+(a.detail||'').slice(0,45)+'</div><div class="alert-time">'+a.ts+'</div></div></div>';}).join('');
 
   // KPI ROW
   var kpiHTML = '<div class="kpi-row">' +
@@ -7567,54 +7766,10 @@ rDash = function() {
     '<div class="tcp-filter" onclick="this.closest(\'.tcp-filters\').querySelectorAll(\'.tcp-filter\').forEach(function(e){e.classList.remove(\'on\')});this.classList.add(\'on\')">POI</div>' +
     '</div>' +
 
-    // MAP
-    '<div class="tcp-map">' +
-    '<div class="tcp-map-grid"></div>' +
-    '<svg style="position:absolute;inset:0;width:100%;height:100%" viewBox="0 0 900 210">' +
-    // Shadow glow under route
-    '<path d="M 90 155 Q 240 75 420 108 Q 560 130 750 62" stroke="rgba(108,63,245,.15)" stroke-width="8" fill="none" stroke-linecap="round"/>' +
-    // Main route line
-    '<path id="mainRoute" d="M 90 155 Q 240 75 420 108 Q 560 130 750 62" stroke="#6C3FF5" stroke-width="2.5" fill="none"/>' +
-    // Animated dot
-    '<circle r="6" fill="#6C3FF5" filter="drop-shadow(0 0 4px rgba(108,63,245,.8))">' +
-    '<animateMotion dur="6s" repeatCount="indefinite"><mpath href="#mainRoute"/></animateMotion>' +
-    '</circle>' +
-    // Start node
-    '<circle cx="90" cy="155" r="10" fill="#fff" stroke="#10B981" stroke-width="3"/>' +
-    '<circle cx="90" cy="155" r="5" fill="#10B981"/>' +
-    // Waypoints
-    '<circle cx="280" cy="88" r="11" fill="#fff" stroke="#6C3FF5" stroke-width="2.5"/>' +
-    '<text x="280" y="93" text-anchor="middle" font-size="11" fill="#6C3FF5" font-weight="800">1</text>' +
-    '<circle cx="420" cy="108" r="11" fill="#fff" stroke="#6C3FF5" stroke-width="2.5"/>' +
-    '<text x="420" y="113" text-anchor="middle" font-size="11" fill="#6C3FF5" font-weight="800">2</text>' +
-    '<circle cx="580" cy="128" r="11" fill="#fff" stroke="#6C3FF5" stroke-width="2.5"/>' +
-    '<text x="580" y="133" text-anchor="middle" font-size="11" fill="#6C3FF5" font-weight="800">3</text>' +
-    // End pin
-    '<text x="750" y="52" font-size="22" text-anchor="middle" fill="#6C3FF5">&#128205;</text>' +
-    '<circle cx="750" cy="62" r="8" fill="#6C3FF5" opacity=".3"/>' +
-    '</svg>' +
-
-    // Start label
-    '<div class="tcp-route-node" style="position:absolute;left:14px;top:50%;transform:translateY(-50%)">' +
-    '<div class="tcp-node-dot" style="background:#10B981;width:10px;height:10px;border-radius:50%"></div>' +
-    '<div class="tcp-node-label">' + (lastTrip ? (lastTrip.from||'Origin') : 'Origin') + '<div class="tcp-node-sub">Departed<br>' + (lastTrip && lastTrip.tl && lastTrip.tl.length ? lastTrip.tl[0].ts : (lastTrip ? lastTrip.ts||'—' : '—')) + '</div></div>' +
-    '</div>' +
-
-    // Current location popup
-    '<div class="tcp-current-popup" style="left:40%;top:10%;transform:translateX(-50%)">' +
-    '<div style="font-size:10px;font-weight:700;color:#6C3FF5;margin-bottom:3px">Current Location</div>' +
-    '<div style="font-size:12px;font-weight:800;color:var(--t)">' + (lastTrip ? 'En Route — ' + (lastTrip.truck||'—') : 'No active shipment') + '</div>' +
-    '<div style="font-size:10px;color:var(--t3);margin-top:2px">' + (lastTrip ? lastTrip.condition||'' : '') + '</div>' +
-    '</div>' +
-
-    // Destination label
-    '<div class="tcp-route-node" style="position:absolute;right:14px;top:14px">' +
-    '<div class="tcp-node-label" style="background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;border-color:#6C3FF5">' + (lastTrip ? lastTrip.dests||'Destination' : 'Destination') +
-    '<div class="tcp-node-sub" style="color:rgba(255,255,255,.7)">Est. Arrival<br>' + (lastTrip ? (lastTrip.km ? lastTrip.km + ' km' : (lastTrip.condition||'—')) : '—') + '</div></div>' +
-    '</div>' +
-
-    // Truck
-    '<div class="tcp-truck-icon">&#128666;</div>' +
+    // MAP — Real Leaflet map (OpenStreetMap, free)
+    '<div class="tcp-map" style="padding:0;overflow:hidden;position:relative">' +
+    '<div id="tcp-leaflet" style="width:100%;height:240px;z-index:1;position:relative"></div>' +
+    '</div>' + // end hidden div
     '</div>' + // end tcp-map
 
     // META ROW
@@ -7736,10 +7891,12 @@ rDash = function() {
     }).join('') +
     '</div></div>';
 
+  _destroyDashMap();
   c.innerHTML = headerHTML + kpiHTML +
     '<div class="dash-grid">' + trackHTML + rightHTML + '</div>' +
     trucksHTML +
     recentHTML;
+  setTimeout(_initDashMap, 200);
 };
 
 
@@ -7996,6 +8153,28 @@ function openTruckDetail(plate) {
      ['Status', t.valid ? '&#10003; Released' : '&#9940; On Hold'],
      ['Remark', t.remark || '&#8212;']
     ].map(function(x) { return '<div class="ib"><div class="ib-l">' + x[0] + '</div><div class="ib-v">' + x[1] + '</div></div>'; }).join('') + '</div>' +
+    // ── KM Odometer Panel ──
+    (function(){
+      var odo=t.odometerKm||0;var last=t.lastMaintKm||0;var interval=t.maintIntervalKm||10000;
+      var since=odo-last;var pct=Math.min(Math.round(since/interval*100),100);
+      var alert=_truckMaintAlert(t);
+      var barCol=alert?( alert.level==='overdue'?'#EF4444':'#F97316'):'#10B981';
+      return '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:14px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+      '<div style="font-size:13px;font-weight:800;color:var(--t)">&#128295; KM Maintenance Tracker</div>'+
+      (alert?'<span style="font-size:11px;font-weight:700;color:'+barCol+';background:'+(alert.level==='overdue'?'rgba(239,68,68,.1)':'rgba(249,115,22,.1)')+';padding:3px 8px;border-radius:20px">'+(alert.level==='overdue'?'&#128308; OVERDUE':'&#9888; Due Soon')+'</span>':
+      '<span style="font-size:11px;font-weight:700;color:#10B981;background:rgba(16,185,129,.1);padding:3px 8px;border-radius:20px">&#9989; OK</span>')+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">'+
+      '<div class="ib"><div class="ib-l">Odometer</div><div class="ib-v">'+Math.round(odo).toLocaleString()+' km</div></div>'+
+      '<div class="ib"><div class="ib-l">Since Service</div><div class="ib-v" style="color:'+barCol+'">'+Math.round(since).toLocaleString()+' km</div></div>'+
+      '<div class="ib"><div class="ib-l">Service Interval</div><div class="ib-v">'+interval.toLocaleString()+' km</div></div>'+
+      '</div>'+
+      '<div style="height:8px;background:var(--bd);border-radius:4px;margin-bottom:8px"><div style="height:100%;width:'+pct+'%;background:'+barCol+';border-radius:4px;transition:width .5s"></div></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-bottom:10px"><span>0 km</span><span style="font-weight:700;color:'+barCol+'">'+pct+'% used</span><span>'+interval.toLocaleString()+' km</span></div>'+
+      (can('all')||can('validation')?'<button class="btn btn-outline btn-sm" onclick="resetTruckMaint(\''+t.plate.replace(/'/g,"\\'")+'\')" style="width:100%">&#128295; Reset After Service</button>':'')+
+      '</div>';
+    })()+
     (can('validation') || can('all') ?
       '<div style="display:flex;gap:8px;margin-bottom:16px">' +
       (t.valid ? '<button class="btn btn-danger btn-sm" data-plate="' + plate + '" onclick="holdTruckSP(this.dataset.plate)">&#9940; Put on Hold</button>' :
