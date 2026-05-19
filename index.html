@@ -2219,6 +2219,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
@@ -5932,6 +5933,8 @@ function statBarRow_UNUSED(label, val, pct, meta) {
 // ── Analytics state ──────────────────────────────────
 var _anPeriod='month'; // week|month|year|custom
 var _anFrom='';var _anTo='';
+window._anCharts={};
+function _destroyAnCharts(){Object.keys(window._anCharts).forEach(function(k){try{window._anCharts[k].destroy();}catch(e){}});window._anCharts={};}
 function _anTrips(){
   var now=new Date();
   var trips=S.trips.filter(function(t){return t.status==='completed';});
@@ -5948,6 +5951,7 @@ function _anSetPeriod(p){_anPeriod=p;var el=document.getElementById('an-custom')
 function _anRebuild(){
   var af=document.getElementById('an-from');var at=document.getElementById('an-to');
   if(af)_anFrom=af.value;if(at)_anTo=at.value;
+  _destroyAnCharts();
   var trips=_anTrips();
   _anUpdateKpi(trips);
   var tab=S._anTab||'overview';
@@ -11855,73 +11859,194 @@ function _doCO2Export(){
 // ══════════════════════════════════════════════════
 function _anRenderOverview(trips){
   var el=document.getElementById('an-tab-body');if(!el)return;
-  el.innerHTML='<div class="g2">'+
-    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
-    '<div class="card-title">💰 Revenue by Customer</div>'+
-    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsCust()">📄 Export</button></div>'+
-    '<div id="an-cust-body"></div></div>'+
-    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
-    '<div class="card-title">🚛 Fleet Utilization</div>'+
-    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsFleet()">📄 Export</button></div>'+
-    '<div id="an-fleet-body"></div></div></div>';
-  _anRenderCust(trips);_anRenderFleet(trips);
+  var CC=['#6C3FF5','#10B981','#F97316','#06B6D4','#EF4444','#8B5CF6','#EC4899','#14B8A6','#F59E0B','#84CC16'];
+  var stats=CUSTOMERS.map(function(cu){
+    var ct=trips.filter(function(t){return t.customer===cu;});
+    var trucks=[...new Set(ct.map(function(t){return t.truck;}).filter(Boolean))];
+    return{name:cu,cnt:ct.length,rev:ct.reduce(function(s,t){return s+(+t.cost||0);},0),
+      co2:ct.reduce(function(s,t){return s+(+t.co2||0);},0),km:ct.reduce(function(s,t){return s+(+t.km||0);},0),trucks:trucks};
+  }).filter(function(x){return x.cnt>0;}).sort(function(a,b){return b.rev-a.rev;});
+  var fleetTypes=getTruckTypeIds();
+  var fleetStats=fleetTypes.map(function(tp){
+    var trucks=TRUCKS.filter(function(t){return t.type===tp;});
+    var rel=trucks.filter(function(t){return t.valid;}).length;
+    var tpTrips=trips.filter(function(t){return trucks.some(function(tk){return tk.plate===t.truck;});});
+    return{name:tp,total:trucks.length,rel:rel,trips:tpTrips.length,rev:tpTrips.reduce(function(s,t){return s+(+t.cost||0);},0)};
+  }).filter(function(x){return x.total>0;});
+  var totalRev=stats.reduce(function(s,x){return s+x.rev;},0);
+  var totalTrips=trips.length;
+  var cardS='background:var(--surf);border:1px solid var(--bd);border-radius:14px;padding:0;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07)';
+  var headS='padding:14px 18px 12px;background:linear-gradient(135deg,#1E1453 0%,#2D1B69 100%);display:flex;justify-content:space-between;align-items:center';
+  var titleS='font-weight:800;font-size:14px;color:#fff;letter-spacing:.2px';
+  var bodyS='padding:16px 18px';
+  el.innerHTML=
+  '<div class="g2" style="gap:16px">'+
+  // ── Revenue by Customer ──────────────────────────────────────
+  '<div style="'+cardS+'">'+
+  '<div style="'+headS+'">'+
+  '<div><div style="'+titleS+'">💰 Revenue by Customer</div>'+
+  '<div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px">EGP '+Math.round(totalRev).toLocaleString()+' total · '+stats.length+' customers</div></div>'+
+  '<button class="btn btn-sm" onclick="expAnalyticsCust()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25);font-size:11px;padding:5px 10px">📄 Export</button></div>'+
+  '<div style="'+bodyS+'">'+
+  (stats.length===0?'<div style="text-align:center;padding:40px;color:var(--t2)">No data for this period</div>':
+    '<div style="display:flex;gap:18px;align-items:center">'+
+    '<div style="position:relative;width:180px;height:180px;flex-shrink:0">'+
+    '<canvas id="an-cust-chart"></canvas>'+
+    '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">'+
+    '<div style="font-size:11px;font-weight:700;color:#6C3FF5">TOTAL</div>'+
+    '<div style="font-size:15px;font-weight:900;color:var(--t);line-height:1.1">EGP<br>'+Math.round(totalRev/1000)+'K</div>'+
+    '</div></div>'+
+    '<div style="flex:1;min-width:0">'+
+    stats.map(function(x,i){
+      var pct=totalRev>0?Math.round(x.rev/totalRev*100):0;var col=CC[i%CC.length];
+      return '<div onclick="drillCustomer(\''+x.name.replace(/'/g,"\\'")+'\''+')" style="margin-bottom:10px;cursor:pointer;padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--bd);transition:box-shadow .2s" onmouseenter="this.style.boxShadow=\'0 3px 12px rgba(108,63,245,.2)\'" onmouseleave="this.style.boxShadow=\'none\'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+      +'<div style="display:flex;align-items:center;gap:7px"><div style="width:10px;height:10px;border-radius:3px;background:'+col+'"></div><span style="font-size:12px;font-weight:700">'+x.name+'</span></div>'
+      +'<span style="font-weight:800;color:'+col+';font-size:12px">EGP '+Math.round(x.rev).toLocaleString()+'</span></div>'
+      +'<div style="height:5px;background:rgba(0,0,0,.06);border-radius:3px"><div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;transition:width .6s ease"></div></div>'
+      +'<div style="font-size:10px;color:var(--t3);margin-top:4px">'+x.cnt+' trips · '+pct+'% of revenue</div>'
+      +'</div>';
+    }).join('')+'</div></div>'
+  )+'</div></div>'+
+  // ── Fleet Utilization ────────────────────────────────────────
+  '<div style="'+cardS+'">'+
+  '<div style="'+headS+'">'+
+  '<div><div style="'+titleS+'">🚛 Fleet Utilization</div>'+
+  '<div style="font-size:11px;color:rgba(255,255,255,.55);margin-top:2px">'+TRUCKS.length+' trucks · '+fleetTypes.length+' types</div></div>'+
+  '<button class="btn btn-sm" onclick="expAnalyticsFleet()" style="background:rgba(255,255,255,.15);color:#fff;border:1px solid rgba(255,255,255,.25);font-size:11px;padding:5px 10px">📄 Export</button></div>'+
+  '<div style="'+bodyS+'">'+
+  (fleetStats.length===0?'<div style="text-align:center;padding:40px;color:var(--t2)">No truck types defined</div>':
+    '<div style="display:flex;gap:18px;align-items:center">'+
+    '<div style="position:relative;width:180px;height:180px;flex-shrink:0">'+
+    '<canvas id="an-fleet-chart"></canvas>'+
+    '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">'+
+    '<div style="font-size:11px;font-weight:700;color:#10B981">TRIPS</div>'+
+    '<div style="font-size:17px;font-weight:900;color:var(--t)">'+totalTrips+'</div>'+
+    '</div></div>'+
+    '<div style="flex:1;min-width:0">'+
+    fleetStats.map(function(x,i){
+      var pct=x.total>0?Math.round(x.rel/x.total*100):0;var col=CC[i%CC.length];
+      return '<div style="margin-bottom:12px;padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--bd)">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
+      +'<div style="display:flex;align-items:center;gap:7px"><div style="width:10px;height:10px;border-radius:3px;background:'+col+'"></div><span style="font-size:12px;font-weight:700">'+x.name+'</span></div>'
+      +'<span style="font-size:11px;font-weight:800;color:'+col+'">'+pct+'% available</span></div>'
+      +'<div style="height:5px;background:rgba(0,0,0,.06);border-radius:3px"><div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;transition:width .6s ease"></div></div>'
+      +'<div style="font-size:10px;color:var(--t3);margin-top:4px">'+x.rel+'/'+x.total+' released · '+x.trips+' trips · EGP '+Math.round(x.rev/1000)+'K</div>'
+      +'</div>';
+    }).join('')+'</div></div>'
+  )+'</div></div></div>';
+  setTimeout(function(){
+    if(!window.Chart)return;
+    // Revenue doughnut
+    if(stats.length>0){
+      var ctx=document.getElementById('an-cust-chart');if(!ctx)return;
+      window._anCharts.cust=new Chart(ctx,{type:'doughnut',
+        data:{labels:stats.map(function(x){return x.name;}),
+          datasets:[{data:stats.map(function(x){return x.rev;}),
+            backgroundColor:CC.slice(0,stats.length),borderWidth:3,borderColor:'var(--surf)',hoverOffset:10}]},
+        options:{responsive:true,maintainAspectRatio:false,cutout:'68%',
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.label+': EGP '+Math.round(c.raw).toLocaleString();}}}},
+          animation:{animateScale:true,duration:900}}});
+    }
+    // Fleet doughnut
+    if(fleetStats.length>0){
+      var ctx2=document.getElementById('an-fleet-chart');if(!ctx2)return;
+      window._anCharts.fleet=new Chart(ctx2,{type:'doughnut',
+        data:{labels:fleetStats.map(function(x){return x.name;}),
+          datasets:[{data:fleetStats.map(function(x){return x.trips||x.total;}),
+            backgroundColor:CC.slice(0,fleetStats.length),borderWidth:3,borderColor:'var(--surf)',hoverOffset:10}]},
+        options:{responsive:true,maintainAspectRatio:false,cutout:'68%',
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.label+': '+c.raw+' trips';}}}},
+          animation:{animateScale:true,duration:900}}});
+    }
+  },120);
 }
 
 function _anRenderCharts(trips){
   var el=document.getElementById('an-tab-body');if(!el)return;
-  // Trips per day — last 30 days
+  var CC=['#6C3FF5','#10B981','#F97316','#06B6D4','#EF4444','#8B5CF6','#EC4899'];
   var days30=[];var now=new Date();
   for(var i=29;i>=0;i--){
     var d=new Date(now);d.setDate(d.getDate()-i);
     var ds=d.toISOString().slice(0,10);
-    var cnt=trips.filter(function(t){return (t.ts||'').slice(0,10)===ds||(t.ts||'').startsWith(ds);}).length;
-    days30.push({label:d.getDate()+'/'+(d.getMonth()+1),cnt:cnt,
-      rev:trips.filter(function(t){return(t.ts||'').startsWith(ds);}).reduce(function(s,t){return s+(+t.cost||0);},0)});
+    var cnt=trips.filter(function(t){return (t.ts||'').slice(0,10)===ds;}).length;
+    var rev=trips.filter(function(t){return (t.ts||'').slice(0,10)===ds;}).reduce(function(s,t){return s+(+t.cost||0);},0);
+    days30.push({label:d.getDate()+'/'+(d.getMonth()+1),cnt:cnt,rev:rev});
   }
-  var maxCnt=Math.max.apply(null,days30.map(function(d){return d.cnt;}))||1;
-  var maxRev=Math.max.apply(null,days30.map(function(d){return d.rev;}))||1;
-  // Condition breakdown
   var conditions=(S.tripConditions||[]).map(function(c){
     var cnt=trips.filter(function(t){return t.condition&&t.condition.indexOf(c.id.split(' ')[0])>-1;}).length;
     return{label:c.label.replace(/\s*\(.*\)/,''),cnt:cnt,pct:trips.length?Math.round(cnt/trips.length*100):0};
   }).filter(function(x){return x.cnt>0;});
-  var condColors=['#6C3FF5','#10B981','#F97316','#06B6D4','#EF4444'];
+  var totalTrips=trips.length;var maxDay=Math.max.apply(null,days30.map(function(d){return d.cnt;}))||1;
+  var cardS='background:var(--surf);border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07)';
+  var headS='padding:13px 18px 11px;background:linear-gradient(135deg,#1E1453 0%,#2D1B69 100%);display:flex;justify-content:space-between;align-items:center';
+  var titleS='font-weight:800;font-size:13px;color:#fff';var subS='font-size:10px;color:rgba(255,255,255,.5);margin-top:1px';
   el.innerHTML=
-  '<div class="card" style="margin-bottom:14px">'+
-  '<div class="card-title" style="margin-bottom:14px">📉 Trips per Day — Last 30 Days</div>'+
-  '<div style="display:flex;align-items:flex-end;gap:2px;height:140px;padding-bottom:18px;position:relative">'+
-  days30.map(function(d,i){
-    var h=maxCnt>0?Math.max(4,Math.round(d.cnt/maxCnt*120)):4;
-    var show=(i%5===0);
-    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative">'+
-      '<div title="'+d.label+': '+d.cnt+' trips" style="width:100%;height:'+h+'px;background:'+(d.cnt>0?'var(--c1)':'var(--bd)')+';border-radius:2px 2px 0 0;margin-bottom:2px;cursor:pointer;transition:opacity .15s" onmouseenter="this.style.opacity=\'.7\'" onmouseleave="this.style.opacity=\'1\'"></div>'+
-      (show?'<div style="font-size:8px;color:var(--t3);position:absolute;bottom:-16px;white-space:nowrap">'+d.label+'</div>':'')+
-      '</div>';
-  }).join('')+'</div>'+
-  '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:4px"><span>30 days ago</span><span>Today</span></div>'+
-  '</div>'+
-  '<div class="g2">'+
-  '<div class="card">'+
-  '<div class="card-title" style="margin-bottom:14px">📊 Revenue Trend (30 days)</div>'+
-  '<div style="display:flex;align-items:flex-end;gap:2px;height:120px;padding-bottom:18px">'+
-  days30.map(function(d,i){
-    var h=maxRev>0?Math.max(2,Math.round(d.rev/maxRev*100)):2;
-    var show=(i%5===0);
-    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative">'+
-      '<div title="'+d.label+': EGP '+Math.round(d.rev).toLocaleString()+'" style="width:100%;height:'+h+'px;background:'+(d.rev>0?'var(--c3)':'var(--bd)')+';border-radius:2px 2px 0 0;margin-bottom:2px;cursor:pointer;transition:opacity .15s" onmouseenter="this.style.opacity=\'.7\'" onmouseleave="this.style.opacity=\'1\'"></div>'+
-      (show?'<div style="font-size:8px;color:var(--t3);position:absolute;bottom:-16px;white-space:nowrap">'+d.label+'</div>':'')+
-      '</div>';
-  }).join('')+'</div></div>'+
-  '<div class="card">'+
-  '<div class="card-title" style="margin-bottom:14px">🌡️ Condition Mix</div>'+
-  (conditions.length===0?'<div style="text-align:center;padding:30px;color:var(--t2)">No data</div>':
-  conditions.map(function(c,i){
-    return '<div style="margin-bottom:10px">'+
-      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">'+
-      '<span style="font-weight:600">'+c.label+'</span><span style="color:var(--c1);font-weight:700">'+c.cnt+' trips ('+c.pct+'%)</span></div>'+
-      '<div style="height:8px;background:var(--bd);border-radius:4px"><div style="height:100%;width:'+c.pct+'%;background:'+condColors[i%condColors.length]+';border-radius:4px;transition:width .5s"></div></div>'+
-      '</div>';
-  }).join(''))+'</div></div>';
+  // ── Trips per Day ──
+  '<div style="'+cardS+';margin-bottom:14px">'+
+  '<div style="'+headS+'"><div><div style="'+titleS+'">📉 Trips per Day — Last 30 Days</div>'+
+  '<div style="'+subS+'">Purple bars = daily · Green line = 7-day rolling average</div></div>'+
+  '<div style="display:flex;gap:8px;align-items:center">'+
+  '<span style="font-size:18px;font-weight:900;color:#fff">'+totalTrips+'</span>'+
+  '<span style="font-size:10px;color:rgba(255,255,255,.5)">total trips</span></div></div>'+
+  '<div style="padding:16px 18px"><div style="position:relative;height:200px"><canvas id="an-trips-chart"></canvas></div></div></div>'+
+  // ── Revenue + Condition row ──
+  '<div class="g2" style="gap:14px">'+
+  '<div style="'+cardS+'">'+
+  '<div style="'+headS+'"><div><div style="'+titleS+'">📊 Revenue Trend — 30 Days</div>'+
+  '<div style="'+subS+'">Daily revenue · Area fill shows momentum</div></div></div>'+
+  '<div style="padding:16px 18px"><div style="position:relative;height:200px"><canvas id="an-rev-chart"></canvas></div></div></div>'+
+  '<div style="'+cardS+'">'+
+  '<div style="'+headS+'"><div><div style="'+titleS+'">🌡️ Condition Mix</div>'+
+  '<div style="'+subS+'">Trip breakdown by cargo condition</div></div></div>'+
+  '<div style="padding:16px 18px">'+
+  (conditions.length===0?'<div style="text-align:center;padding:50px;color:var(--t2)">No condition data</div>':
+    '<div style="position:relative;height:200px"><canvas id="an-cond-chart"></canvas></div>')+
+  '</div></div></div>';
+  setTimeout(function(){
+    if(!window.Chart)return;
+    // Trips per day — bar + rolling avg line
+    var t1=document.getElementById('an-trips-chart');
+    if(t1){window._anCharts.trips=new Chart(t1,{type:'bar',
+      data:{labels:days30.map(function(d){return d.label;}),
+        datasets:[
+          {label:'Trips',data:days30.map(function(d){return d.cnt;}),
+            backgroundColor:'rgba(108,63,245,0.7)',borderColor:'#6C3FF5',borderWidth:0,borderRadius:5,hoverBackgroundColor:'#6C3FF5'},
+          {label:'7-day avg',type:'line',
+            data:days30.map(function(d,i){if(i<6)return null;var s=0;for(var j=i-6;j<=i;j++)s+=days30[j].cnt;return Math.round(s/7*10)/10;}),
+            borderColor:'#10B981',backgroundColor:'transparent',borderWidth:2.5,pointRadius:0,tension:0.4,fill:false,order:0}
+        ]},
+      options:{responsive:true,maintainAspectRatio:false,interaction:{mode:'index',intersect:false},
+        scales:{x:{grid:{display:false},ticks:{maxTicksLimit:10,font:{size:10},color:'#94a3b8'}},
+          y:{grid:{color:'rgba(148,163,184,0.12)'},beginAtZero:true,ticks:{stepSize:1,font:{size:10},color:'#94a3b8'}}},
+        plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:10,usePointStyle:true,color:'#64748b'}}}
+      }});}
+    // Revenue area line
+    var t2=document.getElementById('an-rev-chart');
+    if(t2){window._anCharts.rev=new Chart(t2,{type:'line',
+      data:{labels:days30.map(function(d){return d.label;}),
+        datasets:[{label:'Revenue (EGP)',data:days30.map(function(d){return d.rev;}),
+          borderColor:'#10B981',backgroundColor:'rgba(16,185,129,0.15)',
+          borderWidth:2.5,pointRadius:2,pointHoverRadius:6,tension:0.4,fill:true}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        scales:{x:{grid:{display:false},ticks:{maxTicksLimit:8,font:{size:10},color:'#94a3b8'}},
+          y:{grid:{color:'rgba(148,163,184,0.12)'},beginAtZero:true,
+            ticks:{font:{size:10},color:'#94a3b8',callback:function(v){return v>=1000?'EGP '+Math.round(v/1000)+'K':'EGP '+v;}}}},
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return 'EGP '+Math.round(c.raw).toLocaleString();}}}}
+      }});}
+    // Condition doughnut
+    if(conditions.length>0){
+      var t3=document.getElementById('an-cond-chart');
+      if(t3){window._anCharts.cond=new Chart(t3,{type:'doughnut',
+        data:{labels:conditions.map(function(c){return c.label+' — '+c.pct+'%';}),
+          datasets:[{data:conditions.map(function(c){return c.cnt;}),
+            backgroundColor:CC.slice(0,conditions.length),borderWidth:3,borderColor:'var(--surf)',hoverOffset:12}]},
+        options:{responsive:true,maintainAspectRatio:false,cutout:'58%',
+          plugins:{legend:{position:'right',labels:{font:{size:12},boxWidth:14,padding:12,usePointStyle:true,color:'#64748b'}},
+            tooltip:{callbacks:{label:function(c){return c.raw+' trips ('+c.label+')';}}}},
+          animation:{animateScale:true,duration:900}}});}
+    }
+  },120);
 }
 
 function _anRenderSLA(trips){
@@ -11929,42 +12054,89 @@ function _anRenderSLA(trips){
   var comp=trips.filter(function(t){return t.status==='completed';});
   var stats=CUSTOMERS.map(function(cu){
     var ct=comp.filter(function(t){return t.customer===cu;});
-    var m=S.custModifiers[cu]||{};
-    var slaMax=m.slaMax||8;
+    var m=S.custModifiers[cu]||{};var slaMax=m.slaMax||8;
     var onTime=ct.filter(function(t){return !t.slaBreached&&(t.km?t.km/50<=slaMax:true);}).length;
     var pct=ct.length>0?Math.round(onTime/ct.length*100):null;
-    var rev=ct.reduce(function(s,t){return s+(+t.cost||0);},0);
-    var co2=ct.reduce(function(s,t){return s+(+t.co2||0);},0);
-    return{name:cu,total:ct.length,onTime:onTime,pct:pct,rev:rev,co2:co2,slaMax:slaMax};
+    return{name:cu,total:ct.length,onTime:onTime,pct:pct,
+      rev:ct.reduce(function(s,t){return s+(+t.cost||0);},0),
+      co2:ct.reduce(function(s,t){return s+(+t.co2||0);},0),slaMax:slaMax};
   }).filter(function(x){return x.total>0;}).sort(function(a,b){return b.total-a.total;});
   var avgSLA=stats.length?Math.round(stats.reduce(function(s,x){return s+(x.pct||0);},0)/stats.length):0;
+  var excellent=stats.filter(function(x){return (x.pct||0)>=95;}).length;
+  var good=stats.filter(function(x){return x.pct!==null&&x.pct>=80&&x.pct<95;}).length;
+  var poor=stats.filter(function(x){return x.pct!==null&&x.pct<80;}).length;
+  var slaColor=avgSLA>=95?'#10B981':avgSLA>=80?'#F97316':'#EF4444';
+  var cardS='background:var(--surf);border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07)';
+  var headS='padding:13px 18px 11px;background:linear-gradient(135deg,#1E1453 0%,#2D1B69 100%)';
+  var titleS='font-weight:800;font-size:13px;color:#fff';var subS='font-size:10px;color:rgba(255,255,255,.5);margin-top:1px';
   el.innerHTML=
   '<div class="kpi-row" style="margin-bottom:14px">'+
     kpiBox('⏱','purple',avgSLA+'%','Avg SLA Rate',stats.length+' customers')+
-    kpiBox('✅','green',stats.filter(function(x){return (x.pct||0)>=95;}).length,'≥95% SLA','Excellent')+
-    kpiBox('⚠️','orange',stats.filter(function(x){return x.pct!==null&&x.pct<80;}).length,'<80% SLA','Needs attention')+
-    kpiBox('📦','cyan',comp.length,'Completed Trips','')+
+    kpiBox('✅','green',excellent,'≥95% SLA','Excellent')+
+    kpiBox('🟡','orange',good,'80–94% SLA','Good')+
+    kpiBox('⚠️','red',poor,'<80% SLA','Needs attention')+
   '</div>'+
-  '<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'+
-  '<th>Customer</th><th>Trips</th><th>On-Time</th><th>SLA Rate</th><th>SLA Target</th><th>Revenue (EGP)</th><th>CO₂ (kg)</th></tr></thead><tbody>'+
+  (stats.length>0?
+  '<div class="g2" style="gap:14px;margin-bottom:14px">'+
+  // Donut card
+  '<div style="'+cardS+'">'+
+  '<div style="'+headS+'"><div style="'+titleS+'">⏱ Overall SLA Health</div><div style="'+subS+'">Tier distribution across all customers</div></div>'+
+  '<div style="padding:16px 18px;display:flex;gap:16px;align-items:center">'+
+  '<div style="position:relative;width:160px;height:160px;flex-shrink:0"><canvas id="an-sla-donut"></canvas>'+
+  '<div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;pointer-events:none">'+
+  '<div style="font-size:24px;font-weight:900;color:'+slaColor+'">'+avgSLA+'%</div>'+
+  '<div style="font-size:9px;font-weight:700;color:#94a3b8;letter-spacing:.5px">AVG SLA</div></div></div>'+
+  '<div style="flex:1">'+
+  [['🟢','Excellent ≥95%',excellent,'#10B981'],['🟡','Good 80–94%',good,'#F97316'],['🔴','Poor <80%',poor,'#EF4444']].map(function(b){
+    var pct2=stats.length?Math.round(b[2]/stats.length*100):0;
+    return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">'+
+      '<span style="font-size:12px;font-weight:700;color:var(--t)">'+b[0]+' '+b[1]+'</span>'+
+      '<span style="font-size:13px;font-weight:900;color:'+b[3]+'">'+b[2]+'</span></div>'+
+      '<div style="height:6px;background:rgba(0,0,0,.06);border-radius:3px"><div style="height:100%;width:'+pct2+'%;background:'+b[3]+';border-radius:3px;transition:width .6s"></div></div>'+
+      '</div>';
+  }).join('')+'</div></div></div>'+
+  // Bar chart card
+  '<div style="'+cardS+'">'+
+  '<div style="'+headS+'"><div style="'+titleS+'">📊 SLA Rate by Customer</div><div style="'+subS+'">Horizontal view · click table below for details</div></div>'+
+  '<div style="padding:16px 18px"><div style="position:relative;height:'+(Math.min(stats.length,8)*38+24)+'px"><canvas id="an-sla-bar"></canvas></div></div></div>'+
+  '</div>':'') +
+  '<div style="'+cardS+';padding:0;margin-bottom:12px"><table class="tbl"><thead><tr>'+
+  '<th>Customer</th><th>Trips</th><th>On-Time</th><th>SLA Rate</th><th>Target</th><th>Revenue (EGP)</th><th>CO₂ (kg)</th></tr></thead><tbody>'+
   stats.map(function(x){
     var color=x.pct===null?'#94a3b8':x.pct>=95?'#10B981':x.pct>=80?'#F97316':'#EF4444';
-    return '<tr>'+
-      '<td style="font-weight:700">'+x.name+'</td>'+
-      '<td>'+x.total+'</td>'+
-      '<td>'+x.onTime+'</td>'+
+    return '<tr><td style="font-weight:700">'+x.name+'</td><td>'+x.total+'</td><td>'+x.onTime+'</td>'+
       '<td><div style="display:flex;align-items:center;gap:8px">'+
-        '<div style="flex:1;height:8px;background:var(--bd);border-radius:4px;min-width:60px">'+
-          '<div style="height:100%;width:'+(x.pct||0)+'%;background:'+color+';border-radius:4px"></div></div>'+
-        '<span style="font-weight:700;color:'+color+';min-width:36px">'+(x.pct!==null?x.pct+'%':'—')+'</span>'+
-      '</div></td>'+
-      '<td style="font-size:12px;color:var(--t2)">≤'+x.slaMax+'h</td>'+
-      '<td style="font-weight:700;color:var(--c3)">'+Math.round(x.rev).toLocaleString()+'</td>'+
+      '<div style="flex:1;height:8px;background:var(--bd);border-radius:4px;min-width:60px">'+
+      '<div style="height:100%;width:'+(x.pct||0)+'%;background:'+color+';border-radius:4px"></div></div>'+
+      '<span style="font-weight:800;color:'+color+';min-width:38px;font-size:13px">'+(x.pct!==null?x.pct+'%':'—')+'</span></div></td>'+
+      '<td style="color:var(--t2)">≤'+x.slaMax+'h</td>'+
+      '<td style="font-weight:700;color:#10B981">'+Math.round(x.rev).toLocaleString()+'</td>'+
       '<td style="color:var(--t2)">'+x.co2.toFixed(0)+'</td></tr>';
-  }).join('')+
-  '</tbody></table></div>'+
-  '<div style="margin-top:12px;display:flex;gap:8px">'+
-  '<button class="btn btn-outline btn-sm" onclick="_expSLAReport()">📄 Export SLA Report</button></div>';
+  }).join('')+'</tbody></table></div>'+
+  '<div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm" onclick="_expSLAReport()">📄 Export SLA Report</button></div>';
+  if(stats.length>0){
+    setTimeout(function(){
+      if(!window.Chart)return;
+      var d1=document.getElementById('an-sla-donut');
+      if(d1){window._anCharts.slaDonut=new Chart(d1,{type:'doughnut',
+        data:{labels:['Excellent (≥95%)','Good (80–94%)','Poor (<80%)'],
+          datasets:[{data:[excellent,good,poor],backgroundColor:['#10B981','#F97316','#EF4444'],borderWidth:3,borderColor:'var(--surf)',hoverOffset:10}]},
+        options:{responsive:true,maintainAspectRatio:false,cutout:'70%',
+          plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return c.label+': '+c.raw+' customers';}}}},
+          animation:{animateScale:true,duration:900}}});}
+      var d2=document.getElementById('an-sla-bar');
+      if(d2){var t8=stats.slice(0,8);
+        window._anCharts.slaBar=new Chart(d2,{type:'bar',
+          data:{labels:t8.map(function(x){return x.name;}),
+            datasets:[{label:'SLA %',data:t8.map(function(x){return x.pct||0;}),
+              backgroundColor:t8.map(function(x){var p=x.pct||0;return p>=95?'rgba(16,185,129,0.85)':p>=80?'rgba(249,115,22,0.85)':'rgba(239,68,68,0.85)';}),
+              borderWidth:0,borderRadius:6}]},
+          options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+            scales:{x:{min:0,max:100,grid:{color:'rgba(148,163,184,0.12)'},ticks:{font:{size:10},color:'#94a3b8',callback:function(v){return v+'%';}}},
+              y:{grid:{display:false},ticks:{font:{size:11},color:'#64748b'}}},
+            plugins:{legend:{display:false},tooltip:{callbacks:{label:function(c){return 'SLA: '+c.raw+'%';}}}}}});}
+    },120);
+  }
 }
 
 function _anRenderDrivers(trips){
@@ -11991,53 +12163,97 @@ function _anRenderDrivers(trips){
   if(!stats.length){
     el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--t2)">No driver trip data for this period</div>';return;
   }
+  var top6=stats.slice(0,Math.min(6,stats.length));
+  var chartH=Math.max(140,top6.length*52+30);
+  var cardS='background:var(--surf);border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07)';
+  var headS='padding:13px 18px 11px;background:linear-gradient(135deg,#1E1453 0%,#2D1B69 100%)';
+  var titleS='font-weight:800;font-size:13px;color:#fff';var subS='font-size:10px;color:rgba(255,255,255,.5);margin-top:1px';
   el.innerHTML=
-  '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">'+
+  '<div style="'+cardS+';margin-bottom:14px">'+
+  '<div style="'+headS+'"><div style="'+titleS+'">🏆 Driver Performance Comparison</div>'+
+  '<div style="'+subS+'">Score (completion + trips + fuel efficiency) vs On-Time Rate — top '+top6.length+' drivers</div></div>'+
+  '<div style="padding:16px 18px"><div style="position:relative;height:'+chartH+'px"><canvas id="an-driver-chart"></canvas></div></div></div>'+
+  '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px;margin-bottom:12px">'+
   stats.map(function(d,i){
-    var scoreColor=d.score>=80?'#10B981':d.score>=60?'#F97316':'#EF4444';
+    var sc=d.score>=80?'#10B981':d.score>=60?'#F97316':'#EF4444';
     var medal=['🥇','🥈','🥉'][i]||'';
-    return '<div class="card" style="border-top:3px solid '+scoreColor+'">'+
+    return '<div style="'+cardS+';border-top:3px solid '+sc+';padding:14px 16px">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
-      '<div><div style="font-weight:700;font-size:15px">'+medal+' '+d.name+'</div>'+
+      '<div><div style="font-weight:800;font-size:15px;color:var(--t)">'+medal+' '+d.name+'</div>'+
       '<div style="font-size:11px;color:var(--t2)">'+d.total+' trips assigned</div></div>'+
-      '<div style="text-align:center;background:'+scoreColor+'15;border-radius:50%;width:48px;height:48px;display:flex;align-items:center;justify-content:center;flex-direction:column">'+
-      '<div style="font-size:16px;font-weight:800;color:'+scoreColor+'">'+d.score+'</div>'+
-      '<div style="font-size:8px;color:var(--t3)">SCORE</div></div></div>'+
+      '<div style="text-align:center;background:'+sc+'18;border-radius:50%;width:50px;height:50px;display:flex;align-items:center;justify-content:center;flex-direction:column;border:2px solid '+sc+'33">'+
+      '<div style="font-size:17px;font-weight:900;color:'+sc+'">'+d.score+'</div>'+
+      '<div style="font-size:8px;color:#94a3b8;font-weight:700">SCORE</div></div></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">'+
-      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
-        '<div style="color:var(--t3);font-size:10px">Completed</div>'+
-        '<div style="font-weight:700;color:var(--c1)">'+d.comp+'/'+d.total+'</div></div>'+
-      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
-        '<div style="color:var(--t3);font-size:10px">On-Time Rate</div>'+
-        '<div style="font-weight:700;color:'+(d.onTimeRate===null?'var(--t3)':d.onTimeRate>=80?'#10B981':'#F97316')+'">'+
+      '<div style="background:var(--bg);border-radius:8px;padding:9px;border:1px solid var(--bd)">'+
+        '<div style="color:var(--t3);font-size:10px;font-weight:600;margin-bottom:3px">COMPLETED</div>'+
+        '<div style="font-weight:800;color:#6C3FF5;font-size:14px">'+d.comp+'<span style="font-size:11px;color:var(--t2)">/'+d.total+'</span></div></div>'+
+      '<div style="background:var(--bg);border-radius:8px;padding:9px;border:1px solid var(--bd)">'+
+        '<div style="color:var(--t3);font-size:10px;font-weight:600;margin-bottom:3px">ON-TIME</div>'+
+        '<div style="font-weight:800;font-size:14px;color:'+(d.onTimeRate===null?'#94a3b8':d.onTimeRate>=80?'#10B981':'#F97316')+'">'+
         (d.onTimeRate!==null?d.onTimeRate+'%':'—')+'</div></div>'+
-      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
-        '<div style="color:var(--t3);font-size:10px">Total KM</div>'+
-        '<div style="font-weight:700">'+d.km.toLocaleString()+' km</div></div>'+
-      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
-        '<div style="color:var(--t3);font-size:10px">Fuel Efficiency</div>'+
-        '<div style="font-weight:700;color:var(--c3)">'+(d.kmPerL!==null?d.kmPerL+' km/L':'—')+'</div></div>'+
+      '<div style="background:var(--bg);border-radius:8px;padding:9px;border:1px solid var(--bd)">'+
+        '<div style="color:var(--t3);font-size:10px;font-weight:600;margin-bottom:3px">TOTAL KM</div>'+
+        '<div style="font-weight:800;font-size:13px">'+d.km.toLocaleString()+'</div></div>'+
+      '<div style="background:var(--bg);border-radius:8px;padding:9px;border:1px solid var(--bd)">'+
+        '<div style="color:var(--t3);font-size:10px;font-weight:600;margin-bottom:3px">FUEL EFF.</div>'+
+        '<div style="font-weight:800;font-size:14px;color:#10B981">'+(d.kmPerL!==null?d.kmPerL+' km/L':'—')+'</div></div>'+
       '</div>'+
-      (d.rev>0?'<div style="margin-top:8px;font-size:11px;color:var(--t2)">Revenue generated: <strong style="color:var(--c1)">EGP '+Math.round(d.rev).toLocaleString()+'</strong></div>':'')+
+      (d.rev>0?'<div style="margin-top:9px;padding:7px 9px;background:linear-gradient(90deg,rgba(108,63,245,.08),transparent);border-radius:8px;font-size:11px;color:var(--t2)">Revenue: <strong style="color:#6C3FF5">EGP '+Math.round(d.rev).toLocaleString()+'</strong></div>':'')+
       '</div>';
   }).join('')+'</div>'+
-  '<div style="margin-top:12px;display:flex;gap:8px">'+
-  '<button class="btn btn-outline btn-sm" onclick="_expDriverReport()">📄 Export Driver Report</button></div>';
+  '<div style="display:flex;gap:8px"><button class="btn btn-outline btn-sm" onclick="_expDriverReport()">📄 Export Driver Report</button></div>';
+  setTimeout(function(){
+    var ctx=document.getElementById('an-driver-chart');
+    if(!ctx||!window.Chart)return;
+    window._anCharts.drivers=new Chart(ctx,{type:'bar',
+      data:{labels:top6.map(function(d){return d.name;}),
+        datasets:[
+          {label:'Performance Score',data:top6.map(function(d){return d.score;}),
+            backgroundColor:top6.map(function(d){return d.score>=80?'rgba(16,185,129,0.85)':d.score>=60?'rgba(249,115,22,0.85)':'rgba(239,68,68,0.85)';}),
+            borderWidth:0,borderRadius:7,barThickness:18},
+          {label:'On-Time Rate %',data:top6.map(function(d){return d.onTimeRate||0;}),
+            backgroundColor:'rgba(108,63,245,0.65)',borderWidth:0,borderRadius:7,barThickness:18}
+        ]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        scales:{x:{min:0,max:100,grid:{color:'rgba(148,163,184,0.12)'},ticks:{font:{size:10},color:'#94a3b8',callback:function(v){return v+'%';}}},
+          y:{grid:{display:false},ticks:{font:{size:12},color:'#64748b'}}},
+        plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:12,usePointStyle:true,color:'#64748b'}},
+          tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+c.raw+'%';}}}}
+      }});
+  },120);
 }
 
 function _expSLAReport(){
+  // Build rows (shared by format selector modal)
   var trips=_anTrips().filter(function(t){return t.status==='completed';});
   var rows=CUSTOMERS.map(function(cu){
-    var ct=trips.filter(function(t){return t.customer===cu;});
-    if(!ct.length)return null;
-    var m=S.custModifiers[cu]||{};
-    var slaMax=m.slaMax||8;
+    var ct=trips.filter(function(t){return t.customer===cu;});if(!ct.length)return null;
+    var m=S.custModifiers[cu]||{};var slaMax=m.slaMax||8;
     var onTime=ct.filter(function(t){return !t.slaBreached;}).length;
     var pct=Math.round(onTime/ct.length*100);
     return[cu,ct.length,onTime,pct+'%',slaMax+'h',
-      ct.reduce(function(s,t){return s+(+t.cost||0);},0).toFixed(0)];
+      ct.reduce(function(s,t){return s+(+t.cost||0);},0).toFixed(0),
+      ct.reduce(function(s,t){return s+(+t.co2||0);},0).toFixed(1)];
   }).filter(Boolean);
-  uExportAll('csv','Customer SLA Report',['Customer','Trips','On-Time','SLA Rate','Target','Revenue (EGP)'],rows);
+  var hdrs=['Customer','Trips','On-Time','SLA Rate','Target','Revenue (EGP)','CO₂ (kg)'];
+  var inpS='padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;color:var(--t);background:var(--bg);outline:none;font-family:inherit;width:100%';
+  var lS='font-size:10px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;display:block;margin-bottom:4px';
+  openM(
+    '<div class="m-title">📄 Export SLA Report</div>'+
+    '<div style="margin-bottom:14px"><div style="'+lS+'">FORMAT</div>'+
+    '<div style="display:flex;gap:8px">'+
+    ['csv','excel','pdf'].map(function(f){
+      var lbl={csv:'📊 CSV',excel:'📋 Excel',pdf:'📄 PDF'}[f];
+      return'<label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:2px solid '+(f==='csv'?'var(--c1)':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;transition:border-color .15s" id="sla-fmt-lbl-'+f+'">'+
+        '<input type="radio" name="sla-fmt" value="'+f+'"'+(f==='csv'?' checked':'')+' onchange="[\'csv\',\'excel\',\'pdf\'].forEach(function(x){document.getElementById(\'sla-fmt-lbl-\'+x).style.borderColor=x===this.value?\'var(--c1)\':\'var(--border)\';}.bind(this))" style="accent-color:var(--c1)"/>'+lbl+'</label>';
+    }).join('')+'</div></div>'+
+    '<div style="padding:10px 14px;background:var(--bg);border-radius:8px;margin-bottom:14px;font-size:12px;color:var(--t2)">'+
+    '📦 <strong style="color:var(--t)">'+rows.length+' customers</strong> · Period: <strong>'+_anPeriod+'</strong></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="(function(){var f=document.querySelector(\'input[name=sla-fmt]:checked\').value;closeM();uExportAll(f,\'Customer SLA Report — \'+_anPeriod,'+JSON.stringify(hdrs)+',window._slaRows);})()">📄 Export</button></div>'
+  );
+  window._slaRows=rows;
 }
 function _expDriverReport(){
   var trips=_anTrips();
@@ -12048,13 +12264,32 @@ function _expDriverReport(){
     var km=comp.reduce(function(s,t){return s+(+t.km||0);},0);
     var fl=(S.fuelLogs||[]).filter(function(l){return l.driver===d.name;});
     var totalL=fl.reduce(function(s,l){return s+(+l.liters||0);},0);
-    return[d.name,dt.length,comp.length,
-      dt.length?Math.round(comp.length/dt.length*100)+'%':'—',
-      km.toLocaleString()+' km',totalL?totalL+' L':'—',
-      totalL&&km?Math.round(km/totalL*10)/10+' km/L':'—'];
-  }).filter(function(r){return r[1]>0;});
-  uExportAll('csv','Driver Performance Report',
-    ['Driver','Total Trips','Completed','On-Time %','Total KM','Fuel Used','Fuel Efficiency'],rows);
+    var onT=dt.length?Math.round(comp.length/dt.length*100)+'%':'—';
+    var eff=(totalL&&km)?Math.round(km/totalL*10)/10+' km/L':'—';
+    // Score
+    var score=0;var otr=dt.length?Math.round(comp.length/dt.length*100):null;
+    if(otr!==null)score+=otr*0.4;if(dt.length)score+=Math.min(30,dt.length*3);
+    var kmPerL=totalL>0?Math.round(km/totalL*10)/10:null;if(kmPerL!==null)score+=Math.min(30,kmPerL*3);
+    return[d.name,dt.length,comp.length,onT,km.toLocaleString()+' km',
+      totalL?totalL+' L':'—',eff,Math.round(Math.min(100,score)),
+      comp.reduce(function(s,t){return s+(+t.cost||0);},0).toFixed(0)];
+  }).filter(function(r){return r[1]>0;}).sort(function(a,b){return b[7]-a[7];});
+  var hdrs=['Driver','Total Trips','Completed','On-Time %','Total KM','Fuel Used','Fuel Efficiency','Score','Revenue (EGP)'];
+  openM(
+    '<div class="m-title">📄 Export Driver Report</div>'+
+    '<div style="margin-bottom:14px"><div style="font-size:10px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;display:block;margin-bottom:8px">FORMAT</div>'+
+    '<div style="display:flex;gap:8px">'+
+    ['csv','excel','pdf'].map(function(f){
+      var lbl={csv:'📊 CSV',excel:'📋 Excel',pdf:'📄 PDF'}[f];
+      return'<label style="display:flex;align-items:center;gap:6px;padding:8px 14px;border:2px solid '+(f==='csv'?'var(--c1)':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;transition:border-color .15s" id="drv-fmt-lbl-'+f+'">'+
+        '<input type="radio" name="drv-fmt" value="'+f+'"'+(f==='csv'?' checked':'')+' onchange="[\'csv\',\'excel\',\'pdf\'].forEach(function(x){document.getElementById(\'drv-fmt-lbl-\'+x).style.borderColor=x===this.value?\'var(--c1)\':\'var(--border)\';}.bind(this))" style="accent-color:var(--c1)"/>'+lbl+'</label>';
+    }).join('')+'</div></div>'+
+    '<div style="padding:10px 14px;background:var(--bg);border-radius:8px;margin-bottom:14px;font-size:12px;color:var(--t2)">'+
+    '🚛 <strong style="color:var(--t)">'+rows.length+' drivers</strong> · Period: <strong>'+_anPeriod+'</strong></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="(function(){var f=document.querySelector(\'input[name=drv-fmt]:checked\').value;closeM();uExportAll(f,\'Driver Performance Report — \'+_anPeriod,'+JSON.stringify(hdrs)+',window._drvRows);})()">📄 Export</button></div>'
+  );
+  window._drvRows=rows;
 }
 function _anExportReport(){
   var trips=_anTrips();
