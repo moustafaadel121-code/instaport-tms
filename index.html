@@ -3085,7 +3085,19 @@ let S={
   },
   exRules:[],    // Admin-configured exception rules (loaded from localStorage)
   exceptions:[], // Active / historical exceptions raised by the engine
-  _exFilter:'open'
+  _exFilter:'open',
+  // ── Invoice & Billing ──
+  invoices:[],
+  billingConfig:{taxRate:14,paymentTermsDays:30,currency:'EGP',
+    companyName:'InstaPort Logistics',companyAddress:'',vatNo:'',
+    bankName:'',bankAccount:'',iban:'',invoicePrefix:'INV'},
+  // ── Fuel Management ──
+  fuelLogs:[],
+  fuelConfig:{defaultCostPerLiter:14.5,currency:'EGP',fuelTypes:['Diesel','Petrol','CNG'],
+    alertHighCost:3000,alertLowOdo:0},
+  // ── ESG / Sustainability ──
+  esgConfig:{co2PerTreeYear:21,co2PerCarKm:0.21,co2Target:10,
+    baselineCo2:5000,baselineYear:2023,renewableEnergyPct:0}
 };
 let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicketId=null;
 // Auto-sync on array mutations
@@ -3102,18 +3114,20 @@ const PAGES={
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
     {id:'validation',icon:'✅',l:'Validation'},{id:'ai',icon:'🤖',l:'AI'},
+    {id:'billing',icon:'📄',l:'Invoices'},{id:'fuel',icon:'⛽',l:'Fuel'},
+    {id:'esg',icon:'🌿',l:'ESG Report'},
     {id:'admin_mgmt',icon:'⚙️',l:'Admin'},{id:'analytics',icon:'📈',l:'Analytics'},
     {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'forecast',icon:'📅',l:'New Shipment'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
   security:     [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'security',icon:'🔒',l:'Gate & Workflow'}],
-  finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'trips',icon:'📋',l:'Trips'}],
+  finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
   maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'}],
   validation:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'validation',icon:'✅',l:'Validation'}],
-  driver:       [{id:'my_trips',icon:'🚛',l:'My Trips'}]
+  driver:       [{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}]
 };
 // ══════════════════════════════════════════════════
 // AUTH & PASSWORD VERIFICATION
@@ -3149,7 +3163,12 @@ async function doLogin(){
     nav(_startPage);
     initApp().then(function(){nav(_startPage);}).catch(function(){});
     startTemp();
-    setTimeout(function(){try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}},2500);
+    setTimeout(function(){
+      try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}
+      try{_loadInvoices();}catch(e){}
+      try{_loadFuelLogs();}catch(e){}
+      try{_loadESGConfig();}catch(e){}
+    },2500);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
@@ -3205,7 +3224,8 @@ function nav(page){
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
     nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
-    invite_mgmt:rInviteMgmt,exceptions:rExceptions};
+    invite_mgmt:rInviteMgmt,exceptions:rExceptions,
+    billing:rBilling,fuel:rFuel,esg:rESG};
   (map[page]||rDash)();
 }
 
@@ -8515,7 +8535,7 @@ function toggleDark(){
 
 // Language
 var _lang = 'en';
-var AR_NAV = {dashboard:'الرئيسية',shipments:'الشحنات',fleet:'الأسطول',drivers:'السائقون',customers:'العملاء',routes:'المسارات',tracking:'التتبع',reports:'التقارير',maintenance:'الصيانة',alerts:'التنبيهات',settings:'الإعدادات',quality:'الجودة',controlroom:'غرفة التحكم',security:'الأمن',finance:'المالية',spare_parts:'قطع الغيار',validation:'التحقق',ai:'الذكاء الاصطناعي',admin_mgmt:'الإدارة',analytics:'التحليلات',audit:'المراجعة',nr_trip:'رحلة غير إيرادية',my_trips:'رحلاتي'};
+var AR_NAV = {dashboard:'الرئيسية',shipments:'الشحنات',fleet:'الأسطول',drivers:'السائقون',customers:'العملاء',routes:'المسارات',tracking:'التتبع',reports:'التقارير',maintenance:'الصيانة',alerts:'التنبيهات',settings:'الإعدادات',quality:'الجودة',controlroom:'غرفة التحكم',security:'الأمن',finance:'المالية',spare_parts:'قطع الغيار',validation:'التحقق',ai:'الذكاء الاصطناعي',admin_mgmt:'الإدارة',analytics:'التحليلات',audit:'المراجعة',nr_trip:'رحلة غير إيرادية',my_trips:'رحلاتي',exceptions:'الاستثناءات',billing:'الفواتير',fuel:'الوقود',esg:'الاستدامة'};
 function toggleLang(){
   _lang = _lang === 'en' ? 'ar' : 'en';
   var ar = _lang === 'ar';
@@ -8651,8 +8671,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',invite_mgmt:'Invite Codes',exceptions:'Exceptions'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',invite_mgmt:'&#128273;',exceptions:'&#9888;&#65039;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',invite_mgmt:'Invite Codes',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',invite_mgmt:'&#128273;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -9941,6 +9961,643 @@ function _exResetAllCustSLA(){
   _saveCustTempSLA();
   toast('All customer SLA ranges reset to defaults', 'ok');
   rAdminExceptions();
+}
+
+// ══════════════════════════════════════════════════
+// INVOICE & BILLING MODULE
+// ══════════════════════════════════════════════════
+function _loadInvoices(){
+  try{var s=localStorage.getItem('ip_invoices');if(s)S.invoices=JSON.parse(s);}catch(e){}
+  try{var c=localStorage.getItem('ip_billingcfg');if(c)S.billingConfig=Object.assign(S.billingConfig||{},JSON.parse(c));}catch(e){}
+}
+function _saveInvoices(){
+  try{localStorage.setItem('ip_invoices',JSON.stringify((S.invoices||[]).slice(0,500)));}catch(e){}
+}
+
+function rBilling(){
+  S.page='billing';
+  var c=document.getElementById('content');if(!c)return;
+  var tab=S.billingTab||'invoices';
+  var canCreate=can('finance_view')||can('all');
+  c.innerHTML=ph('&#128196; Invoice &amp; Billing','',
+    '<div style="display:flex;gap:8px">'+
+    (canCreate?'<button class="btn btn-primary" onclick="openNewInvoice()">+ New Invoice</button>':'')+
+    '</div>')+
+  '<div class="tabs">'+
+  [{k:'invoices',l:'&#128203; Invoices'},{k:'config',l:'&#9881;&#65039; Billing Config'}].map(function(t){
+    return '<div class="tab'+(tab===t.k?' on':'')+'" onclick="S.billingTab=\''+t.k+'\';rBilling()">'+t.l+'</div>';
+  }).join('')+
+  '</div><div id="billing-content"></div>';
+  tab==='invoices'?_renderInvoiceList():_renderBillingConfig();
+}
+
+function _renderInvoiceList(){
+  var el=document.getElementById('billing-content');if(!el)return;
+  var invs=S.invoices||[];
+  var filter=S._invFilter||'all';
+  var paid=invs.filter(function(i){return i.status==='paid';}).reduce(function(s,i){return s+(i.total||0);},0);
+  var pendAmt=invs.filter(function(i){return i.status==='sent';}).reduce(function(s,i){return s+(i.total||0);},0);
+  var overdue=invs.filter(function(i){return i.status==='overdue';});
+  var shown=invs.filter(function(i){return filter==='all'||i.status===filter;});
+  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444',cancelled:'#64748B'};
+  var stB={draft:'rgba(148,163,184,.12)',sent:'rgba(249,115,22,.12)',paid:'rgba(16,185,129,.12)',overdue:'rgba(239,68,68,.12)',cancelled:'rgba(100,116,139,.1)'};
+
+  el.innerHTML=
+    '<div class="kpi-row">'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:var(--c1)">&#128196;</div><div class="kpi-body"><div class="kpi-label">Total Invoices</div><div class="kpi-val">'+invs.length+'</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#10003;</div><div class="kpi-body"><div class="kpi-label">Collected</div><div class="kpi-val">EGP '+Math.round(paid/1000)+'K</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#9993;</div><div class="kpi-body"><div class="kpi-label">Pending</div><div class="kpi-val">EGP '+Math.round(pendAmt/1000)+'K</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(239,68,68,.1);color:#EF4444">&#128308;</div><div class="kpi-body"><div class="kpi-label">Overdue</div><div class="kpi-val">'+overdue.length+'</div></div></div>'+
+    '</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+
+    ['all','draft','sent','paid','overdue'].map(function(f){
+      var cnt=f==='all'?invs.length:invs.filter(function(i){return i.status===f;}).length;
+      return '<div class="tcp-filter'+(filter===f?' on':'')+'" onclick="S._invFilter=\''+f+'\';_renderInvoiceList()" style="cursor:pointer">'+f.charAt(0).toUpperCase()+f.slice(1)+' ('+cnt+')</div>';
+    }).join('')+
+    '</div>'+
+    (shown.length===0?
+      '<div class="card" style="text-align:center;padding:56px;color:var(--t2)"><div style="font-size:48px">&#128196;</div><div style="margin-top:12px;font-size:15px;font-weight:700">No invoices in this view</div>'+
+      (can('finance_view')||can('all')?'<button class="btn btn-primary" style="margin-top:16px" onclick="openNewInvoice()">+ Create Invoice</button>':'')+'</div>':
+      '<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'+
+      '<th>Invoice #</th><th>Customer</th><th>Period</th><th>Trips</th><th>Subtotal</th><th>VAT</th><th>Total</th><th>Due</th><th>Status</th><th>Actions</th>'+
+      '</tr></thead><tbody>'+
+      shown.map(function(inv){
+        return '<tr>'+
+          '<td style="font-weight:800;color:var(--c1)">'+inv.id+'</td>'+
+          '<td style="font-weight:600">'+inv.customer+'</td>'+
+          '<td style="font-size:11px;color:var(--t2)">'+inv.period+'</td>'+
+          '<td style="text-align:center;font-weight:700">'+inv.tripIds.length+'</td>'+
+          '<td>EGP '+(inv.subtotal||0).toLocaleString()+'</td>'+
+          '<td style="font-size:12px;color:var(--t2)">EGP '+(inv.tax||0).toLocaleString()+'</td>'+
+          '<td style="font-weight:900;color:var(--c1)">EGP '+(inv.total||0).toLocaleString()+'</td>'+
+          '<td style="font-size:12px">'+(inv.dueDate||'—')+'</td>'+
+          '<td><span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:'+(stB[inv.status]||'rgba(100,116,139,.1)')+';color:'+(stC[inv.status]||'#64748B')+'">'+inv.status.toUpperCase()+'</span></td>'+
+          '<td><div style="display:flex;gap:4px">'+
+          '<button class="btn btn-sm btn-outline" onclick="viewInvoiceSP(\''+inv.id+'\')">&#8250; View</button>'+
+          (inv.status==='draft'?'<button class="btn btn-sm btn-primary" onclick="markInvSent(\''+inv.id+'\')">&#9993; Send</button>':'')+
+          (inv.status==='sent'?'<button class="btn btn-sm btn-success" onclick="markInvPaid(\''+inv.id+'\')">&#10003; Paid</button>':'')+''+
+          (inv.status==='sent'?'<button class="btn btn-sm btn-danger" onclick="markInvOverdue(\''+inv.id+'\')">&#8987;</button>':'')+
+          '<button class="btn btn-sm btn-outline" onclick="exportInvoiceCSV(\''+inv.id+'\')" title="Export CSV">&#128202;</button>'+
+          '</div></td></tr>';
+      }).join('')+'</tbody></table></div>');
+}
+
+function _renderBillingConfig(){
+  var el=document.getElementById('billing-content');if(!el)return;
+  var cfg=S.billingConfig||{};
+  var fields=[
+    ['Company Name','bc-cname','text',cfg.companyName||'InstaPort Logistics'],
+    ['Company Address','bc-addr','text',cfg.companyAddress||''],
+    ['VAT / Tax No','bc-vat','text',cfg.vatNo||''],
+    ['Invoice Prefix','bc-pfx','text',cfg.invoicePrefix||'INV'],
+    ['Tax Rate (%)','bc-tax','number',cfg.taxRate||14],
+    ['Payment Terms (days)','bc-terms','number',cfg.paymentTermsDays||30],
+    ['Currency','bc-curr','text',cfg.currency||'EGP'],
+    ['Bank Name','bc-bank','text',cfg.bankName||''],
+    ['Bank Account No.','bc-bacc','text',cfg.bankAccount||''],
+    ['IBAN','bc-iban','text',cfg.iban||'']
+  ];
+  el.innerHTML=
+    '<div class="card">'+
+    '<div style="font-size:15px;font-weight:800;margin-bottom:16px">&#9881;&#65039; Billing Configuration</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+    fields.map(function(f){return '<div class="fg"><label>'+f[0]+'</label><input type="'+f[2]+'" id="'+f[1]+'" value="'+f[3]+'"/></div>';}).join('')+
+    '</div>'+
+    '<div style="margin-top:16px;padding:12px;background:rgba(108,63,245,.06);border-radius:8px;font-size:12px;color:var(--c1)">&#9432; These details appear on exported invoices. Tax rate applies to all new invoices.</div>'+
+    '<div style="margin-top:14px"><button class="btn btn-primary" onclick="saveBillingConfig()">&#10003; Save Configuration</button></div>'+
+    '</div>';
+}
+
+function saveBillingConfig(){
+  function g(id){return(document.getElementById(id)||{}).value||'';}
+  S.billingConfig=Object.assign(S.billingConfig||{},{
+    companyName:g('bc-cname'),companyAddress:g('bc-addr'),vatNo:g('bc-vat'),
+    invoicePrefix:g('bc-pfx')||'INV',
+    taxRate:+(g('bc-tax')||14),paymentTermsDays:+(g('bc-terms')||30),
+    currency:g('bc-curr')||'EGP',bankName:g('bc-bank'),bankAccount:g('bc-bacc'),iban:g('bc-iban')
+  });
+  try{localStorage.setItem('ip_billingcfg',JSON.stringify(S.billingConfig));}catch(e){}
+  audit('BILLING_CONFIG_SAVE','Billing config updated','');
+  toast('Billing config saved!','ok');
+}
+
+function openNewInvoice(){
+  var today=new Date();
+  var fmt=function(d){return d.toISOString().slice(0,10);};
+  var firstDay=new Date(today.getFullYear(),today.getMonth(),1);
+  var lastDay=new Date(today.getFullYear(),today.getMonth()+1,0);
+  var termDays=(S.billingConfig&&S.billingConfig.paymentTermsDays)||30;
+  var dueDay=new Date(today.getTime()+termDays*86400000);
+  openM(
+    '<div class="m-title">&#128196; New Invoice</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg" style="grid-column:1/-1"><label>Customer *</label>'+
+    '<select id="ni-cust"><option value="">Select customer...</option>'+
+    CUSTOMERS.map(function(c){return'<option>'+c+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="fg"><label>Period From</label><input type="date" id="ni-from" value="'+fmt(firstDay)+'"/></div>'+
+    '<div class="fg"><label>Period To</label><input type="date" id="ni-to" value="'+fmt(lastDay)+'"/></div>'+
+    '<div class="fg"><label>Due Date</label><input type="date" id="ni-due" value="'+fmt(dueDay)+'"/></div>'+
+    '<div class="fg"><label>Notes / Payment Instructions</label><input id="ni-notes" placeholder="e.g. Bank transfer only"/></div>'+
+    '</div>'+
+    '<div id="ni-preview" style="margin-top:12px"></div>'+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-outline" onclick="previewNewInvoice()">&#128269; Preview Trips</button>'+
+    '<button class="btn btn-primary" onclick="createInvoice()">&#10003; Create Invoice</button>'+
+    '</div>'
+  );
+}
+
+function previewNewInvoice(){
+  var cu=(document.getElementById('ni-cust')||{}).value;
+  var frm=(document.getElementById('ni-from')||{}).value;
+  var to=(document.getElementById('ni-to')||{}).value;
+  if(!cu){toast('Select a customer','err');return;}
+  var trips=S.trips.filter(function(t){
+    return t.customer===cu&&t.status==='completed'&&
+      (!frm||(t.ts||'')>=frm)&&(!to||(t.ts||'')<=to+' 23:59');
+  });
+  var prev=document.getElementById('ni-preview');if(!prev)return;
+  if(!trips.length){prev.innerHTML='<div style="padding:12px;background:var(--bg);border-radius:8px;font-size:13px;color:var(--t2)">No completed trips found for this customer &amp; period.</div>';return;}
+  var sub=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var taxR=(S.billingConfig&&S.billingConfig.taxRate)||14;
+  var tax=Math.round(sub*taxR/100);
+  prev.innerHTML=
+    '<div style="background:var(--bg);border-radius:10px;padding:12px">'+
+    '<div style="font-size:12px;font-weight:700;margin-bottom:8px">&#128202; Preview — '+trips.length+' trips found</div>'+
+    '<table class="tbl" style="margin-bottom:10px"><thead><tr><th>Trip</th><th>Date</th><th>Condition</th><th>KM</th><th>Amount</th></tr></thead><tbody>'+
+    trips.slice(0,8).map(function(t){return'<tr><td style="font-weight:700;color:var(--c1)">'+t.id+'</td><td style="font-size:11px">'+t.ts+'</td><td>'+t.condition+'</td><td>'+t.km+'</td><td style="font-weight:700">EGP '+t.cost+'</td></tr>';}).join('')+
+    (trips.length>8?'<tr><td colspan="5" style="color:var(--t2);font-size:11px">+'+(trips.length-8)+' more trips…</td></tr>':'')+
+    '</tbody></table>'+
+    '<div style="display:flex;justify-content:flex-end;gap:24px;padding-top:8px;border-top:1px solid var(--border)">'+
+    '<div style="text-align:right"><div style="font-size:12px;color:var(--t2)">Subtotal</div><div style="font-weight:700">EGP '+sub.toLocaleString()+'</div></div>'+
+    '<div style="text-align:right"><div style="font-size:12px;color:var(--t2)">VAT ('+taxR+'%)</div><div style="font-weight:700">EGP '+tax.toLocaleString()+'</div></div>'+
+    '<div style="text-align:right"><div style="font-size:12px;color:var(--c1);font-weight:600">TOTAL</div><div style="font-size:18px;font-weight:900;color:var(--c1)">EGP '+(sub+tax).toLocaleString()+'</div></div>'+
+    '</div></div>';
+}
+
+function createInvoice(){
+  var cu=(document.getElementById('ni-cust')||{}).value;
+  var frm=(document.getElementById('ni-from')||{}).value;
+  var to=(document.getElementById('ni-to')||{}).value;
+  var due=(document.getElementById('ni-due')||{}).value;
+  var notes=(document.getElementById('ni-notes')||{}).value;
+  if(!cu){toast('Select a customer','err');return;}
+  var trips=S.trips.filter(function(t){
+    return t.customer===cu&&t.status==='completed'&&
+      (!frm||(t.ts||'')>=frm)&&(!to||(t.ts||'')<=to+' 23:59');
+  });
+  if(!trips.length){toast('No completed trips found — adjust period or customer','err');return;}
+  var sub=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var taxR=(S.billingConfig&&S.billingConfig.taxRate)||14;
+  var tax=Math.round(sub*taxR/100);
+  var pfx=(S.billingConfig&&S.billingConfig.invoicePrefix)||'INV';
+  var num=pfx+'-'+new Date().getFullYear()+'-'+String((S.invoices||[]).length+1).padStart(3,'0');
+  var inv={id:num,customer:cu,period:frm+' to '+to,tripIds:trips.map(function(t){return t.id;}),
+    lineItems:trips.map(function(t){return{tripId:t.id,desc:t.id+' — '+t.condition+' / '+t.truck,qty:1,rate:t.cost||0,amount:t.cost||0};}),
+    subtotal:sub,tax:tax,taxRate:taxR,total:sub+tax,
+    dueDate:due,notes:notes,status:'draft',
+    createdAt:new Date().toLocaleString('en-GB'),createdBy:S.user.name};
+  if(!S.invoices)S.invoices=[];
+  S.invoices.unshift(inv);
+  _saveInvoices();
+  audit('INVOICE_CREATE',num+' — '+cu+' EGP '+(sub+tax),'');
+  closeM();toast('Invoice '+num+' created!','ok');rBilling();
+}
+
+function viewInvoiceSP(id){
+  var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;
+  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444'};
+  openSP('&#128196; '+inv.id,
+    '<div style="background:linear-gradient(135deg,var(--c1),var(--c1-dark,#4F1FD4));border-radius:14px;padding:18px;color:white;margin-bottom:16px">'+
+    '<div style="font-size:10px;font-weight:700;opacity:.7;letter-spacing:1px;text-transform:uppercase">INVOICE</div>'+
+    '<div style="font-size:22px;font-weight:900;margin:4px 0">'+inv.id+'</div>'+
+    '<div style="font-size:13px;opacity:.8">'+inv.customer+' &bull; '+inv.period+'</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:12px">'+
+    '<div><div style="font-size:10px;opacity:.6">TOTAL DUE</div><div style="font-size:26px;font-weight:900">EGP '+(inv.total||0).toLocaleString()+'</div></div>'+
+    '<span style="background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700">'+inv.status.toUpperCase()+'</span>'+
+    '</div></div>'+
+    '<div class="ig" style="margin-bottom:14px">'+
+    [['Bill To',inv.customer],['Period',inv.period],['Due Date',inv.dueDate||'—'],['Created By',inv.createdBy],['Created',inv.createdAt]].map(function(x){return'<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+
+    '</div>'+
+    '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Line Items ('+inv.tripIds.length+' trips)</div>'+
+    '<table class="tbl" style="margin-bottom:12px"><thead><tr><th>Trip</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+
+    (inv.lineItems||[]).slice(0,12).map(function(li){return'<tr><td style="font-size:11px;color:var(--c1);font-weight:700">'+li.tripId+'</td><td style="font-size:11px">'+li.desc+'</td><td style="text-align:right;font-weight:700">EGP '+li.amount+'</td></tr>';}).join('')+
+    ((inv.lineItems||[]).length>12?'<tr><td colspan="3" style="font-size:11px;color:var(--t2)">+'+(inv.lineItems.length-12)+' more…</td></tr>':'')+
+    '</tbody></table>'+
+    '<div style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:var(--t2)">Subtotal</span><span style="font-weight:700">EGP '+(inv.subtotal||0).toLocaleString()+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px"><span style="color:var(--t2)">VAT ('+inv.taxRate+'%)</span><span style="font-weight:700">EGP '+(inv.tax||0).toLocaleString()+'</span></div>'+
+    '<div style="display:flex;justify-content:space-between;font-size:16px;font-weight:900;border-top:2px solid var(--border);padding-top:8px;color:var(--c1)"><span>Total</span><span>EGP '+(inv.total||0).toLocaleString()+'</span></div>'+
+    '</div>'+
+    (inv.notes?'<div style="background:rgba(108,63,245,.06);border-radius:8px;padding:10px;font-size:12px;margin-bottom:14px"><strong>Notes:</strong> '+inv.notes+'</div>':'')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    (inv.status==='draft'?'<button class="btn btn-primary btn-sm" onclick="markInvSent(\''+id+'\');closeSP()">&#9993; Mark Sent</button>':'')+
+    (inv.status==='sent'?'<button class="btn btn-success btn-sm" onclick="markInvPaid(\''+id+'\');closeSP()">&#10003; Mark Paid</button>':'')+
+    (inv.status==='sent'?'<button class="btn btn-danger btn-sm" onclick="markInvOverdue(\''+id+'\');closeSP()">&#8987; Overdue</button>':'')+
+    '<button class="btn btn-outline btn-sm" onclick="exportInvoiceCSV(\''+id+'\')">&#128202; Export CSV</button>'+
+    '</div>'
+  );
+}
+
+function markInvSent(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='sent';inv.sentAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_SENT',id,'');toast(id+' marked as sent','ok');rBilling();}
+function markInvPaid(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='paid';inv.paidAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_PAID',id,'');toast(id+' paid! ✅','ok');rBilling();}
+function markInvOverdue(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='overdue';_saveInvoices();audit('INVOICE_OVERDUE',id,'');toast(id+' marked overdue','err');rBilling();}
+
+function exportInvoiceCSV(id){
+  var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;
+  var cfg=S.billingConfig||{};
+  var rows=[cfg.companyName||'InstaPort Logistics','VAT: '+(cfg.vatNo||''),'Bank: '+cfg.bankName+' | Acc: '+cfg.bankAccount+' | IBAN: '+cfg.iban,''];
+  rows.push('Invoice No,Customer,Period,Trip ID,Description,Amount (EGP)');
+  (inv.lineItems||[]).forEach(function(li){rows.push([inv.id,inv.customer,inv.period,li.tripId,'"'+li.desc+'"',li.amount].join(','));});
+  rows.push(',,,,Subtotal,'+inv.subtotal);
+  rows.push(',,,,VAT ('+inv.taxRate+'%),'+inv.tax);
+  rows.push(',,,,TOTAL,'+inv.total);
+  rows.push(',,,,Due Date,'+inv.dueDate);
+  rows.push(',,,,Status,'+inv.status);
+  if(inv.notes)rows.push(',,,,Notes,"'+inv.notes+'"');
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.join('\n'));
+  a.download=inv.id+'_'+inv.customer+'.csv';a.click();
+  toast('Invoice exported!','ok');
+}
+
+// ══════════════════════════════════════════════════
+// FUEL MANAGEMENT MODULE
+// ══════════════════════════════════════════════════
+function _loadFuelLogs(){
+  try{var s=localStorage.getItem('ip_fuellogs');if(s)S.fuelLogs=JSON.parse(s);}catch(e){}
+  try{var c=localStorage.getItem('ip_fuelcfg');if(c)S.fuelConfig=Object.assign(S.fuelConfig||{},JSON.parse(c));}catch(e){}
+}
+function _saveFuelLogs(){
+  try{localStorage.setItem('ip_fuellogs',JSON.stringify((S.fuelLogs||[]).slice(0,2000)));}catch(e){}
+}
+
+function rFuel(){
+  S.page='fuel';
+  var c=document.getElementById('content');if(!c)return;
+  var logs=S.fuelLogs||[];
+  var isDriver=S.role==='driver';
+  var myLogs=isDriver?logs.filter(function(l){return l.loggedBy===S.user.name;}):logs;
+  var approved=myLogs.filter(function(l){return l.status==='approved';});
+  var totalL=approved.reduce(function(s,l){return s+(+l.liters||0);},0);
+  var totalCost=approved.reduce(function(s,l){return s+(+l.totalCost||0);},0);
+  var pending=logs.filter(function(l){return l.status==='pending';}).length;
+  var filter=S._fuelFilter||'all';
+  var shown=myLogs.filter(function(l){return filter==='all'||l.status===filter;});
+
+  c.innerHTML=ph('&#9981; Fuel Management',isDriver?'Log and track your fuel fills':'Fleet fuel tracking &amp; approval',
+    '<div style="display:flex;gap:8px">'+
+    '<button class="btn btn-primary" onclick="openFuelEntry()">+ Log Fuel Fill</button>'+
+    (!isDriver&&(can('all')||S.role==='supervisor')?'<button class="btn btn-outline" onclick="openFuelConfig()">&#9881;&#65039; Config</button>':'')+
+    '</div>')+
+  '<div class="kpi-row">'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#9981;</div><div class="kpi-body"><div class="kpi-label">Total Fuel'+(isDriver?' (yours)':'')+'</div><div class="kpi-val">'+totalL.toLocaleString()+' L</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:var(--c1)">&#128176;</div><div class="kpi-body"><div class="kpi-label">Total Cost</div><div class="kpi-val">EGP '+Math.round(totalCost/1000)+'K</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#8987;</div><div class="kpi-body"><div class="kpi-label">Pending Approval</div><div class="kpi-val">'+pending+'</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#128203;</div><div class="kpi-body"><div class="kpi-label">Log Entries</div><div class="kpi-val">'+myLogs.length+'</div></div></div>'+
+  '</div>'+
+  '<div class="tabs">'+
+  ['all','pending','approved','rejected'].map(function(f){
+    var cnt=f==='all'?myLogs.length:myLogs.filter(function(l){return l.status===f;}).length;
+    return '<div class="tab'+(filter===f?' on':'')+'" onclick="S._fuelFilter=\''+f+'\';rFuel()">'+f.charAt(0).toUpperCase()+f.slice(1)+' ('+cnt+')</div>';
+  }).join('')+
+  '</div>'+
+  (shown.length===0?
+    '<div class="card" style="text-align:center;padding:56px;color:var(--t2)"><div style="font-size:48px">&#9981;</div><div style="margin-top:12px;font-size:15px;font-weight:700">No fuel logs yet</div><button class="btn btn-primary" style="margin-top:16px" onclick="openFuelEntry()">+ Log First Fill</button></div>':
+    '<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'+
+    '<th>Date</th><th>Truck</th><th>Driver</th><th>Liters</th><th>EGP/L</th><th>Total</th><th>Odometer</th><th>Station</th><th>Receipt</th><th>Status</th>'+
+    (!isDriver?'<th>Actions</th>':'')+
+    '</tr></thead><tbody>'+
+    shown.map(function(l){
+      var sc={pending:'#F97316',approved:'#10B981',rejected:'#EF4444'}[l.status]||'#64748B';
+      var sb={pending:'rgba(249,115,22,.1)',approved:'rgba(16,185,129,.1)',rejected:'rgba(239,68,68,.1)'}[l.status]||'rgba(100,116,139,.1)';
+      return '<tr>'+
+        '<td style="font-size:12px;white-space:nowrap">'+l.date+'</td>'+
+        '<td style="font-weight:700;font-size:12px">'+l.truck+'</td>'+
+        '<td style="font-size:12px">'+l.driver+'</td>'+
+        '<td style="font-weight:700;color:#F97316">'+l.liters+' L</td>'+
+        '<td style="font-size:12px">'+l.costPerLiter+'</td>'+
+        '<td style="font-weight:700">EGP '+(l.totalCost||0).toLocaleString()+'</td>'+
+        '<td style="font-size:11px;color:var(--t2)">'+(l.odometer?l.odometer+' km':'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--t2)">'+l.station+'</td>'+
+        '<td style="font-size:11px;color:var(--t2)">'+(l.receiptNo||'—')+'</td>'+
+        '<td><span style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:11px;font-weight:700;background:'+sb+';color:'+sc+'">'+l.status.toUpperCase()+'</span>'+
+        (l.status==='approved'&&l.approvedBy?'<div style="font-size:10px;color:var(--t3)">by '+l.approvedBy+'</div>':'')+
+        '</td>'+
+        (!isDriver?'<td><div style="display:flex;gap:4px">'+
+        (l.status==='pending'&&(can('all')||S.role==='supervisor')?
+          '<button class="btn btn-sm btn-success" onclick="approveFuel(\''+l.id+'\')">&#10003;</button>'+
+          '<button class="btn btn-sm btn-danger" onclick="rejectFuel(\''+l.id+'\')">&#10005;</button>':'')+''+
+        (can('all')?'<button class="btn btn-sm btn-outline" onclick="deleteFuel(\''+l.id+'\')" title="Delete">&#128465;</button>':'')+
+        '</div></td>':'')+
+        '</tr>';
+    }).join('')+
+    '</tbody></table></div>');
+}
+
+function openFuelEntry(){
+  var trucks=TRUCKS.filter(function(t){return t.valid;});
+  var cfg=S.fuelConfig||{};
+  var today=new Date().toISOString().slice(0,10);
+  var driverDefault=S.role==='driver'?S.user.name:'';
+  openM(
+    '<div class="m-title">&#9981; Log Fuel Fill</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg"><label>Truck *</label><select id="fl-truck">'+
+      '<option value="">Select truck...</option>'+
+      trucks.map(function(t){return'<option value="'+t.plate+'">'+t.plate+' — '+t.type+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="fg"><label>Driver</label><input id="fl-driver" value="'+driverDefault+'" placeholder="Driver name"/></div>'+
+    '<div class="fg"><label>Date *</label><input type="date" id="fl-date" value="'+today+'"/></div>'+
+    '<div class="fg"><label>Fuel Type</label><select id="fl-type">'+
+      (cfg.fuelTypes||['Diesel','Petrol','CNG']).map(function(t){return'<option>'+t+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="fg"><label>Liters *</label><input type="number" id="fl-liters" placeholder="e.g. 150" min="1" step="0.1" oninput="calcFuelCost()"/></div>'+
+    '<div class="fg"><label>Cost per Liter (EGP) *</label><input type="number" id="fl-cpl" value="'+(cfg.defaultCostPerLiter||14.5)+'" step="0.01" oninput="calcFuelCost()"/></div>'+
+    '<div class="fg"><label>Odometer Reading (km)</label><input type="number" id="fl-odo" placeholder="Current km reading" min="0"/></div>'+
+    '<div class="fg"><label>Fuel Station</label><input id="fl-station" placeholder="Station name / city"/></div>'+
+    '<div class="fg"><label>Receipt No.</label><input id="fl-rcpt" placeholder="Optional"/></div>'+
+    '<div class="fg"><label>Trip ID (if applicable)</label><input id="fl-trip" placeholder="e.g. TR-001"/></div>'+
+    '</div>'+
+    '<div style="background:linear-gradient(135deg,var(--c1),var(--c1-dark,#4F1FD4));border-radius:10px;padding:14px 18px;margin-top:12px;display:flex;justify-content:space-between;align-items:center;color:white">'+
+    '<span style="font-size:13px;font-weight:600;opacity:.8">Total Cost</span>'+
+    '<span id="fl-total" style="font-size:22px;font-weight:900">EGP 0</span>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--t2);margin-top:6px;padding:8px 12px;background:var(--bg);border-radius:8px">'+
+    (can('all')||S.role==='supervisor'?'&#9432; You have approval rights — your logs are auto-approved.':'&#9432; Your log will be submitted for supervisor approval.')+
+    '</div>'+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveFuelLog()">&#10003; Submit</button>'+
+    '</div>'
+  );
+}
+
+function calcFuelCost(){
+  var l=+((document.getElementById('fl-liters')||{}).value||0);
+  var cpl=+((document.getElementById('fl-cpl')||{}).value||0);
+  var t=document.getElementById('fl-total');
+  if(t)t.textContent='EGP '+(l*cpl).toLocaleString('en-GB',{maximumFractionDigits:0});
+}
+
+function saveFuelLog(){
+  var truck=(document.getElementById('fl-truck')||{}).value;
+  var liters=+((document.getElementById('fl-liters')||{}).value||0);
+  var date=(document.getElementById('fl-date')||{}).value;
+  if(!truck){toast('Select a truck','err');return;}
+  if(!liters||liters<=0){toast('Enter liters','err');return;}
+  if(!date){toast('Enter date','err');return;}
+  var cpl=+((document.getElementById('fl-cpl')||{}).value||0);
+  var autoApprove=can('all')||S.role==='supervisor';
+  var log={
+    id:'FL-'+Date.now(),truck:truck,
+    driver:(document.getElementById('fl-driver')||{}).value||S.user.name,
+    date:date,
+    fuelType:(document.getElementById('fl-type')||{}).value||'Diesel',
+    liters:liters,costPerLiter:cpl,totalCost:Math.round(liters*cpl),
+    odometer:+((document.getElementById('fl-odo')||{}).value)||null,
+    station:(document.getElementById('fl-station')||{}).value||'Unknown',
+    receiptNo:(document.getElementById('fl-rcpt')||{}).value||'',
+    relatedTripId:(document.getElementById('fl-trip')||{}).value||'',
+    loggedBy:S.user.name,loggedAt:new Date().toLocaleString('en-GB'),
+    status:autoApprove?'approved':'pending',
+    approvedBy:autoApprove?S.user.name:null,
+    approvedAt:autoApprove?new Date().toLocaleString('en-GB'):null
+  };
+  if(!S.fuelLogs)S.fuelLogs=[];
+  S.fuelLogs.unshift(log);
+  _saveFuelLogs();
+  audit('FUEL_LOG',log.truck+' '+log.liters+'L EGP '+log.totalCost+(autoApprove?' [auto-approved]':'[pending]'),'');
+  closeM();
+  toast('Fuel logged!'+(log.status==='pending'?' Awaiting approval.':''),'ok');
+  rFuel();
+}
+
+function approveFuel(id){
+  var l=(S.fuelLogs||[]).find(function(x){return x.id===id;});if(!l)return;
+  l.status='approved';l.approvedBy=S.user.name;l.approvedAt=new Date().toLocaleString('en-GB');
+  _saveFuelLogs();audit('FUEL_APPROVE',id,'');toast('Fuel log approved ✅','ok');rFuel();
+}
+function rejectFuel(id){
+  var l=(S.fuelLogs||[]).find(function(x){return x.id===id;});if(!l)return;
+  l.status='rejected';l.rejectedBy=S.user.name;l.rejectedAt=new Date().toLocaleString('en-GB');
+  _saveFuelLogs();audit('FUEL_REJECT',id,'');toast('Fuel log rejected','err');rFuel();
+}
+function deleteFuel(id){
+  if(!confirm('Delete this fuel log?'))return;
+  S.fuelLogs=(S.fuelLogs||[]).filter(function(x){return x.id!==id;});
+  _saveFuelLogs();toast('Deleted','ok');rFuel();
+}
+
+function openFuelConfig(){
+  var cfg=S.fuelConfig||{};
+  openM(
+    '<div class="m-title">&#9881;&#65039; Fuel Configuration</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg"><label>Default Cost per Liter (EGP)</label><input type="number" id="fc-cpl" value="'+(cfg.defaultCostPerLiter||14.5)+'" step="0.01"/></div>'+
+    '<div class="fg"><label>Currency</label><input id="fc-curr" value="'+(cfg.currency||'EGP')+'"/></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Fuel Types (comma-separated)</label><input id="fc-types" value="'+(cfg.fuelTypes||['Diesel','Petrol','CNG']).join(',')+'"/></div>'+
+    '<div class="fg"><label>High Cost Alert (EGP per fill)</label><input type="number" id="fc-alert" value="'+(cfg.alertHighCost||3000)+'"/></div>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="saveFuelConfig()">&#10003; Save</button></div>'
+  );
+}
+function saveFuelConfig(){
+  function g(id){return(document.getElementById(id)||{}).value||'';}
+  S.fuelConfig=Object.assign(S.fuelConfig||{},{
+    defaultCostPerLiter:+(g('fc-cpl')||14.5),
+    currency:g('fc-curr')||'EGP',
+    fuelTypes:g('fc-types').split(',').map(function(x){return x.trim();}).filter(Boolean),
+    alertHighCost:+(g('fc-alert')||3000)
+  });
+  try{localStorage.setItem('ip_fuelcfg',JSON.stringify(S.fuelConfig));}catch(e){}
+  audit('FUEL_CONFIG_SAVE','Fuel config updated','');
+  closeM();toast('Fuel config saved!','ok');
+}
+
+// ══════════════════════════════════════════════════
+// ESG / SUSTAINABILITY REPORT
+// ══════════════════════════════════════════════════
+function _loadESGConfig(){
+  try{var c=localStorage.getItem('ip_esgcfg');if(c)S.esgConfig=Object.assign(S.esgConfig||{},JSON.parse(c));}catch(e){}
+}
+
+function rESG(){
+  S.page='esg';
+  var c=document.getElementById('content');if(!c)return;
+  var cfg=S.esgConfig||{co2PerTreeYear:21,co2PerCarKm:0.21,co2Target:10,baselineCo2:5000,baselineYear:2023,renewableEnergyPct:0};
+  var comp=S.trips.filter(function(t){return t.status==='completed';});
+  var totalCo2=comp.reduce(function(s,t){return s+(+t.co2||0);},0);
+  var totalKm=comp.reduce(function(s,t){return s+(+t.km||0);},0);
+  var fuelApproved=(S.fuelLogs||[]).filter(function(l){return l.status==='approved';});
+  var totalFuelL=fuelApproved.reduce(function(s,l){return s+(+l.liters||0);},0);
+  var fuelCo2=Math.round(totalFuelL*2.68);
+  var trees=Math.round(totalCo2/(cfg.co2PerTreeYear||21));
+  var carKmEq=Math.round(totalCo2/(cfg.co2PerCarKm||0.21)/1000);
+  var baseline=cfg.baselineCo2||5000;
+  var reduction=baseline>0?Math.round((baseline-totalCo2)/baseline*100):0;
+  var target=cfg.co2Target||10;
+  var grade=reduction>=target?'A':reduction>=0?'B':'C';
+  var gradeColor=grade==='A'?'#10B981':grade==='B'?'#F97316':'#EF4444';
+
+  // 6-month trend
+  var months=[];
+  for(var mi=5;mi>=0;mi--){
+    var bd=new Date();bd.setDate(1);bd.setMonth(bd.getMonth()-mi);
+    var lbl=bd.toLocaleDateString('en-GB',{month:'short',year:'2-digit'});
+    var mco2=comp.filter(function(t){
+      var td=new Date((t.ts||'').split('/').reverse().join('-').split(',')[0]);
+      return td.getFullYear()===bd.getFullYear()&&td.getMonth()===bd.getMonth();
+    }).reduce(function(s,t){return s+(+t.co2||0);},0);
+    months.push({l:lbl,v:Math.round(mco2)});
+  }
+  var maxM=Math.max.apply(null,months.map(function(m){return m.v;}))||1;
+
+  c.innerHTML=ph('&#127807; ESG &amp; Sustainability Report','Carbon footprint tracking &amp; green logistics metrics',
+    (can('all')?'<button class="btn btn-outline" onclick="openESGConfig()">&#9881;&#65039; Targets &amp; Config</button>':''))+
+
+  // Grade banner
+  '<div style="background:linear-gradient(135deg,#047857,#10B981,#34D399);border-radius:16px;padding:22px 28px;color:white;margin-bottom:20px;display:flex;justify-content:space-between;align-items:center">'+
+  '<div>'+
+  '<div style="font-size:11px;font-weight:700;opacity:.7;letter-spacing:1.2px;text-transform:uppercase">ESG Performance Score</div>'+
+  '<div style="font-size:56px;font-weight:900;line-height:1;margin:6px 0">'+grade+'</div>'+
+  '<div style="font-size:13px;opacity:.85">'+(reduction>=target?'&#10003; CO₂ reduction target achieved':'Target: '+target+'% reduction from '+cfg.baselineYear+' baseline')+' &bull; Renewable: '+(cfg.renewableEnergyPct||0)+'%</div>'+
+  '</div>'+
+  '<div style="text-align:right">'+
+  '<div style="font-size:11px;opacity:.6">CO₂ This Period</div>'+
+  '<div style="font-size:36px;font-weight:900">'+Math.round(totalCo2)+' kg</div>'+
+  '<div style="font-size:12px;opacity:.7">'+Math.round(totalCo2/1000*10)/10+' tonnes</div>'+
+  '</div></div>'+
+
+  // KPI row
+  '<div class="kpi-row">'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(5,150,105,.1);color:#059669">&#127807;</div><div class="kpi-body"><div class="kpi-label">Total CO₂</div><div class="kpi-val">'+Math.round(totalCo2)+' kg</div><div class="kpi-sub">'+comp.length+' completed trips</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(5,150,105,.1);color:#059669">&#127795;</div><div class="kpi-body"><div class="kpi-label">Tree Equivalent</div><div class="kpi-val">'+trees+' trees</div><div class="kpi-sub">1 year absorption</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#128663;</div><div class="kpi-body"><div class="kpi-label">Car Equivalent</div><div class="kpi-val">'+carKmEq+'K km</div><div class="kpi-sub">avg passenger car</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(6,182,212,.1);color:#06B6D4">&#9981;</div><div class="kpi-body"><div class="kpi-label">Fuel Consumption</div><div class="kpi-val">'+totalFuelL.toLocaleString()+' L</div><div class="kpi-sub">'+fuelCo2+' kg CO₂ equiv.</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:'+(reduction>=target?'rgba(5,150,105,.1)':'rgba(249,115,22,.1)')+';color:'+(reduction>=target?'#059669':'#F97316')+'">&#128202;</div><div class="kpi-body"><div class="kpi-label">CO₂ Reduction</div><div class="kpi-val" style="color:'+(reduction>=target?'#059669':'#F97316')+'">'+(reduction>0?reduction:0)+'%</div><div class="kpi-sub">vs '+baseline+' kg baseline</div></div></div>'+
+  '</div>'+
+
+  // Monthly trend + breakdown
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">'+
+  // Trend chart
+  '<div class="card">'+
+  '<div style="font-size:13px;font-weight:800;margin-bottom:16px">&#128200; Monthly CO₂ Trend (kg)</div>'+
+  '<div style="display:flex;align-items:flex-end;gap:6px;height:110px">'+
+  months.map(function(m){
+    var h=m.v>0?Math.max(Math.round(m.v/maxM*100),6):3;
+    var col=m.v/maxM>0.8?'#EF4444':m.v/maxM>0.5?'#F97316':'#10B981';
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">'+
+      '<div style="font-size:9px;color:var(--t3);font-weight:600">'+m.v+'</div>'+
+      '<div style="width:100%;height:'+h+'%;background:'+col+';border-radius:5px 5px 0 0;min-height:3px"></div>'+
+      '<div style="font-size:9px;color:var(--t3);font-weight:700">'+m.l+'</div>'+
+      '</div>';
+  }).join('')+
+  '</div></div>'+
+  // Condition breakdown
+  '<div class="card">'+
+  '<div style="font-size:13px;font-weight:800;margin-bottom:14px">CO₂ by Condition</div>'+
+  (function(){
+    var conds={};
+    comp.forEach(function(t){var k=t.condition||'Unknown';conds[k]=(conds[k]||0)+(+t.co2||0);});
+    var arr=Object.keys(conds).map(function(k){return{k:k,v:Math.round(conds[k])};}).sort(function(a,b){return b.v-a.v;});
+    var mx=arr.length?arr[0].v:1;
+    var cols={'Cold (2-8C)':'#3B82F6','Frozen (-18C)':'#06B6D4','Ambient (15-25C)':'#F97316','Dry':'#94A3B8','Controlled (8-15C)':'#8B5CF6'};
+    return arr.length?arr.map(function(x){
+      var col=cols[x.k]||'#10B981';
+      return '<div style="margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px"><span style="font-weight:600">'+x.k+'</span><span style="font-weight:700;color:'+col+'">'+x.v+' kg</span></div>'+
+        '<div style="height:6px;background:var(--border);border-radius:3px"><div style="height:100%;width:'+Math.max(Math.round(x.v/mx*100),3)+'%;background:'+col+';border-radius:3px"></div></div>'+
+        '</div>';
+    }).join(''):'<div style="color:var(--t2);text-align:center;padding:24px">No trip data yet</div>';
+  })()+
+  '</div></div>'+
+
+  // Top trucks CO2 + trip log
+  '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px">'+
+  '<div class="card">'+
+  '<div style="font-size:13px;font-weight:800;margin-bottom:14px">CO₂ by Truck (Top 5)</div>'+
+  (function(){
+    var trucks={};
+    comp.forEach(function(t){var k=t.truck||'Unknown';trucks[k]=(trucks[k]||0)+(+t.co2||0);});
+    var arr=Object.keys(trucks).map(function(k){return{k:k,v:Math.round(trucks[k])};}).sort(function(a,b){return b.v-a.v;}).slice(0,5);
+    var mx=arr.length?arr[0].v:1;
+    var pal=['#6C3FF5','#06B6D4','#10B981','#F97316','#EF4444'];
+    return arr.length?arr.map(function(x,i){
+      var col=pal[i]||'#94A3B8';
+      return '<div style="margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:11px;margin-bottom:4px;font-weight:600"><span>'+x.k+'</span><span style="color:'+col+'">'+x.v+' kg</span></div>'+
+        '<div style="height:6px;background:var(--border);border-radius:3px"><div style="height:100%;width:'+Math.max(Math.round(x.v/mx*100),3)+'%;background:'+col+';border-radius:3px"></div></div>'+
+        '</div>';
+    }).join(''):'<div style="color:var(--t2);text-align:center;padding:24px">No data yet</div>';
+  })()+
+  '</div>'+
+  '<div class="card">'+
+  '<div style="font-size:13px;font-weight:800;margin-bottom:14px">CO₂ by Customer (Top 5)</div>'+
+  (function(){
+    var custs={};
+    comp.forEach(function(t){var k=t.customer||'Unknown';custs[k]=(custs[k]||0)+(+t.co2||0);});
+    var arr=Object.keys(custs).map(function(k){return{k:k,v:Math.round(custs[k])};}).sort(function(a,b){return b.v-a.v;}).slice(0,5);
+    var mx=arr.length?arr[0].v:1;
+    var pal=['#6C3FF5','#06B6D4','#10B981','#F97316','#EF4444'];
+    return arr.length?arr.map(function(x,i){
+      var col=pal[i]||'#94A3B8';
+      return '<div style="margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px;font-weight:600"><span>'+x.k+'</span><span style="color:'+col+'">'+x.v+' kg</span></div>'+
+        '<div style="height:6px;background:var(--border);border-radius:3px"><div style="height:100%;width:'+Math.max(Math.round(x.v/mx*100),3)+'%;background:'+col+';border-radius:3px"></div></div>'+
+        '</div>';
+    }).join(''):'<div style="color:var(--t2);text-align:center;padding:24px">No data yet</div>';
+  })()+
+  '</div></div>'+
+
+  // Trip CO2 table
+  '<div class="card" style="padding:0;overflow:hidden">'+
+  '<div style="padding:14px 18px;font-size:13px;font-weight:800;border-bottom:1px solid var(--border)">&#128230; Trip CO₂ Detail</div>'+
+  '<table class="tbl"><thead><tr><th>Trip ID</th><th>Customer</th><th>Condition</th><th>KM</th><th>CO₂ (kg)</th><th>kg/km</th></tr></thead><tbody>'+
+  comp.slice(0,20).map(function(t){
+    var co2km=t.km&&t.co2?Math.round(t.co2/t.km*1000)/1000:0;
+    return '<tr>'+
+      '<td style="font-weight:700;color:var(--c1)">'+t.id+'</td>'+
+      '<td>'+t.customer+'</td>'+
+      '<td>'+t.condition+'</td>'+
+      '<td>'+t.km+'</td>'+
+      '<td style="font-weight:700;color:#10B981">'+t.co2+'</td>'+
+      '<td style="font-size:12px;color:var(--t2)">'+co2km+'</td>'+
+      '</tr>';
+  }).join('')+
+  (comp.length===0?'<tr><td colspan="6" style="text-align:center;padding:24px;color:var(--t2)">No completed trips yet</td></tr>':'')+
+  '</tbody></table></div>';
+}
+
+function openESGConfig(){
+  var cfg=S.esgConfig||{};
+  openM(
+    '<div class="m-title">&#9881;&#65039; ESG Targets &amp; Configuration</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg"><label>CO₂ Reduction Target (%)</label><input type="number" id="esg-target" value="'+(cfg.co2Target||10)+'" min="0" max="100"/></div>'+
+    '<div class="fg"><label>Baseline CO₂ (kg)</label><input type="number" id="esg-base" value="'+(cfg.baselineCo2||5000)+'" min="0"/></div>'+
+    '<div class="fg"><label>Baseline Year</label><input type="number" id="esg-yr" value="'+(cfg.baselineYear||2023)+'" min="2020" max="2030"/></div>'+
+    '<div class="fg"><label>Renewable Energy Use (%)</label><input type="number" id="esg-ren" value="'+(cfg.renewableEnergyPct||0)+'" min="0" max="100"/></div>'+
+    '<div class="fg"><label>CO₂ Absorbed per Tree / Year (kg)</label><input type="number" id="esg-tree" value="'+(cfg.co2PerTreeYear||21)+'" step="0.1"/></div>'+
+    '<div class="fg"><label>CO₂ per Car km (kg)</label><input type="number" id="esg-car" value="'+(cfg.co2PerCarKm||0.21)+'" step="0.001"/></div>'+
+    '</div>'+
+    '<div style="margin-top:10px;padding:10px;background:rgba(5,150,105,.06);border-radius:8px;font-size:12px;color:#059669">'+
+    '&#9432; CO₂ per car km: standard passenger car ~0.21 kg/km. CO₂ per tree: tropical 21 kg/yr, temperate 11 kg/yr.</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveESGConfig()">&#10003; Save Targets</button></div>'
+  );
+}
+function saveESGConfig(){
+  function g(id){return+((document.getElementById(id)||{}).value||0);}
+  S.esgConfig=Object.assign(S.esgConfig||{},{
+    co2Target:g('esg-target'),baselineCo2:g('esg-base'),baselineYear:g('esg-yr'),
+    renewableEnergyPct:g('esg-ren'),co2PerTreeYear:g('esg-tree')||21,co2PerCarKm:g('esg-car')||0.21
+  });
+  try{localStorage.setItem('ip_esgcfg',JSON.stringify(S.esgConfig));}catch(e){}
+  audit('ESG_CONFIG_SAVE','ESG targets updated','');
+  closeM();toast('ESG config saved!','ok');rESG();
 }
 
 </script>
