@@ -3671,7 +3671,14 @@ function rForecast(){
   var c=document.getElementById('content');
   var my=S.trips.filter(function(t){return t.createdBy===S.user.id;});
   var canAdd=can('create_planned')||can('create_emergency')||can('all');
-  c.innerHTML='<div class="page-head"><div><h2>📅 Shipment Planning</h2></div>'+(canAdd?'<button class="btn btn-primary" onclick="openTrip()">+ New Shipment</button>':'')+'</div>'+
+  c.innerHTML='<div class="page-head"><div><h2>&#128197; Shipment Planning</h2></div>'+
+  '<div style="display:flex;gap:6px;align-items:center">'+
+  (canAdd?'<button class="btn btn-primary" onclick="openTrip()">+ New Shipment</button>':'')+
+  '<div style="display:flex;gap:4px">'+
+  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'csv\')" title="Export CSV">&#128202; CSV</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'excel\')" title="Export XLS">&#128196; XLS</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'pdf\')" title="Export PDF">&#128444;&#65039; PDF</button>'+
+  '</div></div></div>'+
   '<div class="g2"><div class="card"><div class="card-hd"><div class="card-title">My Shipments</div>'+vBtn()+'</div>'+
   (my.length===0?'<div style="text-align:center;padding:24px;color:var(--t2)">No shipments yet</div>':
   (S.viewMode==='grid'?
@@ -4300,8 +4307,11 @@ function rFin(){
   '<div class="page-head-sub">Multi-list pricing per customer · Truck type multipliers</div></div>'+
   '<div style="display:flex;gap:8px">'+
   (isAdmin?'<button class="btn btn-primary btn-sm" onclick="openAddCriteria()">+ Criteria</button>':'')  +
-  '<button class="btn btn-outline btn-sm" onclick="exportRates()">&#11015; Export</button>'+
-  '</div></div>'+
+  '<div style="display:flex;gap:4px">'+
+  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'csv\')">&#128202; CSV</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'excel\')">&#128196; XLS</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'pdf\')">&#128444;&#65039; PDF</button>'+
+  '</div></div></div>'+
 
   '<div class="kpi-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">'+
   '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#128176;</div><div class="kpi-body"><div class="kpi-label">Total Revenue</div><div class="kpi-val">EGP '+Math.round(rev/1000)+'K</div></div></div>'+
@@ -4322,7 +4332,11 @@ function rFin(){
   '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm)">'+
   '<div style="padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between">'+
   '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Rate Table — Active Price Lists</div>'+
-  '<button class="btn btn-outline btn-sm" onclick="exportRates()">&#11015; Export CSV</button>'+
+  '<div style="display:flex;gap:4px">'+
+  '<button class="btn btn-outline btn-sm" onclick="_expRateTable(\'csv\')">&#128202; CSV</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_expRateTable(\'excel\')">&#128196; XLS</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_expRateTable(\'pdf\')">&#128444;&#65039; PDF</button>'+
+  '</div>'+
   '</div>'+
   '<div style="overflow-x:auto"><table class="tbl" style="font-size:11px;min-width:1200px">'+
   '<thead><tr>'+
@@ -4446,7 +4460,13 @@ function rFin(){
   // ── TAB 2: CO₂ ──
   '<div id="fin-p2" style="display:none">'+
   '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm)">'+
-  '<div style="padding:16px 20px;border-bottom:1px solid var(--bd)"><div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">CO&#178; Emissions by Customer</div></div>'+
+  '<div style="padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between">'+
+  '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">CO&#178; Emissions by Customer</div>'+
+  '<div style="display:flex;gap:4px">'+
+  '<button class="btn btn-outline btn-sm" onclick="_showCO2ExportModal(\'csv\')">&#128202; CSV</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_showCO2ExportModal(\'excel\')">&#128196; XLS</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="_showCO2ExportModal(\'pdf\')">&#128444;&#65039; PDF</button>'+
+  '</div></div>'+
   '<div style="padding:16px 20px">'+
   CUSTOMERS.map(function(cu){
     var cuTrips=comp.filter(function(t){return t.customer===cu;});
@@ -10656,8 +10676,49 @@ function _expCalcRange(period){
 }
 
 // ── Period-picker modal ───────────────────────────
+// ── Page-specific filter dropdowns ────────────────
+function _expBuildFilterSection(){
+  var p=S.page;
+  if(['forecast','maintenance','validation','esg'].indexOf(p)<0)return'';
+  var hdr='<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin:14px 0 8px">FILTERS</div>';
+  var sel=function(id,lbl,opts){
+    return'<div class="fg" style="margin:0"><label style="font-size:11px">'+lbl+'</label>'+
+      '<select id="'+id+'" onchange="_expUpdateCount()">'+
+      opts.map(function(o){return'<option value="'+o[0]+'">'+o[1]+'</option>';}).join('')+
+      '</select></div>';
+  };
+  var cuO=[['','All Customers']].concat((typeof CUSTOMERS!=='undefined'?CUSTOMERS:[]).map(function(c){return[c,c];}));
+  var coO=[['','All Conditions'],['Cold','❄️ Cold'],['Frozen','🧊 Frozen'],['Ambient','🌡️ Ambient']];
+  var trO=function(){return[['','All Trucks']].concat((typeof TRUCKS!=='undefined'?TRUCKS:[]).map(function(t){return[t.plate,t.plate+' ('+t.type+')'];}));};
+  var g='<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">';
+  if(p==='forecast')return hdr+g+
+    sel('exp-f-cu','Customer',cuO)+sel('exp-f-cond','Condition',coO)+
+    sel('exp-f-status','Status',[['','All Statuses'],['planned','Planned'],['in_transit','In Transit'],
+      ['completed','Completed'],['awaiting_quality','Awaiting QA'],['awaiting_ctrl','Awaiting Ctrl'],
+      ['awaiting_security','Awaiting Security']])+'</div>';
+  if(p==='maintenance')return hdr+g+
+    sel('exp-f-truck','Truck',trO())+
+    sel('exp-f-status','Ticket Status',[['','All'],['open','🔧 Open'],['done','✅ Done']])+'</div>';
+  if(p==='validation')return hdr+g+
+    sel('exp-f-truck','Truck',trO())+
+    sel('exp-f-status','Action Type',[['','All Actions'],['release','✅ Release'],
+      ['hold','⛔ Hold'],['flag','🚩 Flag'],['unflag','✔️ Unflag']])+'</div>';
+  if(p==='esg')return hdr+g+
+    sel('exp-f-cu','Customer',cuO)+sel('exp-f-cond','Condition',coO)+'</div>';
+  return'';
+}
+
+function _expGetFilters(){
+  return{
+    customer:(document.getElementById('exp-f-cu')||{}).value||'',
+    condition:(document.getElementById('exp-f-cond')||{}).value||'',
+    truck:(document.getElementById('exp-f-truck')||{}).value||'',
+    status:(document.getElementById('exp-f-status')||{}).value||''
+  };
+}
+
 function _showExportModal(fmt){
-  var base=_getPageExportData(null,null);
+  var base=_getPageExportData(null,null,{});
   if(!base){toast('No exportable data on this page','err');return;}
   var today=new Date().toISOString().slice(0,10);
   var fmtLabels={csv:'&#128202; CSV',excel:'&#128196; Excel',pdf:'&#128444;&#65039; PDF'};
@@ -10672,15 +10733,15 @@ function _showExportModal(fmt){
     '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin-bottom:8px">FORMAT</div>'+
     '<div style="display:flex;gap:8px">'+
     ['csv','excel','pdf'].map(function(f){
-      return '<label style="display:flex;align-items:center;gap:6px;padding:7px 13px;border:2px solid '+(f===fmt?'var(--c1)':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:border-color .2s">'+
+      return'<label style="display:flex;align-items:center;gap:6px;padding:7px 13px;border:2px solid '+(f===fmt?'var(--c1)':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:border-color .2s">'+
         '<input type="radio" name="exp-fmt" value="'+f+'"'+(f===fmt?' checked':'')+' style="accent-color:var(--c1);cursor:pointer" onchange="_expFmtChange()"/>'+fmtLabels[f]+'</label>';
     }).join('')+
     '</div></div>'+
-    '<div style="margin-bottom:14px">'+
+    '<div style="margin-bottom:4px">'+
     '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin-bottom:8px">TIME PERIOD</div>'+
     '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
     periods.map(function(o,i){
-      return '<button id="epb-'+o[0]+'" class="btn btn-sm '+(i===0?'btn-primary':'btn-outline')+'" onclick="_expPeriodBtn(\''+o[0]+'\')" style="font-size:11px;padding:5px 10px">'+o[1]+'</button>';
+      return'<button id="epb-'+o[0]+'" class="btn btn-sm '+(i===0?'btn-primary':'btn-outline')+'" onclick="_expPeriodBtn(\''+o[0]+'\')" style="font-size:11px;padding:5px 10px">'+o[1]+'</button>';
     }).join('')+
     '</div>'+
     '<div id="exp-custom-dates" style="display:none;margin-top:10px;padding:10px;background:var(--bg);border-radius:8px">'+
@@ -10688,17 +10749,15 @@ function _showExportModal(fmt){
     '<div class="fg" style="flex:1;margin:0"><label style="font-size:11px">From</label><input type="date" id="exp-from" value="'+today+'" onchange="_expUpdateCount()"/></div>'+
     '<div style="padding-bottom:8px;color:var(--t2);font-size:13px">→</div>'+
     '<div class="fg" style="flex:1;margin:0"><label style="font-size:11px">To</label><input type="date" id="exp-to" value="'+today+'" onchange="_expUpdateCount()"/></div>'+
-    '</div></div>'+
-    '</div>'+
-    '<div id="exp-count-row" style="padding:10px 14px;background:var(--bg);border-radius:8px;font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+
+    '</div></div></div>'+
+    _expBuildFilterSection()+
+    '<div id="exp-count-row" style="padding:10px 14px;background:var(--bg);border-radius:8px;font-size:12px;margin:12px 0 14px;display:flex;align-items:center;gap:8px">'+
     '<span style="font-size:16px">&#128202;</span>'+
     '<span id="exp-count-txt" style="font-weight:700;color:var(--c1)">'+base.rows.length+'</span>'+
     '<span style="color:var(--t2)">of '+base.rows.length+' records ready to export</span>'+
     '</div>'+
-    '<div class="m-foot">'+
-    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
-    '<button class="btn btn-primary" onclick="_doExportFromModal()">&#128229; Export</button>'+
-    '</div>'
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_doExportFromModal()">&#128229; Export</button></div>'
   );
   window._expBaseData=base;
   window._expCurrentPeriod='all';
@@ -10721,7 +10780,8 @@ function _expUpdateCount(){
   var base=window._expBaseData;if(!base)return;
   var p=window._expCurrentPeriod||'all';
   var rng=_expCalcRange(p);
-  var filtered=_getPageExportData(rng.from,rng.to);
+  var filters=_expGetFilters();
+  var filtered=_getPageExportData(rng.from,rng.to,filters);
   var total=base.rows.length;
   var match=filtered?filtered.rows.length:0;
   var txt=document.getElementById('exp-count-txt');
@@ -10729,7 +10789,7 @@ function _expUpdateCount(){
   if(txt)txt.textContent=match;
   if(row){
     var span=row.querySelector('span:last-child');
-    if(span)span.textContent='of '+total+' records match the selected period'+(match===0?' — try a wider range':'');
+    if(span)span.textContent='of '+total+' records match selected filters'+(match===0?' — try a wider range or fewer filters':'');
     row.style.borderLeft=match===0?'3px solid #EF4444':match<total?'3px solid #F97316':'3px solid #10B981';
   }
 }
@@ -10739,15 +10799,21 @@ function _doExportFromModal(){
   var fmt=fmtEl?fmtEl.value:'csv';
   var p=window._expCurrentPeriod||'all';
   var rng=_expCalcRange(p);
-  var d=_getPageExportData(rng.from,rng.to);
-  if(!d||!d.rows||!d.rows.length){toast('No records match the selected period','err');return;}
-  var label=p==='all'?'All Time':p==='custom'?
-    ((document.getElementById('exp-from')||{}).value||'')+' to '+((document.getElementById('exp-to')||{}).value||''):
-    p;
-  d.title=d.title+(p!=='all'?' ['+label+']':'');
+  var filters=_expGetFilters();
+  var d=_getPageExportData(rng.from,rng.to,filters);
+  if(!d||!d.rows||!d.rows.length){toast('No records match the selected filters','err');return;}
+  var periodLabel=p==='all'?'':p==='custom'?
+    ((document.getElementById('exp-from')||{}).value||'')+' → '+((document.getElementById('exp-to')||{}).value||''):p;
+  var fp=[];
+  if(filters.customer)fp.push(filters.customer);
+  if(filters.condition)fp.push(filters.condition);
+  if(filters.truck)fp.push(filters.truck);
+  if(filters.status)fp.push(filters.status);
+  var suffix=(periodLabel?'['+periodLabel+']':'')+(fp.length?'['+fp.join(' · ')+']':'');
+  if(suffix)d.title=d.title+' '+suffix;
   closeM();
   uExportAll(fmt,d.title,d.headers,d.rows);
-  audit('EXPORT_'+fmt.toUpperCase(),d.title+' ('+d.rows.length+' rows, period: '+label+')','');
+  audit('EXPORT_'+fmt.toUpperCase(),d.title+' ('+d.rows.length+' rows)','');
 }
 
 // Universal dispatcher — injects timestamp + user
@@ -10842,13 +10908,28 @@ function _expPDF(title,headers,rows,ts,usr){
 }
 
 // ── Per-page data generators (13 pages) ──────────
-// _getPageExportData(from, to) — from/to are Date objects or null
-// Every dataset is date-filtered using _expInRange before rows are built
-function _getPageExportData(from,to){
+// _getPageExportData(from, to, filters) — date range + optional field filters
+// filters: {customer, condition, truck, status} — any can be '' for no filter
+function _getPageExportData(from,to,filters){
+  filters=filters||{};
   var p=S.page;
-  // helper: filter array by a date field string
   var ir=function(v){return _expInRange(v,from,to);};
   var trips=(S.trips||[]).filter(function(t){return ir(t.ts);});
+
+  // ── Shipment Planning ──────────────────────────
+  if(p==='forecast'){
+    var ft=trips.filter(function(t){
+      if(filters.customer&&t.customer!==filters.customer)return false;
+      if(filters.condition&&t.condition!==filters.condition)return false;
+      if(filters.status&&t.status!==filters.status)return false;
+      return true;
+    });
+    return{title:'Shipment Planning',
+      headers:['Trip ID','Customer','Status','Type','Condition','Origin','Destination','KM','Cost (EGP)','CO₂ (kg)','Truck','Driver','Date'],
+      rows:ft.map(function(t){return[t.id,t.customer,t.status,t.type||'Planned',t.condition,
+        t.origin||'',t.dests||t.destination||'',t.km||0,t.cost||0,t.co2||0,t.truck,t.driver||'',t.ts||''];})
+    };
+  }
 
   if(p==='trips'){
     return{title:'All Trips',
@@ -10887,26 +10968,27 @@ function _getPageExportData(from,to){
     };
   }
   if(p==='validation'){
-    // Export both the approval log (date-filterable) AND a full fleet snapshot
-    var vlog=(S.valLog||[]).filter(function(l){return ir(l.ts);});
-    var now2=new Date();
-    var fleetSnap=(typeof TRUCKS!=='undefined'?TRUCKS:[]).map(function(t){
-      var d=Math.ceil((new Date(t.calExpiry)-now2)/864e5);
-      return[t.plate,t.type,t.valid?'Released':'On Hold',t.flagged?'Flagged':'Clear',
-        t.calExpiry||(d<0?'EXPIRED':d+'d to expiry'),t.driver||''];
+    var vlog=(S.valLog||[]).filter(function(l){
+      if(!ir(l.ts))return false;
+      if(filters.truck&&l.plate!==filters.truck)return false;
+      if(filters.status&&l.action!==filters.status)return false;
+      return true;
     });
-    // If there are date-filtered log entries, export the log; otherwise export fleet snapshot
-    if(vlog.length||(!from&&!to)){
-      var rows2=vlog.length
-        ?vlog.map(function(l){return[l.ts||'',l.plate||'',l.action||'',l.by||''];})
-        :fleetSnap;
-      var hdrs2=vlog.length
-        ?['Timestamp','Truck Plate','Action','By']
-        :['Plate','Type','Status','Flag','Cal. Expiry','Driver'];
-      return{title:'Validation '+(vlog.length?'Approval Log':'Fleet Status'),
-        headers:hdrs2,rows:rows2};
+    var now2=new Date();
+    var fleetSnap=(typeof TRUCKS!=='undefined'?TRUCKS:[])
+      .filter(function(t){return !filters.truck||t.plate===filters.truck;})
+      .map(function(t){
+        var d=Math.ceil((new Date(t.calExpiry)-now2)/864e5);
+        return[t.plate,t.type,t.valid?'Released':'On Hold',t.flagged?'Flagged':'Clear',
+          t.calExpiry+(d<0?' (EXPIRED)':(d<90?' ('+d+'d)':'')),t.driver||''];
+      });
+    var useLog=vlog.length||(from||to||filters.truck||filters.status);
+    if(useLog){
+      return{title:'Validation Approval Log',
+        headers:['Timestamp','Truck Plate','Action','By'],
+        rows:vlog.length?vlog.map(function(l){return[l.ts||'',l.plate||'',l.action||'',l.by||''];}):[]};
     }
-    return{title:'Validation Fleet Status',
+    return{title:'Fleet Validation Status',
       headers:['Plate','Type','Status','Flag','Cal. Expiry','Driver'],
       rows:fleetSnap};
   }
@@ -10925,10 +11007,16 @@ function _getPageExportData(from,to){
     };
   }
   if(p==='esg'){
-    var ecomp=trips.filter(function(t){return t.status==='completed';});
+    var ecomp=trips.filter(function(t){
+      if(t.status!=='completed')return false;
+      if(filters.customer&&t.customer!==filters.customer)return false;
+      if(filters.condition&&t.condition!==filters.condition)return false;
+      return true;
+    });
     return{title:'ESG Sustainability Report',
-      headers:['Trip ID','Customer','Condition','KM','CO₂ (kg)','CO₂/km','Truck','Date'],
-      rows:ecomp.map(function(t){var co2km=t.km&&t.co2?Math.round(t.co2/t.km*1000)/1000:0;return[t.id,t.customer,t.condition,t.km||0,t.co2||0,co2km,t.truck,t.ts||''];})
+      headers:['Trip ID','Customer','Condition','KM','CO₂ (kg)','CO₂/km','Revenue (EGP)','Truck','Date'],
+      rows:ecomp.map(function(t){var co2km=t.km&&t.co2?Math.round(t.co2/t.km*1000)/1000:0;
+        return[t.id,t.customer,t.condition,t.km||0,t.co2||0,co2km,t.cost||0,t.truck,t.ts||''];})
     };
   }
   if(p==='fleet'||p==='admin_fleet'||p==='trucks'){
@@ -10940,10 +11028,15 @@ function _getPageExportData(from,to){
     };
   }
   if(p==='maintenance'){
-    // S.maintTickets is the real data store; tk.ts holds the created timestamp
-    var tks=(S.maintTickets||[]).filter(function(tk){return ir(tk.ts);});
-    if(tks.length||(!from&&!to&&(S.maintTickets||[]).length)){
-      var src=tks.length?tks:(S.maintTickets||[]);
+    var tks=(S.maintTickets||[]).filter(function(tk){
+      if(!ir(tk.ts))return false;
+      if(filters.truck&&tk.truck!==filters.truck)return false;
+      if(filters.status&&tk.status!==filters.status)return false;
+      return true;
+    });
+    var allTks=S.maintTickets||[];
+    if(tks.length||allTks.length){
+      var src=tks;
       return{title:'Maintenance Tickets',
         headers:['Ticket ID','Truck','Status','Type','Description','Parts (count)','Parts Total (EGP)','Auto','Created'],
         rows:src.map(function(tk){
@@ -10986,7 +11079,7 @@ function _getPageExportData(from,to){
 // without touching individual render functions.
 var _EXP_PAGES={trips:1,controlroom:1,quality:1,security:1,finance:1,
   validation:1,billing:1,fuel:1,esg:1,fleet:1,admin_fleet:1,trucks:1,
-  maintenance:1,audit:1,exceptions:1};
+  maintenance:1,audit:1,exceptions:1,forecast:1};
 
 (function(){
   if(typeof ph!=='function')return;
@@ -11005,6 +11098,151 @@ var _EXP_PAGES={trips:1,controlroom:1,quality:1,security:1,finance:1,
     return _ph0(title,sub,combined);
   };
 })();
+
+// ══════════════════════════════════════════════════
+// RATE TABLE EXPORT — CSV / Excel / PDF
+// Reads active price lists + truck multipliers
+// ══════════════════════════════════════════════════
+function _expRateTable(fmt){
+  var stdF=[
+    {key:'baseRate',    lbl:'Base Rate (EGP/km)',  def:8},
+    {key:'minCharge',   lbl:'Min Charge (EGP)',    def:0},
+    {key:'wtFactor',    lbl:'Wt Factor (EGP/kg)',  def:0},
+    {key:'refrigSurcharge',lbl:'Cold Surcharge (%)',def:15},
+    {key:'frozenExtra', lbl:'Frozen Extra (%)',     def:8},
+    {key:'emergencySurcharge',lbl:'Emergency (%)', def:25},
+    {key:'waitingRate', lbl:'Waiting Rate (EGP/hr)',def:120},
+    {key:'stopFee',     lbl:'Stop Fee (EGP)',       def:50},
+    {key:'discountPct', lbl:'Discount (%)',         def:0},
+    {key:'seasonal',    lbl:'Seasonal (%)',         def:0},
+    {key:'bonus',       lbl:'Bonus (EGP)',          def:0},
+    {key:'slaMin',      lbl:'SLA Temp Min (°C)',    def:2},
+    {key:'slaMax',      lbl:'SLA Temp Max (°C)',    def:8}
+  ].concat((S.customCriteriaFields||[]).map(function(f){
+    return{key:f.key,lbl:f.label+' ('+f.unit+')',def:0};
+  }));
+  var truckTypes=typeof getTruckTypeIds==='function'?getTruckTypeIds():[];
+  var hdrs=['Customer','Active Plan'].concat(stdF.map(function(f){return f.lbl;}))
+    .concat(truckTypes.map(function(tt){return 'Mult: '+tt+' (×)';}));
+  var rows=(typeof CUSTOMERS!=='undefined'?CUSTOMERS:[]).map(function(cu){
+    var lists=S.priceLists[cu]||[];
+    var active=lists.find(function(l){return l.active;})||lists[0]||{};
+    var m=S.custModifiers[cu]||{};
+    var row=[cu,active.name||'Default'].concat(stdF.map(function(f){
+      var v=active[f.key]!==undefined?active[f.key]:(m[f.key]!==undefined?m[f.key]:f.def);
+      return v;
+    }));
+    truckTypes.forEach(function(tt){
+      var mult=(active.truckMult&&active.truckMult[tt]!==undefined)?active.truckMult[tt]:1;
+      row.push((+mult||1).toFixed(2));
+    });
+    return row;
+  });
+  uExportAll(fmt,'Rate Table — Active Price Lists',hdrs,rows);
+  audit('EXPORT_RATES',fmt.toUpperCase()+' — '+(rows.length)+' customers','');
+}
+
+// ══════════════════════════════════════════════════
+// TRIP CO₂ DETAIL EXPORT — with customer/date/condition
+// ══════════════════════════════════════════════════
+function _showCO2ExportModal(fmt){
+  var today=new Date().toISOString().slice(0,10);
+  var firstOfYear=new Date().getFullYear()+'-01-01';
+  var cuOpts='<option value="">All Customers</option>'+
+    (typeof CUSTOMERS!=='undefined'?CUSTOMERS:[]).map(function(c){return'<option>'+c+'</option>';}).join('');
+  var coOpts='<option value="">All Conditions</option><option>Cold</option><option>Frozen</option><option>Ambient</option>';
+  var trOpts='<option value="">All Trucks</option>'+
+    (typeof TRUCKS!=='undefined'?TRUCKS:[]).map(function(t){return'<option value="'+t.plate+'">'+t.plate+' ('+t.type+')</option>';}).join('');
+  var fmtLabels={csv:'&#128202; CSV',excel:'&#128196; Excel',pdf:'&#128444;&#65039; PDF'};
+  openM(
+    '<div class="m-title">&#127807; Export CO&#178; Trip Detail</div>'+
+    '<div style="margin-bottom:14px">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin-bottom:8px">FORMAT</div>'+
+    '<div style="display:flex;gap:8px">'+
+    ['csv','excel','pdf'].map(function(f){
+      return'<label style="display:flex;align-items:center;gap:6px;padding:7px 13px;border:2px solid '+(f===fmt?'var(--c1)':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;font-weight:600">'+
+        '<input type="radio" name="co2-fmt" value="'+f+'"'+(f===fmt?' checked':'')+' style="accent-color:var(--c1);cursor:pointer"/>'+fmtLabels[f]+'</label>';
+    }).join('')+
+    '</div></div>'+
+    '<div style="margin-bottom:14px">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin-bottom:8px">DATE RANGE</div>'+
+    '<div style="display:flex;gap:10px;align-items:flex-end">'+
+    '<div class="fg" style="flex:1;margin:0"><label style="font-size:11px">From</label><input type="date" id="co2-from" value="'+firstOfYear+'" onchange="_co2UpdateCount()"/></div>'+
+    '<div style="padding-bottom:8px;color:var(--t2)">→</div>'+
+    '<div class="fg" style="flex:1;margin:0"><label style="font-size:11px">To</label><input type="date" id="co2-to" value="'+today+'" onchange="_co2UpdateCount()"/></div>'+
+    '</div></div>'+
+    '<div style="margin-bottom:14px">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin-bottom:8px">FILTERS</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'+
+    '<div class="fg" style="margin:0"><label style="font-size:11px">Customer</label><select id="co2-cu" onchange="_co2UpdateCount()">'+cuOpts+'</select></div>'+
+    '<div class="fg" style="margin:0"><label style="font-size:11px">Condition</label><select id="co2-cond" onchange="_co2UpdateCount()">'+coOpts+'</select></div>'+
+    '<div class="fg" style="margin:0"><label style="font-size:11px">Truck</label><select id="co2-truck" onchange="_co2UpdateCount()">'+trOpts+'</select></div>'+
+    '</div></div>'+
+    '<div id="co2-count-row" style="padding:10px 14px;background:var(--bg);border-radius:8px;font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+
+    '<span style="font-size:16px">&#127807;</span>'+
+    '<span id="co2-count-txt" style="font-weight:700;color:#10B981">—</span>'+
+    '<span style="color:var(--t2)">trips · <span id="co2-sum-txt">—</span> kg CO&#178; total</span>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_doCO2Export()">&#127807; Export</button></div>'
+  );
+  setTimeout(_co2UpdateCount,50);
+}
+
+function _co2UpdateCount(){
+  var from_v=(document.getElementById('co2-from')||{}).value;
+  var to_v=(document.getElementById('co2-to')||{}).value;
+  var cu=(document.getElementById('co2-cu')||{}).value||'';
+  var cond=(document.getElementById('co2-cond')||{}).value||'';
+  var truck=(document.getElementById('co2-truck')||{}).value||'';
+  var from=from_v?new Date(from_v+'T00:00:00'):null;
+  var to=to_v?new Date(to_v+'T23:59:59'):null;
+  var rows=_co2FilterTrips(from,to,cu,cond,truck);
+  var totalCO2=rows.reduce(function(s,r){return s+(+r[4]||0);},0);
+  var txt=document.getElementById('co2-count-txt');
+  var sum=document.getElementById('co2-sum-txt');
+  var row=document.getElementById('co2-count-row');
+  if(txt)txt.textContent=rows.length;
+  if(sum)sum.textContent=totalCO2.toFixed(1);
+  if(row)row.style.borderLeft=rows.length===0?'3px solid #EF4444':'3px solid #10B981';
+}
+
+function _co2FilterTrips(from,to,cu,cond,truck){
+  return(S.trips||[]).filter(function(t){
+    if(t.status!=='completed')return false;
+    if(!_expInRange(t.ts,from,to))return false;
+    if(cu&&t.customer!==cu)return false;
+    if(cond&&t.condition!==cond)return false;
+    if(truck&&t.truck!==truck)return false;
+    return true;
+  }).map(function(t){
+    var co2km=t.km&&t.co2?Math.round(t.co2/t.km*1000)/1000:0;
+    return[t.id,t.customer,t.condition,t.km||0,t.co2||0,co2km,t.cost||0,t.truck,t.driver||'',t.ts||''];
+  });
+}
+
+function _doCO2Export(){
+  var fmtEl=document.querySelector('input[name="co2-fmt"]:checked');
+  var fmt=fmtEl?fmtEl.value:'csv';
+  var from_v=(document.getElementById('co2-from')||{}).value;
+  var to_v=(document.getElementById('co2-to')||{}).value;
+  var cu=(document.getElementById('co2-cu')||{}).value||'';
+  var cond=(document.getElementById('co2-cond')||{}).value||'';
+  var truck=(document.getElementById('co2-truck')||{}).value||'';
+  var from=from_v?new Date(from_v+'T00:00:00'):null;
+  var to=to_v?new Date(to_v+'T23:59:59'):null;
+  var rows=_co2FilterTrips(from,to,cu,cond,truck);
+  if(!rows.length){toast('No completed trips match these filters','err');return;}
+  var fp=[];
+  if(cu)fp.push(cu);if(cond)fp.push(cond);if(truck)fp.push(truck);
+  if(from_v||to_v)fp.push((from_v||'…')+' → '+(to_v||'…'));
+  var title='CO₂ Trip Detail'+(fp.length?' ['+fp.join(' · ')+']':'');
+  closeM();
+  uExportAll(fmt,title,
+    ['Trip ID','Customer','Condition','KM','CO₂ (kg)','CO₂/km','Revenue (EGP)','Truck','Driver','Date'],
+    rows);
+  audit('EXPORT_CO2',title+' ('+rows.length+' trips)','');
+}
 
 </script>
 </body>
