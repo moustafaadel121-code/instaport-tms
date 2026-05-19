@@ -10871,7 +10871,7 @@ function _getPageExportData(from,to){
     };
   }
   if(p==='security'){
-    var alog=(S.auditLog||S.audit||[]).filter(function(e){return ir(e.ts);});
+    var alog=(S.auditTrail||[]).filter(function(e){return ir(e.ts);});
     var secActs=['LOGIN','LOGOUT','ROLE','ACCESS','SEC','PASS','USER','PERM'];
     var sec=alog.filter(function(e){return secActs.some(function(k){return(e.action||'').indexOf(k)>-1;});});
     return{title:'Security Audit Log',
@@ -10887,10 +10887,28 @@ function _getPageExportData(from,to){
     };
   }
   if(p==='validation'){
-    return{title:'Trip Validation Report',
-      headers:['Trip ID','Customer','Status','Condition','Validation Status','Documents','Truck','Date'],
-      rows:trips.map(function(t){return[t.id,t.customer,t.status,t.condition,t.validationStatus||'Pending',t.docs||'—',t.truck,t.ts||''];})
-    };
+    // Export both the approval log (date-filterable) AND a full fleet snapshot
+    var vlog=(S.valLog||[]).filter(function(l){return ir(l.ts);});
+    var now2=new Date();
+    var fleetSnap=(typeof TRUCKS!=='undefined'?TRUCKS:[]).map(function(t){
+      var d=Math.ceil((new Date(t.calExpiry)-now2)/864e5);
+      return[t.plate,t.type,t.valid?'Released':'On Hold',t.flagged?'Flagged':'Clear',
+        t.calExpiry||(d<0?'EXPIRED':d+'d to expiry'),t.driver||''];
+    });
+    // If there are date-filtered log entries, export the log; otherwise export fleet snapshot
+    if(vlog.length||(!from&&!to)){
+      var rows2=vlog.length
+        ?vlog.map(function(l){return[l.ts||'',l.plate||'',l.action||'',l.by||''];})
+        :fleetSnap;
+      var hdrs2=vlog.length
+        ?['Timestamp','Truck Plate','Action','By']
+        :['Plate','Type','Status','Flag','Cal. Expiry','Driver'];
+      return{title:'Validation '+(vlog.length?'Approval Log':'Fleet Status'),
+        headers:hdrs2,rows:rows2};
+    }
+    return{title:'Validation Fleet Status',
+      headers:['Plate','Type','Status','Flag','Cal. Expiry','Driver'],
+      rows:fleetSnap};
   }
   if(p==='billing'){
     var invs=(S.invoices||[]).filter(function(i){return ir(i.createdAt);});
@@ -10922,20 +10940,32 @@ function _getPageExportData(from,to){
     };
   }
   if(p==='maintenance'){
-    var maint=(S.maint||S.maintenance||[]).filter(function(m){return ir(m.date);});
-    if(maint.length){
-      return{title:'Maintenance Log',
-        headers:['ID','Truck','Type','Date','Cost (EGP)','Description','Status','Technician'],
-        rows:maint.map(function(m){return[m.id||'',m.truck||m.plate||'',m.type||'',m.date||'',m.cost||0,m.desc||m.description||'',m.status||'',m.tech||m.technician||''];})
+    // S.maintTickets is the real data store; tk.ts holds the created timestamp
+    var tks=(S.maintTickets||[]).filter(function(tk){return ir(tk.ts);});
+    if(tks.length||(!from&&!to&&(S.maintTickets||[]).length)){
+      var src=tks.length?tks:(S.maintTickets||[]);
+      return{title:'Maintenance Tickets',
+        headers:['Ticket ID','Truck','Status','Type','Description','Parts (count)','Parts Total (EGP)','Auto','Created'],
+        rows:src.map(function(tk){
+          var ptotal=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+          return[tk.id||'',tk.truck||'',tk.status||'',tk.type||'Corrective',
+            tk.desc||'',( tk.parts||[]).length,ptotal.toFixed(2),
+            tk.auto?'Auto':'Manual',tk.ts||''];
+        })
       };
     }
+    // Fallback: fleet maintenance overview from TRUCKS
     return{title:'Maintenance — Fleet Overview',
       headers:['Plate','Type','Status','Last Service','Next Service','Mileage (km)'],
-      rows:(typeof TRUCKS!=='undefined'?TRUCKS:[]).map(function(t){return[t.plate||'',t.type||'',t.valid===false?'Inactive':'Active',t.lastService||'',t.nextService||'',t.mileage||''];})
+      rows:(typeof TRUCKS!=='undefined'?TRUCKS:[]).map(function(t){
+        return[t.plate||'',t.type||'',t.valid===false?'On Hold':'Active',
+          t.lastService||'',t.nextService||'',t.mileage||''];
+      })
     };
   }
   if(p==='audit'){
-    var auditLog=(S.auditLog||S.audit||[]).filter(function(e){return ir(e.ts);});
+    // S.auditTrail is the real audit store (used by audR() and expAudit())
+    var auditLog=(S.auditTrail||[]).filter(function(e){return ir(e.ts);});
     return{title:'Full Audit Trail',
       headers:['Timestamp','User','Role','Action','Detail','Trip ID'],
       rows:auditLog.map(function(e){return[e.ts||'',e.user||'',e.role||'',e.action||'',e.detail||'',e.tripId||''];})
