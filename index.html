@@ -3348,32 +3348,143 @@ function calcTripCost(customer,km,type,condition,stops,waitHours,truckType,cargo
 // ══════════════════════════════════════════════════
 function rDash(){
   var c=document.getElementById('content');
+  var role=S.role||'';
+  var canFinance=can('finance_view')||can('all');
+  var canAnalytics=can('graph_export')||can('all');
+  var canMaint=can('maintenance_view')||can('maintenance_create')||can('all');
+  var canDispatch=can('dispatch')||can('all');
+  var canAdd=can('create_planned')||can('all');
+  var bh=[25,42,55,80,62,38,48];
   var rel=TRUCKS.filter(function(t){return t.valid;}).length;
   var comp=S.trips.filter(function(t){return t.status==='completed';});
   var rev=comp.reduce(function(s,t){return s+(+t.cost||0);},0);
-  var co2=comp.reduce(function(s,t){return s+(+t.co2||0);},0);
-  var canAdd=can('create_planned')||can('all');
-  var bh=[25,42,55,80,62,38,48];
-  c.innerHTML='<div class="page-head"><div><h2>Dashboard</h2><div class="page-head-sub">Welcome, '+S.user.name+' &nbsp;<span class="live"><span class="live-dot"></span>Live</span></div></div>'+
-  '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')">+ New Shipment</button>':'')+'</div></div>'+
-  '<div class="kpi-row">'+
-  kpiBox('🚛','purple',TRUCKS.length,'Fleet','↑ '+rel+' Released')+
-  kpiBox('📦','green',S.trips.filter(function(t){return t.status==='in_transit';}).length,'In Transit','')+
-  kpiBox('⏳','orange',S.trips.filter(function(t){return !['completed','cancelled'].includes(t.status);}).length,'Pending','')+
-  (can('finance_view')||can('all')?kpiBox('💰','cyan','EGP '+rev.toLocaleString('en',{maximumFractionDigits:0}),'Revenue',comp.length+' trips'):'')  +
-  kpiBox('🌿','green',co2.toFixed(0),'CO₂ kg','')+'</div>'+
-  '<div class="g2">'+
-  '<div class="card"><div class="card-hd"><div class="card-title">📊 Weekly Shipments</div></div>'+
-  '<div class="chart-bars">'+['Sat','Sun','Mon','Tue','Wed','Thu','Fri'].map(function(d,i){return '<div class="bar-wrap"><div class="bar" style="height:'+bh[i]+'%;background:'+(i===3?'var(--c2)':'var(--c1l)')+(i===3?';':'border:1px solid var(--border);')+'"></div><div class="bar-label">'+d+'</div></div>';}).join('')+'</div></div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">🌡️ Live Temperature</div><span class="live"><span class="live-dot"></span>Live</span></div>'+
-  '<div class="gauge"><div class="gauge-val g-ok" id="dt">--</div><div style="font-size:12px;color:var(--t2);margin-top:4px">Fleet Monitor</div>'+
-  '<div class="gauge-bar"><div class="gauge-fill" id="db" style="width:50%;background:var(--c4)"></div></div>'+
-  '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3)"><span>-20°C</span><span>2-8°C</span><span>+25°C</span></div></div></div></div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">📋 Recent Trips</div><button class="btn btn-outline btn-sm" onclick="nav(\'trips\')">All →</button></div>'+
-  (S.trips.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No trips yet</div>':
-  '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>ID</th><th>Customer</th><th>Type</th><th>Truck</th><th>KM</th>'+(can('finance_view')||can('all')?'<th>Cost</th>':'')+'<th>Status</th></tr></thead><tbody>'+
-  S.trips.slice(-6).reverse().map(function(t){return '<tr><td style="font-weight:700;color:var(--c1);cursor:pointer" onclick="tripDet(\''+t.id+'\')">'+t.id+'</td><td>'+t.customer+'</td><td><span class="tag tag-info">'+t.type+'</span></td><td style="font-size:12px">'+(t.truck||'—')+'</td><td>'+(t.km||'—')+'</td>'+(can('finance_view')||can('all')?'<td style="font-weight:600;color:#059669">'+(t.cost?'EGP '+t.cost:'—')+'</td>':'')+'<td>'+stB(t.status)+'</td></tr>';}).join('')+
-  '</tbody></table></div>')+'</div>';
+  var co2Total=comp.reduce(function(s,t){return s+(+t.co2||0);},0);
+  var inTransitTrips=S.trips.filter(function(t){return t.status==='in_transit';});
+  var pendingTrips=S.trips.filter(function(t){return !['completed','cancelled'].includes(t.status);});
+  // Role-specific title
+  var titles={admin:'Fleet Command Center',supervisor:'Operations Overview',
+    quality:'Quality Control Hub',account_manager:'My Shipments',
+    control_room:'Live Operations',security:'Gate & Security',
+    finance:'Revenue & Finance',maintenance:'Maintenance Hub',
+    validation:'Fleet Validation',driver:'My Tasks'};
+  var subtitle=titles[role]||'Dashboard';
+  // Helper — clickable kpi card directly (no wrapper needed)
+  var ckpi=function(icon,cls,val,lbl,trend,pg){
+    return '<div class="kpi" onclick="nav(\''+pg+'\')" style="cursor:pointer" title="Go to '+pg+'">'+
+      '<div class="kpi-icon '+cls+'">'+icon+'</div>'+
+      '<div><div class="kpi-num">'+val+'</div>'+
+      '<div class="kpi-lbl">'+lbl+'</div>'+
+      (trend?'<div class="kpi-trend up">'+trend+'</div>':'')+'</div></div>';
+  };
+  // ── Role-based KPI row ─────────────────────────
+  var kpis='';
+  if(can('all')||can('fleet_view')||can('add_truck')||role==='validation')
+    kpis+=ckpi('🚛','purple',TRUCKS.length,'Fleet',rel+' Released','fleet');
+  if(role!=='driver')
+    kpis+=ckpi('📦','green',inTransitTrips.length,'In Transit',inTransitTrips.length?'↗ Active':'Idle',canDispatch?'dispatch':'trips');
+  if(can('all')||role==='supervisor'||role==='control_room'||role==='security')
+    kpis+=ckpi('⏳','orange',pendingTrips.length,'Active Jobs','','trips');
+  if(canFinance)
+    kpis+=ckpi('💰','cyan','EGP '+Math.round(rev/1000)+'K','Revenue',comp.length+' trips','finance');
+  if(can('all')||role==='supervisor'||role==='finance'||role==='account_manager')
+    kpis+=ckpi('🌿','green',co2Total.toFixed(0),'CO₂ kg','Carbon ↗',canAnalytics?'analytics':'esg');
+  if(canMaint){
+    var opnMCnt=S.maintTickets.filter(function(t){return t.status==='open';}).length;
+    kpis+=ckpi('🔧','orange',opnMCnt,'Open Tickets','Maintenance','maintenance');
+  }
+  // ── Role-specific quick panel ──────────────────
+  var rolePanel='';
+  if(role==='maintenance'){
+    var openTks=S.maintTickets.filter(function(t){return t.status==='open';}).slice(0,5);
+    var holdTrucks=TRUCKS.filter(function(t){return !t.valid;});
+    rolePanel='<div class="card"><div class="card-hd"><div class="card-title">🔧 Open Tickets</div>'+
+      '<button class="btn btn-outline btn-sm" onclick="S._maintFilter=\'\';nav(\'maintenance\')">All Tickets →</button></div>'+
+      (openTks.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No open tickets ✅</div>':
+      openTks.map(function(tk){
+        var ptot=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+        return '<div style="padding:12px 0;border-bottom:1px solid var(--dv);display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="S._maintFilter=\'open\';nav(\'maintenance\')">'+
+          '<div><div style="font-weight:700;font-size:13px">'+tk.id+'</div>'+
+          '<div style="font-size:12px;color:var(--t2)">'+tk.truck+' · '+tk.ts+'</div>'+
+          '<div style="font-size:12px;color:var(--t2);margin-top:1px">'+tk.desc.slice(0,55)+(tk.desc.length>55?'...':'')+'</div></div>'+
+          '<div style="text-align:right;flex-shrink:0;margin-left:12px">'+
+          '<div style="font-weight:700;color:var(--c1)">EGP '+ptot.toFixed(0)+'</div>'+
+          '<div style="font-size:11px;color:var(--t2)">'+(tk.parts||[]).length+' parts</div></div></div>';
+      }).join(''))+'</div>'+
+      (holdTrucks.length?'<div class="card"><div class="card-hd"><div class="card-title">⚠️ Trucks On Hold ('+holdTrucks.length+')</div>'+
+        '<button class="btn btn-outline btn-sm" onclick="nav(\'fleet\')">Fleet →</button></div>'+
+        holdTrucks.slice(0,5).map(function(t){return '<div style="padding:8px 0;border-bottom:1px solid var(--dv);font-size:13px">'+
+          t.plate+' — '+t.type+' <span style="color:#EF4444;font-size:11px;font-weight:700">ON HOLD</span></div>';}).join('')+'</div>':'');
+  } else if(role==='quality'){
+    var qaTr=S.trips.filter(function(t){return t.status==='awaiting_quality';});
+    rolePanel='<div class="card"><div class="card-hd"><div class="card-title">🧪 Awaiting Quality Check</div>'+
+      '<button class="btn btn-outline btn-sm" onclick="nav(\'quality\')">QA Portal →</button></div>'+
+      (qaTr.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No trips awaiting QA ✅</div>':
+      qaTr.slice(0,5).map(function(t){return '<div style="padding:10px 0;border-bottom:1px solid var(--dv);cursor:pointer" onclick="nav(\'quality\')">'+
+        '<div style="font-weight:700">'+t.id+' — '+t.customer+'</div>'+
+        '<div style="font-size:12px;color:var(--t2)">'+t.truck+' · '+t.ts+'</div></div>';}).join(''))+'</div>';
+  } else if(role==='security'){
+    var secTr=S.trips.filter(function(t){return t.status==='awaiting_security'||t.status==='inbound_security';});
+    rolePanel='<div class="card"><div class="card-hd"><div class="card-title">🔒 Trucks at Gate</div>'+
+      '<button class="btn btn-outline btn-sm" onclick="nav(\'security\')">Gate Portal →</button></div>'+
+      (secTr.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No trucks at gate</div>':
+      secTr.slice(0,5).map(function(t){return '<div style="padding:10px 0;border-bottom:1px solid var(--dv);cursor:pointer;display:flex;justify-content:space-between;align-items:center" onclick="nav(\'security\')">'+
+        '<div><div style="font-weight:700">'+t.id+' — '+t.customer+'</div>'+
+        '<div style="font-size:12px;color:var(--t2)">'+t.truck+' · '+t.ts+'</div></div>'+
+        stB(t.status)+'</div>';}).join(''))+'</div>';
+  } else if(role==='driver'){
+    var myTrps=S.trips.filter(function(t){return t.driver===S.user.name&&!['completed','cancelled'].includes(t.status);});
+    rolePanel='<div class="card"><div class="card-hd"><div class="card-title">🚛 My Active Trips</div>'+
+      '<button class="btn btn-outline btn-sm" onclick="nav(\'my_trips\')">All →</button></div>'+
+      (myTrps.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No active trips assigned</div>':
+      myTrps.map(function(t){return '<div style="padding:10px 0;border-bottom:1px solid var(--dv);cursor:pointer" onclick="tripDet(\''+t.id+'\')">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center">'+
+        '<div><div style="font-weight:700">'+t.id+' — '+t.customer+'</div>'+
+        '<div style="font-size:12px;color:var(--t2)">'+(t.origin||'')+(t.destination?' → '+t.destination:'')+'</div></div>'+
+        stB(t.status)+'</div></div>';}).join(''))+'</div>'+
+      '<div class="card" style="margin-top:0"><div class="card-hd"><div class="card-title">⛽ Fuel Fill Log</div></div>'+
+      '<div style="text-align:center;padding:20px"><button class="btn btn-primary" onclick="openFuelEntry()">+ Log Fuel Fill</button></div></div>';
+  }
+  // ── Charts widget ──────────────────────────────
+  var chartsSection='';
+  if(role!=='driver'){
+    chartsSection='<div class="g2">'+
+      '<div class="card"'+(canAnalytics?' style="cursor:pointer" onclick="nav(\'analytics\')"':'')+
+      '><div class="card-hd"><div class="card-title">📊 Weekly Deliveries</div>'+
+      (canAnalytics?'<span style="font-size:11px;color:var(--c1)">Analytics →</span>':'')+
+      '</div><div class="chart-bars">'+
+      ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'].map(function(d,i){
+        return '<div class="bar-wrap"><div class="bar" style="height:'+bh[i]+'%;background:'+(i===3?'var(--c2)':'var(--c1l)')+(i===3?';':'border:1px solid var(--border);')+'"></div><div class="bar-label">'+d+'</div></div>';
+      }).join('')+'</div></div>'+
+      '<div class="card"><div class="card-hd"><div class="card-title">🌡️ Live Temperature</div><span class="live"><span class="live-dot"></span>Live</span></div>'+
+      '<div class="gauge"><div class="gauge-val g-ok" id="dt">--</div><div style="font-size:12px;color:var(--t2);margin-top:4px">Fleet Monitor</div>'+
+      '<div class="gauge-bar"><div class="gauge-fill" id="db" style="width:50%;background:var(--c4)"></div></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3)"><span>-20°C</span><span>2-8°C</span><span>+25°C</span></div></div></div></div>';
+  }
+  // ── Recent shipments table ─────────────────────
+  var tripsSection='';
+  if(role!=='driver'&&role!=='maintenance'){
+    var tripList=(role==='account_manager')?
+      S.trips.filter(function(t){return t.createdBy===S.user.id;}):S.trips;
+    tripsSection='<div class="card"><div class="card-hd"><div class="card-title">📋 Recent Shipments</div>'+
+      (can('trips_view')||can('all')?'<button class="btn btn-outline btn-sm" onclick="nav(\'trips\')">All →</button>':'')+
+      '</div>'+
+      (tripList.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No trips yet</div>':
+      '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>ID</th><th>Customer</th><th>Type</th><th>Truck</th><th>KM</th>'+(canFinance?'<th>Cost</th>':'')+'<th>Status</th></tr></thead><tbody>'+
+      tripList.slice(-6).reverse().map(function(t){
+        return '<tr style="cursor:pointer" onclick="tripDet(\''+t.id+'\')">'+
+          '<td style="font-weight:700;color:var(--c1)">'+t.id+'</td><td>'+t.customer+'</td>'+
+          '<td><span class="tag tag-info">'+t.type+'</span></td>'+
+          '<td style="font-size:12px">'+(t.truck||'—')+'</td><td>'+(t.km||'—')+'</td>'+
+          (canFinance?'<td style="font-weight:600;color:#059669">'+(t.cost?'EGP '+t.cost:'—')+'</td>':'')+
+          '<td>'+stB(t.status)+'</td></tr>';
+      }).join('')+'</tbody></table></div>')+'</div>';
+  }
+  c.innerHTML=
+    '<div class="page-head"><div><h2>'+subtitle+'</h2>'+
+    '<div class="page-head-sub">Welcome, '+S.user.name+' &nbsp;<span class="live"><span class="live-dot"></span>Live</span></div></div>'+
+    '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')">+ New Shipment</button>':'')+'</div></div>'+
+    '<div class="kpi-row">'+kpis+'</div>'+
+    (role==='driver'?rolePanel:chartsSection+tripsSection+rolePanel);
 }
 
 // ══════════════════════════════════════════════════
@@ -4760,10 +4871,32 @@ function exportRates(){
 
 function rMaint(){
   var c=document.getElementById('content');
-  c.innerHTML='<div class="page-head"><div><h2>&#128295; Maintenance</h2></div><div style="display:flex;gap:8px"><button class="btn btn-outline" onclick="expMaint()">&#128196; Export</button><button class="btn btn-outline" onclick="nav(\'spare_parts\')">&#128297; Spare Parts</button><button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button></div></div>'+
-  '<div class="kpi-row">'+kpiBox('🔧','orange',S.maintTickets.filter(function(t){return t.status==='open';}).length,'Open','')+kpiBox('✅','green',S.maintTickets.filter(function(t){return t.status==='done';}).length,'Done','')+kpiBox('⚠️','red',TRUCKS.filter(function(t){return !t.valid;}).length,'Trucks On Hold','')+kpiBox('🤖','purple',S.maintTickets.filter(function(t){return t.auto;}).length,'Auto Tickets','')+'</div>'+
-  (S.maintTickets.length===0?'<div class="card" style="text-align:center;padding:40px;color:var(--t2)">No tickets</div>':'')+
-  S.maintTickets.slice().reverse().map(function(tk){return '<div class="card" id="maint-tk-'+tk.id+'" style="border-left:4px solid '+(tk.status==='done'?'var(--c4)':tk.auto?'var(--c3)':'var(--c2)')+'">'+
+  if(!S._maintFilter)S._maintFilter='';
+  var _opn=S.maintTickets.filter(function(t){return t.status==='open';}).length;
+  var _don=S.maintTickets.filter(function(t){return t.status==='done';}).length;
+  var _hld=TRUCKS.filter(function(t){return !t.valid;}).length;
+  var _aut=S.maintTickets.filter(function(t){return t.auto;}).length;
+  var shown=S._maintFilter?S.maintTickets.filter(function(t){return t.status===S._maintFilter;}):S.maintTickets;
+  // Clickable filter KPI — toggles filter on/off
+  var ckpi=function(icon,cls,val,lbl,f){
+    var act=S._maintFilter===f;
+    return '<div class="kpi" onclick="S._maintFilter=S._maintFilter===\''+f+'\'?\'\':\''+f+'\';rMaint()" style="cursor:pointer;outline:2px solid '+(act?'var(--c1)':'transparent')+';transition:outline .15s" title="Click to filter by '+lbl+'">'+
+      '<div class="kpi-icon '+cls+'">'+icon+'</div>'+
+      '<div><div class="kpi-num">'+val+'</div>'+
+      '<div class="kpi-lbl">'+lbl+(act?' <span style="font-size:9px;background:var(--c1);color:#fff;border-radius:8px;padding:1px 5px;margin-left:2px;vertical-align:middle">ON</span>':'')+'</div></div></div>';
+  };
+  c.innerHTML='<div class="page-head">'+
+    '<div><h2>&#128295; Maintenance</h2>'+
+    (S._maintFilter?'<div class="page-head-sub">Filter: <strong>'+S._maintFilter.toUpperCase()+'</strong> &nbsp;<button class="btn btn-outline btn-sm" onclick="S._maintFilter=\'\';rMaint()" style="font-size:10px;padding:2px 8px">&#10005; Clear</button></div>':'')+
+    '</div><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">'+
+    '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'csv\')" style="padding:5px 9px">&#128202; CSV</button>'+
+    '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'excel\')" style="padding:5px 9px">&#128196; XLS</button>'+
+    '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'pdf\')" style="padding:5px 9px">&#128444;&#65039; PDF</button>'+
+    '<button class="btn btn-outline" onclick="nav(\'spare_parts\')">&#128297; Spare Parts</button>'+
+    '<button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button></div></div>'+
+  '<div class="kpi-row">'+ckpi('🔧','orange',_opn,'Open Tickets','open')+ckpi('✅','green',_don,'Completed','done')+kpiBox('⚠️','red',_hld,'Trucks On Hold','')+kpiBox('🤖','purple',_aut,'Auto Tickets','')+'</div>'+
+  (shown.length===0?'<div class="card" style="text-align:center;padding:40px;color:var(--t2)">'+(S._maintFilter?'No '+S._maintFilter+' tickets':'No tickets')+'</div>':'')+
+  shown.slice().reverse().map(function(tk){return '<div class="card" id="maint-tk-'+tk.id+'" style="border-left:4px solid '+(tk.status==='done'?'var(--c4)':tk.auto?'var(--c3)':'var(--c2)')+'">'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><div style="font-weight:700;font-size:15px">'+tk.id+(tk.auto?' <span class="tag tag-purple" style="font-size:10px">AUTO</span>':'')+'</div><div style="font-size:13px;color:var(--t2);margin-top:2px">'+tk.truck+' · '+tk.ts+'</div></div><span class="tag '+(tk.status==='done'?'tag-ok':'tag-pend')+'">'+tk.status+'</span></div>'+
     '<div style="font-size:13px;margin-bottom:12px">'+tk.desc+'</div>'+
     '<table style="width:100%;font-size:12px;border-collapse:collapse"><thead><tr style="background:var(--bg)"><th style="text-align:left;padding:6px 8px">Part Name</th><th style="text-align:center;padding:6px 8px">Qty</th><th style="text-align:right;padding:6px 8px">Unit EGP</th><th style="text-align:right;padding:6px 8px">Total EGP</th></tr></thead>'+
@@ -10321,21 +10454,28 @@ function openFuelEntry(){
   var trucks=TRUCKS.filter(function(t){return t.valid;});
   var cfg=S.fuelConfig||{};
   var today=new Date().toISOString().slice(0,10);
-  var driverDefault=S.role==='driver'?S.user.name:'';
+  var isDriver=S.role==='driver';
+  var driverDefault=isDriver?S.user.name:'';
+  var rdStyle='background:var(--bg);color:var(--t2);cursor:not-allowed;opacity:.8';
   openM(
     '<div class="m-title">&#9981; Log Fuel Fill</div>'+
+    (isDriver?'<div style="padding:8px 12px;background:rgba(108,63,245,.07);border:1px solid var(--c1);border-radius:8px;font-size:12px;margin-bottom:10px;color:var(--c1)">'+
+      '&#128274; Driver mode — your name is locked. Cost per liter is set by the admin.</div>':'')+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
     '<div class="fg"><label>Truck *</label><select id="fl-truck">'+
       '<option value="">Select truck...</option>'+
       trucks.map(function(t){return'<option value="'+t.plate+'">'+t.plate+' — '+t.type+'</option>';}).join('')+
     '</select></div>'+
-    '<div class="fg"><label>Driver</label><input id="fl-driver" value="'+driverDefault+'" placeholder="Driver name"/></div>'+
+    '<div class="fg"><label>Driver</label><input id="fl-driver" value="'+driverDefault+'" placeholder="Driver name"'+
+      (isDriver?' readonly style="'+rdStyle+'"':'')+'/></div>'+
     '<div class="fg"><label>Date *</label><input type="date" id="fl-date" value="'+today+'"/></div>'+
     '<div class="fg"><label>Fuel Type</label><select id="fl-type">'+
       (cfg.fuelTypes||['Diesel','Petrol','CNG']).map(function(t){return'<option>'+t+'</option>';}).join('')+
     '</select></div>'+
     '<div class="fg"><label>Liters *</label><input type="number" id="fl-liters" placeholder="e.g. 150" min="1" step="0.1" oninput="calcFuelCost()"/></div>'+
-    '<div class="fg"><label>Cost per Liter (EGP) *</label><input type="number" id="fl-cpl" value="'+(cfg.defaultCostPerLiter||14.5)+'" step="0.01" oninput="calcFuelCost()"/></div>'+
+    '<div class="fg"><label>Cost per Liter (EGP)'+(isDriver?' <span style="color:#EF4444;font-size:10px;font-weight:700">[Admin only]</span>':'')+'</label>'+
+    '<input type="number" id="fl-cpl" value="'+(cfg.defaultCostPerLiter||14.5)+'" step="0.01" oninput="calcFuelCost()"'+
+      (isDriver?' readonly style="'+rdStyle+'"':'')+'/></div>'+
     '<div class="fg"><label>Odometer Reading (km)</label><input type="number" id="fl-odo" placeholder="Current km reading" min="0"/></div>'+
     '<div class="fg"><label>Fuel Station</label><input id="fl-station" placeholder="Station name / city"/></div>'+
     '<div class="fg"><label>Receipt No.</label><input id="fl-rcpt" placeholder="Optional"/></div>'+
@@ -10346,7 +10486,9 @@ function openFuelEntry(){
     '<span id="fl-total" style="font-size:22px;font-weight:900">EGP 0</span>'+
     '</div>'+
     '<div style="font-size:11px;color:var(--t2);margin-top:6px;padding:8px 12px;background:var(--bg);border-radius:8px">'+
-    (can('all')||S.role==='supervisor'?'&#9432; You have approval rights — your logs are auto-approved.':'&#9432; Your log will be submitted for supervisor approval.')+
+    (can('all')||S.role==='supervisor'?'&#9432; You have approval rights — your logs are auto-approved.':
+     isDriver?'&#9432; Your fuel log will be submitted for supervisor approval.':
+     '&#9432; Your log will be submitted for supervisor approval.')+
     '</div>'+
     '<div class="m-foot">'+
     '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
@@ -10369,11 +10511,14 @@ function saveFuelLog(){
   if(!truck){toast('Select a truck','err');return;}
   if(!liters||liters<=0){toast('Enter liters','err');return;}
   if(!date){toast('Enter date','err');return;}
-  var cpl=+((document.getElementById('fl-cpl')||{}).value||0);
+  var isDriver=S.role==='driver';
+  // Driver: name locked to their account, cost per liter locked to admin config
+  var driverName=isDriver?S.user.name:((document.getElementById('fl-driver')||{}).value||S.user.name);
+  var cpl=isDriver?(S.fuelConfig&&S.fuelConfig.defaultCostPerLiter||14.5):(+((document.getElementById('fl-cpl')||{}).value||0));
   var autoApprove=can('all')||S.role==='supervisor';
   var log={
     id:'FL-'+Date.now(),truck:truck,
-    driver:(document.getElementById('fl-driver')||{}).value||S.user.name,
+    driver:driverName,
     date:date,
     fuelType:(document.getElementById('fl-type')||{}).value||'Diesel',
     liters:liters,costPerLiter:cpl,totalCost:Math.round(liters*cpl),
@@ -10726,9 +10871,19 @@ function _expBuildFilterSection(){
       sel('exp-f-status','Approval Status',[['','All'],['pending','⏳ Pending'],
         ['approved','✅ Approved'],['rejected','❌ Rejected']])+'</div>';
 
-  if(p==='maintenance')
-    return hdr+g2+sel('exp-f-truck','Truck',trO())+
-      sel('exp-f-status','Ticket Status',[['','All Tickets'],['open','🔧 Open'],['done','✅ Done']])+'</div>';
+  if(p==='maintenance'){
+    var numInp=function(id,lbl,ph){
+      return '<div style="display:flex;flex-direction:column">'+
+        '<span style="'+lStyle+'">'+lbl+'</span>'+
+        '<input type="number" id="'+id+'" min="0" step="100" placeholder="'+ph+'" oninput="_expUpdateCount()" '+
+        'style="padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;color:var(--t);background:var(--bg);outline:none;font-family:inherit;width:100%"/>'+
+        '</div>';
+    };
+    return hdr+
+      g2+sel('exp-f-truck','Truck',trO())+sel('exp-f-status','Ticket Status',[['','All Tickets'],['open','🔧 Open'],['done','✅ Done']])+'</div>'+
+      '<div style="'+lStyle+';margin:12px 0 8px">COST RANGE (EGP)</div>'+
+      g2+numInp('exp-f-cost-from','From EGP','0 (no min)')+numInp('exp-f-cost-to','To EGP','no max')+'</div>';
+  }
 
   if(p==='validation')
     return hdr+g2+sel('exp-f-truck','Truck',trO())+
@@ -10757,7 +10912,9 @@ function _expGetFilters(){
     customer:(document.getElementById('exp-f-cu')||{}).value||'',
     condition:(document.getElementById('exp-f-cond')||{}).value||'',
     truck:(document.getElementById('exp-f-truck')||{}).value||'',
-    status:(document.getElementById('exp-f-status')||{}).value||''
+    status:(document.getElementById('exp-f-status')||{}).value||'',
+    costFrom:+((document.getElementById('exp-f-cost-from')||{}).value)||0,
+    costTo:+((document.getElementById('exp-f-cost-to')||{}).value)||0
   };
 }
 
@@ -11093,6 +11250,10 @@ function _getPageExportData(from,to,filters){
       if(!ir(tk.ts))return false;
       if(filters.truck&&tk.truck!==filters.truck)return false;
       if(filters.status&&tk.status!==filters.status)return false;
+      // Cost range filter
+      var ptot=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+      if(filters.costFrom>0&&ptot<filters.costFrom)return false;
+      if(filters.costTo>0&&ptot>filters.costTo)return false;
       return true;
     });
     var allTks=S.maintTickets||[];
