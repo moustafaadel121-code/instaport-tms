@@ -3311,18 +3311,34 @@ function rFleet(){
     '<button class="btn btn-outline btn-sm" onclick="openConditionManager()">&#127777; Conditions <span style="background:#10B981;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">'+(S.tripConditions||[]).length+'</span></button>'+
     '<button class="btn btn-outline btn-sm" onclick="openCustomerAssignment()">&#128101; AM Assign</button>':'')+'<button class="btn btn-outline" onclick="expFleet()">⬇ Export</button></div></div>'+
   '<div class="kpi-row">'+kpiBox('🚛','purple',TRUCKS.length,'Total','')+kpiBox('✅','green',rel,'Released','')+kpiBox('⚠️','orange',TRUCKS.length-rel,'Hold','')+kpiBox('📦','cyan',TRUCKS.filter(function(t){return t.type==='Jumbo';}).length,'Jumbo','')+kpiBox('🚐','purple',TRUCKS.filter(function(t){return t.type==='Dababa';}).length,'Dababa','')+'</div>'+
-  '<div class="card"><div class="sbar"><input placeholder="Search..." id="fs" oninput="flR()"/><select id="ft" onchange="flR()"><option value="">All Types</option>'+( S.truckTypes||[]).map(function(t){return '<option>'+t.label+'</option>';}).join('')+'</select><select id="fst" onchange="flR()"><option value="">All</option><option value="r">Released</option><option value="h">Hold</option></select></div><div id="fl-content"></div></div>';
+  '<div class="card"><div class="sbar"><input placeholder="&#128269; Search plate, mfr, type..." id="fs" oninput="flR()"/><select id="ft" onchange="flR()"><option value="">All Types</option>'+(S.truckTypes||[]).map(function(t){return '<option>'+t.label+'</option>';}).join('')+'</select><select id="fst" onchange="flR()"><option value="">All Status</option><option value="r">Released</option><option value="h">Hold</option><option value="maint">&#9888; Maint. Due</option></select><button class="btn btn-outline btn-sm" onclick="expFleet()" style="margin-left:auto">&#128196; Export</button></div><div id="fl-content"></div></div>';
   flR();
 }
+var _flSort={col:'plate',dir:1};
+function flSortBy(col){if(_flSort.col===col){_flSort.dir*=-1;}else{_flSort.col=col;_flSort.dir=1;}flR();}
+function _flSortArrow(col){return _flSort.col===col?(_flSort.dir===1?' &#9650;':' &#9660;'):'<span style="opacity:.3"> &#8597;</span>';}
 function flR(){
   var s=((document.getElementById('fs')||{}).value||'').toLowerCase();
   var tp=((document.getElementById('ft')||{}).value||'');
   var st=((document.getElementById('fst')||{}).value||'');
-  var now=new Date();var tr=TRUCKS;
-  if(s)tr=tr.filter(function(t){return t.plate.toLowerCase().includes(s)||t.mfr.toLowerCase().includes(s);});
+  var now=new Date();var tr=TRUCKS.slice();
+  if(s)tr=tr.filter(function(t){return (t.plate||'').toLowerCase().includes(s)||(t.mfr||'').toLowerCase().includes(s)||(t.type||'').toLowerCase().includes(s)||(t.cooling||'').toLowerCase().includes(s);});
   if(tp)tr=tr.filter(function(t){return t.type===tp;});
   if(st==='r')tr=tr.filter(function(t){return t.valid;});
   if(st==='h')tr=tr.filter(function(t){return !t.valid;});
+  if(st==='maint')tr=tr.filter(function(t){return _truckMaintAlert(t)!==null;});
+  // Sort
+  tr.sort(function(a,b){
+    var va,vb;
+    if(_flSort.col==='plate'){va=(a.plate||'');vb=(b.plate||'');}
+    else if(_flSort.col==='type'){va=(a.type||'');vb=(b.type||'');}
+    else if(_flSort.col==='mfr'){va=(a.mfr||'');vb=(b.mfr||'');}
+    else if(_flSort.col==='status'){va=a.valid?0:1;vb=b.valid?0:1;}
+    else if(_flSort.col==='odo'){va=a.odometerKm||0;vb=b.odometerKm||0;}
+    else if(_flSort.col==='cal'){va=new Date(a.calExpiry||0);vb=new Date(b.calExpiry||0);}
+    else{va=(a.plate||'');vb=(b.plate||'');}
+    if(va<vb)return -1*_flSort.dir;if(va>vb)return 1*_flSort.dir;return 0;
+  });
   var el=document.getElementById('fl-content');if(!el)return;
   if(S.viewMode==='grid'){
     el.innerHTML='<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">'+tr.slice(0,60).map(function(t){var d=Math.ceil((new Date(t.calExpiry)-now)/864e5);var ec=d<0?'tag-hold':d<90?'tag-pend':'tag-ok';return (function(t,d,ec){
@@ -3369,7 +3385,17 @@ function flR(){
       +'</div></div>';
     }(t,d,ec));}).join('')+'</div>';
   } else {
-    el.innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Plate</th><th>Type</th><th>Mfr</th><th>Cooling</th><th>Cal. Expiry</th><th>Status</th><th>Odometer / Maint.</th><th>Remark</th></tr></thead><tbody>'+
+    var thS='cursor:pointer;user-select:none;white-space:nowrap';
+    el.innerHTML='<div style="overflow-x:auto"><table class="tbl"><thead><tr>'
+      +'<th style="'+thS+'" onclick="flSortBy(\'plate\')">Plate'+_flSortArrow('plate')+'</th>'
+      +'<th style="'+thS+'" onclick="flSortBy(\'type\')">Type'+_flSortArrow('type')+'</th>'
+      +'<th style="'+thS+'" onclick="flSortBy(\'mfr\')">Manufacturer'+_flSortArrow('mfr')+'</th>'
+      +'<th>Cooling</th>'
+      +'<th style="'+thS+'" onclick="flSortBy(\'cal\')">Cal. Expiry'+_flSortArrow('cal')+'</th>'
+      +'<th style="'+thS+'" onclick="flSortBy(\'status\')">Status'+_flSortArrow('status')+'</th>'
+      +'<th style="'+thS+'" onclick="flSortBy(\'odo\')">Odometer / Maint.'+_flSortArrow('odo')+'</th>'
+      +'<th>Remark</th>'
+      +'</tr></thead><tbody>'+
     tr.slice(0,80).map(function(t){
       var d=Math.ceil((new Date(t.calExpiry)-now)/864e5);var ec=d<0?'tag-hold':d<90?'tag-pend':'tag-ok';
       var odo=t.odometerKm||0;var since=odo-(t.lastMaintKm||0);var interval=t.maintIntervalKm||10000;
@@ -3384,7 +3410,92 @@ function flR(){
     }).join('')+'</tbody></table></div>';
   }
 }
-function expFleet(){var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(['Plate,Type,Mfr,CalExpiry,Status'].concat(TRUCKS.map(function(t){return [t.plate,t.type,t.mfr,t.calExpiry,t.status].join(',');})).join('\n'));a.download='Fleet.csv';a.click();toast('Exported!','ok');}
+// ════ UNIVERSAL EXPORT ENGINE ════
+var _uExpData=null;
+function uExport(title,headers,rows){
+  _uExpData={title:title,headers:headers,rows:rows};
+  var ts=new Date().toLocaleString('en-GB');
+  var user=(S.user&&S.user.name)||'—';
+  var role=S.role||'—';
+  openM('<div class="m-title">&#128196; Export: '+title+'</div>'+
+    '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:18px">'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px;color:var(--t)">'+
+    '<div><span style="color:var(--t3)">Records:</span> <strong>'+rows.length+'</strong></div>'+
+    '<div><span style="color:var(--t3)">User:</span> <strong>'+user+'</strong></div>'+
+    '<div><span style="color:var(--t3)">Generated:</span> <strong style="font-size:11px">'+ts+'</strong></div>'+
+    '<div><span style="color:var(--t3)">Role:</span> <strong>'+role+'</strong></div>'+
+    '</div></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">'+
+    '<button class="btn btn-primary" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 10px" onclick="_doUExport(\'csv\')">'+
+    '<span style="font-size:22px">&#128196;</span><span style="font-weight:700;font-size:13px">CSV</span><span style="font-size:10px;opacity:.75">Spreadsheet</span></button>'+
+    '<button class="btn btn-success" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 10px" onclick="_doUExport(\'excel\')">'+
+    '<span style="font-size:22px">&#128202;</span><span style="font-weight:700;font-size:13px">Excel</span><span style="font-size:10px;opacity:.75">.xls format</span></button>'+
+    '<button class="btn btn-outline" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 10px;color:#EF4444;border-color:#EF4444" onclick="_doUExport(\'pdf\')">'+
+    '<span style="font-size:22px">&#128424;</span><span style="font-weight:700;font-size:13px">PDF</span><span style="font-size:10px;opacity:.75">Print ready</span></button>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Close</button></div>');
+}
+function _doUExport(fmt){
+  var d=_uExpData;if(!d)return;
+  var ts=new Date().toLocaleString('en-GB');
+  var user=(S.user&&S.user.name)||'';var role=S.role||'';
+  var fname='InstaPort_'+d.title.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10);
+  if(fmt==='csv'){
+    var meta=['# InstaPort TMS — '+d.title,'# Generated: '+ts,'# User: '+user+' ('+role+')','# Records: '+d.rows.length,''];
+    var body=[d.headers.join(',')].concat(d.rows.map(function(r){return r.map(function(v){return '"'+(v+'').replace(/"/g,'""')+'"';}).join(',');}));
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([meta.join('\n')+body.join('\n')],{type:'text/csv;charset=utf-8;'}));
+    a.download=fname+'.csv';a.click();toast('CSV downloaded!','ok');
+  } else if(fmt==='excel'){
+    var lines=[['InstaPort TMS — '+d.title],['Generated:',ts,'User:',user,'Role:',role],['Records:',d.rows.length],[],d.headers];
+    d.rows.forEach(function(r){lines.push(r);});
+    var tsv=lines.map(function(r){return r.map(function(v){return '"'+(v+'').replace(/"/g,'""')+'"';}).join('\t');}).join('\n');
+    var a2=document.createElement('a');
+    a2.href=URL.createObjectURL(new Blob([tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
+    a2.download=fname+'.xls';a2.click();toast('Excel downloaded!','ok');
+  } else if(fmt==='pdf'){
+    var w=window.open('','_blank','width=1050,height=780');if(!w){toast('Allow popups for PDF','err');return;}
+    var trs=d.rows.map(function(r,i){return '<tr'+(i%2?' style="background:#fafafa"':'')+'>'
+      +r.map(function(v){return '<td>'+String(v).replace(/</g,'&lt;')+'</td>';}).join('')+'</tr>';}).join('');
+    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+d.title+'</title>'
+      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10.5px;padding:24px 28px;color:#111}'
+      +'.logo{color:#6C3FF5;font-size:18px;font-weight:900;margin-bottom:2px}'
+      +'.meta{color:#555;font-size:10px;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #6C3FF5}'
+      +'table{width:100%;border-collapse:collapse;margin-top:4px;font-size:10px}'
+      +'th{background:#1E1453;color:#fff;padding:7px 8px;text-align:left}'
+      +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb}'
+      +'.foot{margin-top:14px;font-size:9px;color:#999;border-top:1px solid #e5e7eb;padding-top:8px;display:flex;justify-content:space-between}'
+      +'@media print{.no-print{display:none}}'
+      +'</style></head><body>'
+      +'<div class="logo">&#128230; InstaPort TMS</div>'
+      +'<div class="meta">Report: <strong>'+d.title+'</strong> &nbsp;|&nbsp; Generated: '+ts+' &nbsp;|&nbsp; User: '+user+' &nbsp;|&nbsp; Role: '+role+' &nbsp;|&nbsp; Records: '+d.rows.length+'</div>'
+      +'<table><thead><tr>'+d.headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'
+      +'<tbody>'+trs+'</tbody></table>'
+      +'<div class="foot"><span>InstaPort TMS &bull; '+ts+'</span><span>'+user+' / '+role+'</span></div>'
+      +'<br><button class="no-print" onclick="window.print()" style="margin-top:8px;padding:8px 22px;background:#6C3FF5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">&#128424; Print / Save PDF</button>'
+      +'</body></html>');
+    w.document.close();toast('PDF ready — use Print button','ok');
+  }
+}
+
+function expFleet(){
+  var headers=['Plate','Type','Manufacturer','Cooling','Cal. Expiry','Status','Odometer (km)','Since Service (km)','Maint. Status','Remark'];
+  var rows=TRUCKS.map(function(t){
+    var odo=t.odometerKm||0;var since=odo-(t.lastMaintKm||0);
+    var ma=_truckMaintAlert(t);
+    return [t.plate,t.type,t.mfr,t.cooling,t.calExpiry,t.valid?'Released':'Hold',
+      Math.round(odo),Math.round(since),ma?(ma.level==='overdue'?'OVERDUE':'Due Soon'):'OK',t.remark||''];
+  });
+  uExport('Fleet Report',headers,rows);
+}
+function expMaint(){
+  var headers=['Ticket ID','Truck','Description','Status','Date','Parts','Parts Cost (EGP)','Auto'];
+  var rows=S.maintTickets.map(function(tk){
+    var cost=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+    return [tk.id,tk.truck,tk.desc,tk.status,tk.ts,(tk.parts||[]).length,cost.toFixed(2),tk.auto?'Yes':'No'];
+  });
+  uExport('Maintenance Tickets',headers,rows);
+}
 function openAddTruck(){
   openM(
     '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'+
@@ -4537,7 +4648,7 @@ function exportRates(){
 
 function rMaint(){
   var c=document.getElementById('content');
-  c.innerHTML='<div class="page-head"><div><h2>🔧 Maintenance</h2></div><div style="display:flex;gap:8px"><button class="btn btn-outline" onclick="nav(\'spare_parts\')">🔩 Spare Parts</button><button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button></div></div>'+
+  c.innerHTML='<div class="page-head"><div><h2>&#128295; Maintenance</h2></div><div style="display:flex;gap:8px"><button class="btn btn-outline" onclick="expMaint()">&#128196; Export</button><button class="btn btn-outline" onclick="nav(\'spare_parts\')">&#128297; Spare Parts</button><button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button></div></div>'+
   '<div class="kpi-row">'+kpiBox('🔧','orange',S.maintTickets.filter(function(t){return t.status==='open';}).length,'Open','')+kpiBox('✅','green',S.maintTickets.filter(function(t){return t.status==='done';}).length,'Done','')+kpiBox('⚠️','red',TRUCKS.filter(function(t){return !t.valid;}).length,'Trucks On Hold','')+kpiBox('🤖','purple',S.maintTickets.filter(function(t){return t.auto;}).length,'Auto Tickets','')+'</div>'+
   (S.maintTickets.length===0?'<div class="card" style="text-align:center;padding:40px;color:var(--t2)">No tickets</div>':'')+
   S.maintTickets.slice().reverse().map(function(tk){return '<div class="card" id="maint-tk-'+tk.id+'" style="border-left:4px solid '+(tk.status==='done'?'var(--c4)':tk.auto?'var(--c3)':'var(--c2)')+'">'+
@@ -4560,14 +4671,17 @@ function rMaint(){
 function deleteMaintTicket(id){
   requirePwd('Delete ticket '+id, function(){
     var idx=S.maintTickets.findIndex(function(x){return x.id===id;});
-    if(idx>-1){
-      S.maintTickets.splice(idx,1);
-      // Remove from Supabase
-      if(_sb)_sb.from('maintenance').delete().eq('id',id).eq('tenant_id',_tenantId);
-      audit('DELETE_MAINT','Deleted ticket',id);
-    }
+    if(idx>-1) S.maintTickets.splice(idx,1);
+    audit('DELETE_MAINT','Deleted ticket',id);
     toast('Ticket '+id+' deleted','ok');
-    rMaint();
+    // Wait for Supabase delete to finish, then fully re-render maintenance page
+    if(_sb){
+      _sb.from('maintenance').delete().eq('id',id).eq('tenant_id',_tenantId)
+        .then(function(){nav('maintenance');})
+        .catch(function(){nav('maintenance');});
+    } else {
+      nav('maintenance');
+    }
   });
 }
 function openMaint(savedState){
@@ -4757,7 +4871,7 @@ function addStockPart(spId,name,cost){
       tk.parts=(tk.parts||[]).concat([{name:name,qty:1,cost:cost,stockId:spId}]);
       audit('ADD_FROM_STOCK',name+' added to '+tkId,tkId);
       toast(name+' added to ticket '+tkId,'ok');
-      rMaint();
+      setTimeout(function(){nav('maintenance');},100);
     }
     _currentTicketId=null;
   } else {
@@ -4791,7 +4905,7 @@ function doneMaintConfirm(id){
     var tk=S.maintTickets.find(function(x){return x.id===id;});if(!tk)return;
     tk.status='done';var t=TRUCKS.find(function(x){return x.plate===tk.truck;});
     if(t){t.valid=false;t.status='Hold';t.remark='Maintenance done — pending inspection before release';syncTruck(t);}
-    syncMaint(tk);audit('MAINT_DONE','Truck '+tk.truck+' on hold pending inspection',id);toast('✅ Maintenance done — truck held for inspection','ok');rMaint();
+    syncMaint(tk);audit('MAINT_DONE','Truck '+tk.truck+' on hold pending inspection',id);toast('&#10003; Maintenance done — truck held for inspection','ok');setTimeout(function(){nav('maintenance');},150);
   });
 }
 function addPM(tkId){
@@ -4863,7 +4977,7 @@ function addStockPartWithQty(spId,name,cost,qtyInputId){
 function backToAddPM(tkId){addPM(tkId);}
 
 function savePM(tkId){var tk=S.maintTickets.find(function(x){return x.id===tkId;});if(!tk)return;var v=_parts.filter(function(p){return p.name.trim();});if(!v.length){toast('Enter at least one part','err');return;}tk.parts=(tk.parts||[]).concat(v);v.forEach(function(p){if(p.stockId){var sp=S.sparePartsStock.find(function(x){return x.id===p.stockId;});if(sp){sp.qty=Math.max(0,sp.qty-p.qty);syncPart(sp);}}});syncMaint(tk);_currentTicketId=null;closeM();toast(v.length+' parts added!','ok');rMaint();return;}
-function _savePM_orig_UNUSED(x){} function _savePM_check(tkId){var tk=S.maintTickets.find(function(x){return x.id===tkId;});if(!tk)return;audit('ADD_PARTS',v.length+' parts',tkId);_currentTicketId=null;closeM();toast(v.length+' parts added to '+tkId+'!','ok');setTimeout(function(){rMaint();},50);}
+function _savePM_orig_UNUSED(x){} function _savePM_check(tkId){var tk=S.maintTickets.find(function(x){return x.id===tkId;});if(!tk)return;audit('ADD_PARTS',v.length+' parts',tkId);_currentTicketId=null;closeM();toast(v.length+' parts added to '+tkId+'!','ok');setTimeout(function(){nav('maintenance');},100);}
 function attachM(tkId){openM('<div class="m-title">📎 Attach to '+tkId+'</div>'+fileHTML('m-att')+'<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="saveMA(\''+tkId+'\')">Attach</button></div>');}
 function saveMA(tkId){var tk=S.maintTickets.find(function(x){return x.id===tkId;});var f=getFile('m-att');if(tk&&f){if(!tk.attachments)tk.attachments=[];tk.attachments.push({name:f,by:S.user.name,ts:new Date().toLocaleString()});audit('ATTACH_MAINT',f,tkId);toast('Attached!','ok');}closeM();}
 function addFromStock(tkId){_parts=[];_currentTicketId=tkId;pickFromStockForTicket(tkId);}
@@ -5321,7 +5435,11 @@ function rAI(){
   (comp.filter(function(t){return t.aiReport;}).length>0?'<div class="card"><div class="card-hd"><div class="card-title">Trip Assessments</div></div>'+comp.filter(function(t){return t.aiReport;}).map(function(t){return '<div style="padding:12px;background:var(--bg);border-radius:var(--r);margin-bottom:8px;border-left:3px solid var(--c1)"><div style="font-weight:600;margin-bottom:4px">'+t.id+' — '+t.customer+'</div><div style="font-size:12px;color:var(--t2)">'+t.aiReport+'</div></div>';}).join('')+'</div>':'');
   setTimeout(function(){var canvas=document.getElementById('ai-canvas');if(!canvas)return;var ctx=canvas.getContext('2d');canvas.width=canvas.offsetWidth||600;canvas.height=120;var w=canvas.width,h=canvas.height,data=_tempData.slice(-60);ctx.clearRect(0,0,w,h);var y2=h*(1-(8+20)/45),y1=h*(1-(2+20)/45);ctx.fillStyle='rgba(16,185,129,.1)';ctx.fillRect(0,y2,w,y1-y2);if(data.length<2)return;for(var i=1;i<data.length;i++){var v=data[i],pv=data[i-1];var x=i/(data.length-1)*w,y=h*(1-(v+20)/45);var px=(i-1)/(data.length-1)*w,py=h*(1-(pv+20)/45);var ok=v>=2&&v<=8,warn=(v<2&&v>-5)||(v>8&&v<12);ctx.strokeStyle=ok?'#10B981':warn?'#F97316':'#EF4444';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(px,py);ctx.lineTo(x,y);ctx.stroke();}},100);
 }
-function expAI(){var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(['Index,Time,Temp(C),Status'].concat(_tempData.map(function(v,i){return i+','+_tempTimestamps[i]+','+v.toFixed(2)+','+(v>=2&&v<=8?'OK':(v<-5||v>=12)?'EXCURSION':'WARNING');})).join('\n'));a.download='TempAnalysis.csv';a.click();toast('Exported!','ok');}
+function expAI(){
+  var headers=['#','Timestamp','Temp (°C)','Status'];
+  var rows=_tempData.map(function(v,i){return[i+1,_tempTimestamps[i]||'',v.toFixed(2),(v>=2&&v<=8?'OK':(v<-5||v>=12)?'EXCURSION':'WARNING')];});
+  uExport('Temperature Analysis',headers,rows);
+}
 
 // AUDIT TRAIL
 function rAudit(){
@@ -5343,7 +5461,11 @@ function audR(){
   list.slice(0,100).map(function(a){return '<tr><td style="font-size:11px;color:var(--t2);white-space:nowrap">'+a.ts+'</td><td style="font-weight:500">'+a.user+'</td><td><span class="tag tag-gray" style="font-size:10px">'+a.role+'</span></td><td><span class="tag tag-info" style="font-size:10px">'+a.action+'</span></td><td style="font-size:12px;color:var(--t2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+a.detail+'</td><td style="font-weight:600;color:var(--c1)">'+(a.tripId||'—')+'</td></tr>';}).join('')+
   '</tbody></table></div>';
 }
-function expAudit(){var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(['Time,User,Role,Action,Detail,Trip'].concat(S.auditTrail.map(function(a){return [a.ts,a.user,a.role,a.action,a.detail.replace(/,/g,';'),a.tripId].join(',');})).join('\n'));a.download='AuditTrail.csv';a.click();toast('Exported!','ok');}
+function expAudit(){
+  var headers=['Time','User','Role','Action','Detail','Trip ID'];
+  var rows=S.auditTrail.map(function(a){return[a.ts,a.user,a.role,a.action,a.detail,a.tripId||''];});
+  uExport('Audit Trail',headers,rows);
+}
 
 function statBarRow_UNUSED(label, val, pct, meta) {
   var t = String(label || '').replace(/"/g, '&quot;');
@@ -7780,25 +7902,35 @@ function showNotifs() {
     '<button class="btn btn-outline" onclick="closeM()">Close</button></div>');
 }
 function expByCustomer() {
-  openM('<div class="m-title">&#128202; Export Report</div>' +
-    '<div class="fg" style="margin-bottom:12px"><label>Customer</label>' +
+  openM('<div class="m-title">&#128202; Export Trips Report</div>' +
+    '<div class="fg" style="margin-bottom:12px"><label>Customer (optional)</label>' +
     '<select id="ec"><option value="">All Customers</option>' +
     CUSTOMERS.map(function(c) { return '<option>' + c + '</option>'; }).join('') + '</select></div>' +
-    '<div class="frow"><div class="fg"><label>From</label><input type="date" id="ef"/></div>' +
-    '<div class="fg"><label>To</label><input type="date" id="et2"/></div></div>' +
+    '<div class="frow"><div class="fg"><label>Date From</label><input type="date" id="ef"/></div>' +
+    '<div class="fg"><label>Date To</label><input type="date" id="et2"/></div></div>' +
     '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>' +
-    '<button class="btn btn-primary" onclick="runExport()">&#11015; Export CSV</button></div>');
+    '<button class="btn btn-primary" onclick="runExport()">&#128202; Choose Format</button></div>');
 }
 function runExport() {
-  var cu = (document.getElementById('ec') || {}).value;
-  var trips = S.trips;
-  if(cu) trips = trips.filter(function(t) { return t.customer === cu; });
-  var rows = ['ID,Customer,Type,KM,Cost,CO2,Status,Date'];
-  trips.forEach(function(t) { rows.push([t.id, t.customer, t.type, t.km || 0, t.cost || 0, t.co2 || 0, t.status, t.ts || ''].join(',')); });
-  var a = document.createElement('a');
-  a.href = 'data:text/csv,' + encodeURIComponent(rows.join('\n'));
-  a.download = 'Report_EPX_' + (cu || 'All') + '.csv';
-  a.click(); closeM(); toast('Exported!', 'ok');
+  var cu=(document.getElementById('ec')||{}).value;
+  var ef=(document.getElementById('ef')||{}).value;
+  var et=(document.getElementById('et2')||{}).value;
+  var trips=S.trips.slice();
+  if(cu)trips=trips.filter(function(t){return t.customer===cu;});
+  if(ef)trips=trips.filter(function(t){return (t.ts||'')>=ef;});
+  if(et)trips=trips.filter(function(t){return (t.ts||'')<=et+' 23:59';});
+  closeM();
+  var canFin=can('finance_view')||can('all');
+  var headers=['ID','Customer','Type','Direction','Condition','Truck','Driver','KM'];
+  if(canFin)headers.push('Cost (EGP)');
+  headers.push('CO2 (kg)','Status','Date');
+  var rows=trips.map(function(t){
+    var r=[t.id,t.customer,t.type,t.dir||'',t.condition||'',t.truck||'',t.driver||'',t.km||0];
+    if(canFin)r.push(t.cost||0);
+    r.push(t.co2||0,t.status,t.ts||'');
+    return r;
+  });
+  uExport('Trips Report'+(cu?' — '+cu:''),headers,rows);
 }
 
 // (doLogin patch removed — multi-tenant version at line ~6522 is the active one)
