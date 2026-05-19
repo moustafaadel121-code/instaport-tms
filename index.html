@@ -431,6 +431,30 @@ input, select, textarea { font-family: inherit; }
 }
 .sb-sw:hover { transform: scale(1.2); }
 .sb-sw.on { border-color: #fff; transform: scale(1.15); }
+.sb-sw-lbl {
+  font-size: 9px; color: rgba(255,255,255,.35);
+  text-transform: uppercase; letter-spacing: .8px;
+  font-weight: 700; margin-right: 2px;
+}
+/* ── Light sidebar overrides (lime / rose in light mode) ── */
+#sidebar.sb-light { color: rgba(0,0,0,.7); }
+#sidebar.sb-light .sbi { color: rgba(0,0,0,.5); }
+#sidebar.sb-light .sbi:hover { background: rgba(0,0,0,.06) !important; color: rgba(0,0,0,.82) !important; }
+#sidebar.sb-light .sb-section-title { color: rgba(0,0,0,.35); }
+#sidebar.sb-light .sb-divider { background: rgba(0,0,0,.1); }
+#sidebar.sb-light .sb-user { border-top-color: rgba(0,0,0,.1); }
+#sidebar.sb-light .sb-user:hover { background: rgba(0,0,0,.05); }
+#sidebar.sb-light .sb-user-name { color: rgba(0,0,0,.82) !important; }
+#sidebar.sb-light .sb-user-role { color: rgba(0,0,0,.5) !important; }
+#sidebar.sb-light .sb-user-arrow { color: rgba(0,0,0,.3) !important; }
+#sidebar.sb-light .sb-user-av { border-color: rgba(0,0,0,.15); }
+#sidebar.sb-light .sb-sw-lbl { color: rgba(0,0,0,.38) !important; }
+#sidebar.sb-light .sb-sw.on { border-color: rgba(0,0,0,.7); }
+#sidebar.sb-light #sb-tenant-badge { background: rgba(0,0,0,.06) !important; color: rgba(0,0,0,.5) !important; }
+#sidebar.sb-light #sb-tenant-badge-name { color: rgba(0,0,0,.65) !important; }
+#sidebar.sb-light #sb-tenant-name { color: rgba(0,0,0,.85) !important; }
+#sidebar.sb-light .sb-logo-box svg path { fill: rgba(0,0,0,.7) !important; }
+#sidebar.sb-light::after { opacity: .4; }
 .sb-header {
   padding: 22px 20px 18px;
   display: flex;
@@ -529,7 +553,7 @@ input, select, textarea { font-family: inherit; }
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  background: linear-gradient(135deg, #6C3FF5, #9B7FF8);
+  background: linear-gradient(135deg, var(--c1), var(--c1-mid,#9B7FF8));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -960,7 +984,7 @@ input, select, textarea { font-family: inherit; }
 
 /* Weekly deliveries widget */
 .weekly-widget {
-  background: linear-gradient(145deg, #6C3FF5, #4F1FD4);
+  background: linear-gradient(145deg, var(--c1), var(--c1-dark,#4F1FD4));
   border-radius: var(--r-xl);
   padding: 18px 20px;
   color: #fff;
@@ -1914,13 +1938,13 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 
 /* ═══ TRUCK CAPACITY WIDGET ═══ */
 .cap-mini-widget {
-  background:linear-gradient(135deg,#6C3FF5 0%,#4F1FD4 60%,#3B0764 100%);
+  background:linear-gradient(135deg,var(--c1) 0%,var(--c1-dark,#4F1FD4) 60%,var(--c1-deeper,#3B0764) 100%);
   border-radius:16px; padding:18px 20px; color:#fff; position:relative;
   overflow:hidden; cursor:pointer; transition:transform .2s,box-shadow .2s;
-  box-shadow:0 8px 28px rgba(108,63,245,.45);
+  box-shadow:0 8px 28px var(--c1-sh,rgba(108,63,245,.45));
   min-height:180px;
 }
-.cap-mini-widget:hover { transform:translateY(-2px); box-shadow:0 14px 40px rgba(108,63,245,.55); }
+.cap-mini-widget:hover { transform:translateY(-2px); box-shadow:0 14px 40px var(--c1-sh,rgba(108,63,245,.55)); }
 .cap-mini-widget::before {
   content:''; position:absolute; top:-50px; right:-50px; width:180px; height:180px;
   border-radius:50%; background:rgba(255,255,255,.07); pointer-events:none; z-index:0;
@@ -2369,7 +2393,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
     </div>
     <!-- Sidebar color theme picker -->
     <div class="sb-theme-row" title="Sidebar color">
-      <span style="font-size:9px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-right:2px">Skin</span>
+      <span class="sb-sw-lbl">Skin</span>
       <span class="sb-sw" id="sw-purple" style="background:linear-gradient(135deg,#6C3FF5,#4F1FD4)" onclick="setSbTheme('purple')" title="Purple (default)"></span>
       <span class="sb-sw" id="sw-lime"   style="background:linear-gradient(135deg,#84CC16,#4D7C0F)"  onclick="setSbTheme('lime')"   title="Lime Green"></span>
       <span class="sb-sw" id="sw-slate"  style="background:linear-gradient(135deg,#64748B,#334155)"  onclick="setSbTheme('slate')"  title="Slate Grey"></span>
@@ -6400,35 +6424,42 @@ var _sbThemes = {
     act:'linear-gradient(135deg,rgba(108,63,245,.9),rgba(79,31,212,.8))',
     sh:'0 4px 16px rgba(108,63,245,.4)',
     glow:'rgba(108,63,245,.15)',
-    c1:'#6C3FF5', c1l:'#EEE9FD', c1m:'#9B7FF8'
+    c1:'#6C3FF5', c1l:'#EEE9FD', c1m:'#9B7FF8',
+    c1d:'#4F1FD4', c1dp:'#3B0764', c1sh:'rgba(108,63,245,.45)'
   },
   lime: {
-    bg:'#14290E', bgDark:'#0A1A06',
-    act:'linear-gradient(135deg,rgba(132,204,22,.85),rgba(77,124,15,.9))',
-    sh:'0 4px 16px rgba(132,204,22,.35)',
-    glow:'rgba(132,204,22,.12)',
-    c1:'#84CC16', c1l:'#ECFCCB', c1m:'#A3E635'
+    bg:'#E8F8E0', bgDark:'#0B2D06',
+    light:true,
+    act:'linear-gradient(135deg,rgba(34,197,94,.9),rgba(22,163,74,.85))',
+    sh:'0 4px 16px rgba(34,197,94,.4)',
+    glow:'rgba(34,197,94,.15)',
+    c1:'#22C55E', c1l:'#DCFCE7', c1m:'#86EFAC',
+    c1d:'#16A34A', c1dp:'#14532D', c1sh:'rgba(34,197,94,.42)'
   },
   slate: {
     bg:'#1E2633', bgDark:'#0F1520',
     act:'linear-gradient(135deg,rgba(100,116,139,.9),rgba(51,65,85,.95))',
     sh:'0 4px 16px rgba(100,116,139,.4)',
     glow:'rgba(100,116,139,.15)',
-    c1:'#64748B', c1l:'#F1F5F9', c1m:'#94A3B8'
+    c1:'#64748B', c1l:'#F1F5F9', c1m:'#94A3B8',
+    c1d:'#475569', c1dp:'#334155', c1sh:'rgba(100,116,139,.42)'
   },
   ocean: {
     bg:'#0A2233', bgDark:'#061520',
     act:'linear-gradient(135deg,rgba(6,182,212,.85),rgba(14,116,144,.9))',
     sh:'0 4px 16px rgba(6,182,212,.35)',
     glow:'rgba(6,182,212,.13)',
-    c1:'#06B6D4', c1l:'#CFFAFE', c1m:'#22D3EE'
+    c1:'#06B6D4', c1l:'#CFFAFE', c1m:'#22D3EE',
+    c1d:'#0E7490', c1dp:'#164E63', c1sh:'rgba(6,182,212,.42)'
   },
   rose: {
-    bg:'#2A0A16', bgDark:'#1A0510',
-    act:'linear-gradient(135deg,rgba(244,63,94,.85),rgba(159,18,57,.9))',
-    sh:'0 4px 16px rgba(244,63,94,.35)',
-    glow:'rgba(244,63,94,.13)',
-    c1:'#F43F5E', c1l:'#FFE4E6', c1m:'#FB7185'
+    bg:'#FEE7ED', bgDark:'#4C0519',
+    light:true,
+    act:'linear-gradient(135deg,rgba(244,63,94,.9),rgba(190,18,60,.85))',
+    sh:'0 4px 16px rgba(244,63,94,.4)',
+    glow:'rgba(244,63,94,.15)',
+    c1:'#F43F5E', c1l:'#FFE4E6', c1m:'#FDA4AF',
+    c1d:'#BE123C', c1dp:'#881337', c1sh:'rgba(244,63,94,.42)'
   }
 };
 var _sbCurrent = 'purple';
@@ -6441,18 +6472,26 @@ function setSbTheme(name) {
   var el = document.getElementById('_sbThemeStyle');
   if(!el){ el = document.createElement('style'); el.id='_sbThemeStyle'; document.head.appendChild(el); }
   var dark = (document.documentElement.getAttribute('data-theme')==='dark');
+  var isLight = !!(t.light && !dark);
+  var sbBg = dark ? t.bgDark : t.bg;
   el.textContent = [
     ':root {',
-    '  --sidebar-bg:'+t.bg+';',
+    '  --sidebar-bg:'+sbBg+';',
     '  --sb-act:'+t.act+';',
     '  --sb-sh:'+t.sh+';',
     '  --sb-glow:'+t.glow+';',
     '  --c1:'+t.c1+';',
     '  --c1-light:'+t.c1l+';',
     '  --c1-mid:'+t.c1m+';',
+    '  --c1-dark:'+t.c1d+';',
+    '  --c1-deeper:'+(t.c1dp||t.c1d)+';',
+    '  --c1-sh:'+t.c1sh+';',
     '}',
     '[data-theme=dark] { --sidebar-bg:'+t.bgDark+'; }'
   ].join('\n');
+  // Toggle light class on sidebar
+  var sb = document.getElementById('sidebar');
+  if(sb) sb.classList.toggle('sb-light', isLight);
   // Update active swatch ring
   ['purple','lime','slate','ocean','rose'].forEach(function(k){
     var sw=document.getElementById('sw-'+k);
