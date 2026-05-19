@@ -6391,6 +6391,20 @@ var _CSV_TEMPLATES={
     columns:['customer','item','description','unit_price','currency'],
     sample:'PBG,Cold Trip Cairo-Alex,Outbound Cold 220km,4800,EGP\nPBG,Frozen Trip Cairo-Giza,Outbound Frozen 45km,1950,EGP',
     desc:'Detailed price list per customer and service.'
+  },
+  pm_schedule:{
+    label:'📅 PM Schedules',
+    columns:['plate','serviceType','intervalKm','intervalDays','lastKm','lastDate','vendorName','notes'],
+    sample:'TRK-001,Oil Change,10000,90,45000,2026-01-15,ABC Workshop,\nTRK-002,Filter Change,15000,180,30000,2025-12-01,,Check air filter',
+    desc:'Import preventive maintenance schedules. intervalKm/intervalDays trigger auto-tickets. vendorName must match an existing vendor name.',
+    local:true
+  },
+  vendors_ws:{
+    label:'🏪 Vendors & Workshops',
+    columns:['name','type','speciality','phone','address','contactName','email'],
+    sample:'ABC Workshop,Workshop,Oil & Filters,010-1234567,Cairo Industrial Zone,Ahmed Ali,ahmed@abc.com\nParts Plus,Supplier,Spare Parts,011-7654321,Giza,Sara Mohamed,',
+    desc:'Import vendors and workshops. type: Workshop, Supplier, Inspector, Other.',
+    local:true
   }
 };
 
@@ -6436,7 +6450,7 @@ function rAdminImport(){
     '<div class="card-hd" style="margin-bottom:12px"><div class="card-title" id="import-preview-title">Preview</div>'+
     '<div style="display:flex;gap:8px">'+
     '<button class="btn btn-sm btn-outline" onclick="document.getElementById(\'import-preview\').style.display=\'none\'">Cancel</button>'+
-    '<button class="btn btn-sm btn-primary" id="import-confirm-btn" onclick="confirmCSVImport(\''+type+'\')">✅ Import to Supabase</button>'+
+    '<button class="btn btn-sm btn-primary" id="import-confirm-btn" onclick="confirmCSVImport(\''+type+'\')">'+(tpl.local?'✅ Import (Local)':'✅ Import to Supabase')+'</button>'+
     '</div></div>'+
     '<div id="import-preview-table" style="overflow:auto;max-height:320px"></div>'+
     '</div>'+
@@ -6507,16 +6521,57 @@ function parseCSVPreview(text,type){
 }
 
 async function confirmCSVImport(type){
-  if(!_sb){toast('Not connected to Supabase','err');return;}
   if(!_csvParsed||_csvParsed.length===0){toast('No data to import','err');return;}
+  var tpl=_CSV_TEMPLATES[type];
   var btn=document.getElementById('import-confirm-btn');
-  btn.disabled=true;btn.textContent='Importing…';
   var result=document.getElementById('import-result');
   result.innerHTML='';
+
+  // ── LOCAL imports (localStorage-backed, no Supabase needed) ────────────
+  if(tpl&&tpl.local){
+    var added=0;
+    if(type==='pm_schedule'){
+      if(!S.serviceSchedules)S.serviceSchedules=[];
+      _csvParsed.forEach(function(r){
+        if(!r.plate||!r.serviceType)return;
+        var vend=(S.vendors||[]).find(function(v){return v.name.toLowerCase()===(r.vendorName||'').toLowerCase();});
+        S.serviceSchedules.push({
+          id:'PM-'+Date.now()+'-'+added,
+          plate:r.plate,serviceType:r.serviceType,
+          intervalKm:+r.intervalKm||0,intervalDays:+r.intervalDays||0,
+          lastKm:+r.lastKm||0,lastDate:r.lastDate||'',
+          vendorId:vend?vend.id:'',notes:r.notes||'',active:true
+        });added++;
+      });
+      _savePMSchedules();
+      result.innerHTML='<div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:16px;color:#16a34a;font-size:14px;font-weight:600">✅ Imported '+added+' PM schedule(s) successfully!</div>';
+      _csvParsed=[];document.getElementById('import-preview').style.display='none';
+      toast('✅ '+added+' PM schedules imported!','ok');
+    } else if(type==='vendors_ws'){
+      if(!S.vendors)S.vendors=[];
+      _csvParsed.forEach(function(r){
+        if(!r.name)return;
+        S.vendors.push({
+          id:'VN-'+Date.now()+'-'+added,name:r.name,
+          type:r.type||'Workshop',speciality:r.speciality||'',
+          phone:r.phone||'',address:r.address||'',
+          contactName:r.contactName||'',email:r.email||''
+        });added++;
+      });
+      _saveVendors();
+      result.innerHTML='<div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:16px;color:#16a34a;font-size:14px;font-weight:600">✅ Imported '+added+' vendor(s) successfully!</div>';
+      _csvParsed=[];document.getElementById('import-preview').style.display='none';
+      toast('✅ '+added+' vendors imported!','ok');
+    }
+    return;
+  }
+
+  // ── SUPABASE imports ─────────────────────────────────────────────────────
+  if(!_sb){toast('Not connected to Supabase','err');return;}
+  btn.disabled=true;btn.textContent='Importing…';
   try{
     var rows=_csvParsed.map(function(r){
       var row=Object.assign({},r,{tenant_id:_tenantId});
-      // Type-specific transformations
       if(type==='trucks'){
         row.valid=!row.status||row.status.toLowerCase()==='released';
         row.flagged=false;
@@ -6545,7 +6600,6 @@ async function confirmCSVImport(type){
     });
     var tableMap={users:'users',customers:'customers',trucks:'trucks',pricing:'pricing_rules',spare_parts:'spare_parts',am_assign:'am_assignments',price_lists:'customer_price_lists'};
     var tableName=tableMap[type];
-    // Upsert in batches of 50
     var total=0,errors=[];
     for(var i=0;i<rows.length;i+=50){
       var batch=rows.slice(i,i+50);
@@ -6562,7 +6616,6 @@ async function confirmCSVImport(type){
       _csvParsed=[];
       document.getElementById('import-preview').style.display='none';
       toast('✅ '+total+' rows imported!','ok');
-      // Refresh local data
       initApp();
     }
   }catch(e){
@@ -13075,9 +13128,9 @@ function _runFinExport(type){
 }
 
 // ══════════════════════════════════════════════════
-// CSV IMPORT — PM Scheduler & Vendors
+// CSV IMPORT — PM Scheduler & Vendors (standalone quick-import, distinct from Admin import)
 // ══════════════════════════════════════════════════
-var _CSV_TEMPLATES={
+var _PM_TEMPLATES={
   pm:{
     headers:['plate','serviceType','intervalKm','intervalDays','lastKm','lastDate','vendorName','notes'],
     sample:[
@@ -13097,7 +13150,7 @@ var _CSV_TEMPLATES={
 };
 
 function _dlCSVTemplate(target){
-  var tpl=_CSV_TEMPLATES[target];if(!tpl)return;
+  var tpl=_PM_TEMPLATES[target];if(!tpl)return;
   var lines=[tpl.headers.join(',')].concat(tpl.sample.map(function(r){return r.map(function(c){return'"'+c+'"';}).join(',');}));
   var a=document.createElement('a');
   a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(lines.join('\n'));
@@ -13124,7 +13177,7 @@ function _parseCSV(text){
 window._csvImportBuf=null; // {target, headers, rows}
 
 function openImportCSV(target){
-  var tpl=_CSV_TEMPLATES[target];if(!tpl)return;
+  var tpl=_PM_TEMPLATES[target];if(!tpl)return;
   openM('<div class="m-title">📥 Import '+tpl.label+' from CSV</div>'+
     '<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--t2)">'+
     '<strong>Expected columns:</strong> '+tpl.headers.map(function(h){return'<code style="background:var(--dv);border-radius:4px;padding:1px 5px">'+h+'</code>';}).join(' ')+'<br>'+
@@ -13159,7 +13212,7 @@ function previewImportCSV(target,inp){
     var dataRows=rows.slice(1).filter(function(r){return r.some(function(c){return c.replace(/"/g,'').trim();});});
     window._csvImportBuf={target:target,headers:headers,rows:dataRows};
     // Render preview table
-    var tpl=_CSV_TEMPLATES[target];
+    var tpl=_PM_TEMPLATES[target];
     var missing=tpl.headers.filter(function(h){return headers.indexOf(h)<0;});
     var warn=missing.length?'<div style="background:#FEF2F2;color:#DC2626;font-size:11px;padding:6px 10px;border-radius:6px;margin-bottom:6px">⚠️ Missing columns: '+missing.join(', ')+'</div>':'';
     var preview='<table style="width:100%;border-collapse:collapse;font-size:11px">'+
