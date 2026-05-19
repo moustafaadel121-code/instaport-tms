@@ -3309,9 +3309,22 @@ function rFleet(){
   var rel=TRUCKS.filter(function(t){return t.valid;}).length;
   c.innerHTML='<div class="page-head"><div><h2>Fleet</h2></div><div style="display:flex;gap:8px">'+vBtn()+(can('add_truck')||can('all')?'<button class="btn btn-primary" onclick="openAddTruck()">+ Add Truck</button>':'')+(can('all')||S.role==='admin'?'<button class="btn btn-outline" onclick="openTruckTypeManager()" style="display:flex;align-items:center;gap:5px">&#9881; Truck Types <span style="background:#6C3FF5;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">'+(S.truckTypes||[]).length+'</span></button>'+
     '<button class="btn btn-outline btn-sm" onclick="openConditionManager()">&#127777; Conditions <span style="background:#10B981;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">'+(S.tripConditions||[]).length+'</span></button>'+
-    '<button class="btn btn-outline btn-sm" onclick="openCustomerAssignment()">&#128101; AM Assign</button>':'')+'<button class="btn btn-outline" onclick="expFleet()">⬇ Export</button></div></div>'+
+    '<button class="btn btn-outline btn-sm" onclick="openCustomerAssignment()">&#128101; AM Assign</button>':'')+
+  '</div></div>'+
   '<div class="kpi-row">'+kpiBox('🚛','purple',TRUCKS.length,'Total','')+kpiBox('✅','green',rel,'Released','')+kpiBox('⚠️','orange',TRUCKS.length-rel,'Hold','')+kpiBox('📦','cyan',TRUCKS.filter(function(t){return t.type==='Jumbo';}).length,'Jumbo','')+kpiBox('🚐','purple',TRUCKS.filter(function(t){return t.type==='Dababa';}).length,'Dababa','')+'</div>'+
-  '<div class="card"><div class="sbar"><input placeholder="&#128269; Search plate, mfr, type..." id="fs" oninput="flR()"/><select id="ft" onchange="flR()"><option value="">All Types</option>'+(S.truckTypes||[]).map(function(t){return '<option>'+t.label+'</option>';}).join('')+'</select><select id="fst" onchange="flR()"><option value="">All Status</option><option value="r">Released</option><option value="h">Hold</option><option value="maint">&#9888; Maint. Due</option></select><button class="btn btn-outline btn-sm" onclick="expFleet()" style="margin-left:auto">&#128196; Export</button></div><div id="fl-content"></div></div>';
+  '<div class="card">'+
+  '<div class="sbar" style="flex-wrap:wrap;gap:8px">'+
+  '<input placeholder="&#128269; Search plate, mfr, type, cooling..." id="fs" oninput="flR()" style="min-width:180px"/>'+
+  '<select id="ft" onchange="flR()"><option value="">All Types</option>'+(S.truckTypes||[]).map(function(t){return '<option>'+t.label+'</option>';}).join('')+'</select>'+
+  '<select id="fst" onchange="flR()"><option value="">All Status</option><option value="r">Released</option><option value="h">Hold</option><option value="maint">&#9888; Maint. Due</option></select>'+
+  '<div style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--t2)">&#128648; KM:'+
+  '<input type="number" id="fkm1" placeholder="From" oninput="flR()" style="width:70px;padding:5px 8px;font-size:12px;border:1.5px solid var(--bd);border-radius:6px;background:var(--surf);color:var(--t)"/>'+
+  '<span>—</span>'+
+  '<input type="number" id="fkm2" placeholder="To" oninput="flR()" style="width:70px;padding:5px 8px;font-size:12px;border:1.5px solid var(--bd);border-radius:6px;background:var(--surf);color:var(--t)"/>'+
+  '</div>'+
+  '<button class="btn btn-outline btn-sm" onclick="expFleet()" style="margin-left:auto">&#128196; Export</button>'+
+  '</div>'+
+  '<div id="fl-content"></div></div>';
   flR();
 }
 var _flSort={col:'plate',dir:1};
@@ -3327,6 +3340,10 @@ function flR(){
   if(st==='r')tr=tr.filter(function(t){return t.valid;});
   if(st==='h')tr=tr.filter(function(t){return !t.valid;});
   if(st==='maint')tr=tr.filter(function(t){return _truckMaintAlert(t)!==null;});
+  var km1=parseFloat(((document.getElementById('fkm1')||{}).value)||'');
+  var km2=parseFloat(((document.getElementById('fkm2')||{}).value)||'');
+  if(!isNaN(km1))tr=tr.filter(function(t){return (t.odometerKm||0)>=km1;});
+  if(!isNaN(km2))tr=tr.filter(function(t){return (t.odometerKm||0)<=km2;});
   // Sort
   tr.sort(function(a,b){
     var va,vb;
@@ -5479,19 +5496,219 @@ function statBarRow_UNUSED(label, val, pct, meta) {
 }
 
 // ANALYTICS
+// ── Analytics state ──────────────────────────────────
+var _anPeriod='month'; // week|month|year|custom
+var _anFrom='';var _anTo='';
+function _anTrips(){
+  var now=new Date();
+  var trips=S.trips.filter(function(t){return t.status==='completed';});
+  if(_anPeriod==='week'){var d=new Date(now);d.setDate(d.getDate()-7);trips=trips.filter(function(t){return new Date(t.ts)>=d;});}
+  else if(_anPeriod==='month'){var d2=new Date(now);d2.setDate(1);trips=trips.filter(function(t){return new Date(t.ts)>=d2;});}
+  else if(_anPeriod==='year'){var d3=new Date(now.getFullYear(),0,1);trips=trips.filter(function(t){return new Date(t.ts)>=d3;});}
+  else if(_anPeriod==='custom'){
+    if(_anFrom)trips=trips.filter(function(t){return (t.ts||'')>=_anFrom;});
+    if(_anTo)trips=trips.filter(function(t){return (t.ts||'')<=_anTo+' 23:59';});
+  }
+  return trips;
+}
+function _anSetPeriod(p){_anPeriod=p;var el=document.getElementById('an-custom');if(el)el.style.display=(p==='custom')?'flex':'none';_anRebuild();}
+function _anRebuild(){
+  var af=document.getElementById('an-from');var at=document.getElementById('an-to');
+  if(af)_anFrom=af.value;if(at)_anTo=at.value;
+  var trips=_anTrips();
+  _anRenderCust(trips);_anRenderFleet(trips);_anUpdateKpi(trips);
+}
+function _anUpdateKpi(trips){
+  var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);
+  var km=trips.reduce(function(s,t){return s+(+t.km||0);},0);
+  var el=document.getElementById('an-kpi');
+  if(el)el.innerHTML=
+    kpiBox('&#128203;','purple',trips.length,'Trips','Completed')+
+    kpiBox('&#128176;','green','EGP '+Math.round(rev/1000)+'K','Revenue',trips.length+' trips')+
+    kpiBox('&#127807;','cyan',co2.toFixed(0),'CO₂ kg','')+
+    kpiBox('&#128648;','orange',Math.round(km/1000)+'K','Total KM','');
+}
+function _anRenderCust(trips){
+  var el=document.getElementById('an-cust-body');if(!el)return;
+  var stats=CUSTOMERS.map(function(cu){
+    var ct=trips.filter(function(t){return t.customer===cu;});
+    var trucks=[...new Set(ct.map(function(t){return t.truck;}).filter(Boolean))];
+    return{name:cu,cnt:ct.length,rev:ct.reduce(function(s,t){return s+(+t.cost||0);},0),
+      co2:ct.reduce(function(s,t){return s+(+t.co2||0);},0),km:ct.reduce(function(s,t){return s+(+t.km||0);},0),trucks:trucks};
+  }).filter(function(x){return x.cnt>0;}).sort(function(a,b){return b.rev-a.rev;});
+  var maxR=stats[0]?stats[0].rev||1:1;
+  if(!stats.length){el.innerHTML='<div style="text-align:center;padding:30px;color:var(--t2)">No data for this period</div>';return;}
+  el.innerHTML=stats.map(function(x){
+    var pct=maxR>0?Math.round(x.rev/maxR*100):0;
+    return '<div onclick="drillCustomer(\''+x.name.replace(/'/g,"\\'")+'\')" style="margin-bottom:12px;cursor:pointer;padding:10px 12px;border-radius:10px;border:1px solid var(--bd);transition:background .15s" onmouseenter="this.style.background=\'var(--bg)\'" onmouseleave="this.style.background=\'\'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<div><div style="font-size:13px;font-weight:700;color:var(--t)">'+x.name+'</div>'
+      +'<div style="font-size:11px;color:var(--t3)">'+x.cnt+' trips &bull; '+x.trucks.length+' trucks &bull; '+Math.round(x.km)+' km</div></div>'
+      +'<div style="text-align:right"><div style="font-weight:800;color:#6C3FF5;font-size:14px">EGP '+Math.round(x.rev).toLocaleString()+'</div>'
+      +'<div style="font-size:10px;color:var(--t3)">&#127807; '+x.co2.toFixed(0)+' kg CO₂</div></div></div>'
+      +'<div style="height:6px;background:var(--bd);border-radius:3px"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#6C3FF5,#10B981);border-radius:3px"></div></div>'
+      +'<div style="font-size:10px;color:#6C3FF5;margin-top:4px;font-weight:600">&#128269; Click to see trip details &rsaquo;</div>'
+      +'</div>';
+  }).join('');
+}
+function _anRenderFleet(trips){
+  var el=document.getElementById('an-fleet-body');if(!el)return;
+  var types=getTruckTypeIds();
+  if(!types.length){el.innerHTML='<div style="text-align:center;padding:30px;color:var(--t2)">No truck types defined</div>';return;}
+  el.innerHTML=types.map(function(tp){
+    var trucks=TRUCKS.filter(function(t){return t.type===tp;});
+    var total=trucks.length;var rel=trucks.filter(function(t){return t.valid;}).length;
+    var tpTrips=trips.filter(function(t){return trucks.some(function(tk){return tk.plate===t.truck;});});
+    var cuSet=[...new Set(tpTrips.map(function(t){return t.customer;}).filter(Boolean))];
+    var rev=tpTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
+    var km=tpTrips.reduce(function(s,t){return s+(+t.km||0);},0);
+    var pct=total>0?Math.round(rel/total*100):0;
+    var utilPct=total>0?Math.round(tpTrips.length/(total*Math.max(1,_anTrips().length||1))*100):0;
+    return '<div onclick="drillFleetType(\''+tp.replace(/'/g,"\\'")+'\')" style="margin-bottom:12px;cursor:pointer;padding:10px 12px;border-radius:10px;border:1px solid var(--bd);transition:background .15s" onmouseenter="this.style.background=\'var(--bg)\'" onmouseleave="this.style.background=\'\'">'
+      +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
+      +'<div><div style="font-size:13px;font-weight:700;color:var(--t)">'+tp+'</div>'
+      +'<div style="font-size:11px;color:var(--t3)">'+total+' trucks &bull; '+tpTrips.length+' trips &bull; '+cuSet.length+' customers</div></div>'
+      +'<div style="text-align:right"><div style="font-weight:800;color:#10B981;font-size:14px">'+pct+'% available</div>'
+      +'<div style="font-size:10px;color:var(--t3)">'+rel+'/'+total+' released &bull; EGP '+Math.round(rev/1000)+'K</div></div></div>'
+      +'<div style="height:6px;background:var(--bd);border-radius:3px"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#10B981,#06B6D4);border-radius:3px"></div></div>'
+      +'<div style="font-size:10px;color:#10B981;margin-top:4px;font-weight:600">&#128269; Click to see truck details &rsaquo;</div>'
+      +'</div>';
+  }).join('');
+}
+function drillCustomer(cu){
+  var trips=_anTrips().filter(function(t){return t.customer===cu;}).sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
+  var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var km=trips.reduce(function(s,t){return s+(+t.km||0);},0);
+  openSP('&#128202; '+cu+' — Trip Detail',
+    '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+    +'<div class="ib"><div class="ib-l">Trips</div><div class="ib-v">'+trips.length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Revenue</div><div class="ib-v" style="color:#6C3FF5">EGP '+Math.round(rev).toLocaleString()+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Total KM</div><div class="ib-v">'+Math.round(km).toLocaleString()+' km</div></div>'
+    +'</div>'
+    +'<button class="btn btn-outline btn-sm" style="margin-bottom:12px;width:100%" onclick="expCustDetail(\''+cu.replace(/'/g,"\\'")+'\')" >&#128196; Export This Customer</button>'
+    +'<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Date/Time</th><th>Trip ID</th><th>Type</th><th>Truck</th><th>KM</th><th>Cost</th><th>Status</th></tr></thead><tbody>'
+    +trips.map(function(t){return '<tr style="cursor:pointer" onclick="closeSP();openTripSP(\''+t.id+'\')">'
+      +'<td style="font-size:11px;white-space:nowrap">'+t.ts+'</td>'
+      +'<td style="font-weight:700;color:#6C3FF5">'+t.id+'</td>'
+      +'<td><span class="tag tag-info">'+t.type+'</span></td>'
+      +'<td style="font-weight:600">'+( t.truck||'—')+'</td>'
+      +'<td>'+( t.km||'—')+' km</td>'
+      +'<td style="color:#059669;font-weight:600">'+(t.cost?'EGP '+t.cost:'—')+'</td>'
+      +'<td>'+stB(t.status)+'</td>'
+      +'</tr>';}).join('')
+    +'</tbody></table></div>'
+  );
+}
+function drillFleetType(tp){
+  var trips=_anTrips();
+  var trucks=TRUCKS.filter(function(t){return t.type===tp;});
+  openSP('&#128666; '+tp+' — Fleet Detail',
+    '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+    +'<div class="ib"><div class="ib-l">Trucks</div><div class="ib-v">'+trucks.length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Released</div><div class="ib-v" style="color:#10B981">'+trucks.filter(function(t){return t.valid;}).length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">On Hold</div><div class="ib-v" style="color:#EF4444">'+trucks.filter(function(t){return !t.valid;}).length+'</div></div>'
+    +'</div>'
+    +'<button class="btn btn-outline btn-sm" style="margin-bottom:12px;width:100%" onclick="expFleetTypeDetail(\''+tp.replace(/'/g,"\\'")+'\')" >&#128196; Export This Type</button>'
+    +'<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Plate</th><th>Status</th><th>Odometer</th><th>Trips</th><th>Customers</th><th>Last Date</th></tr></thead><tbody>'
+    +trucks.map(function(tk){
+      var tkTrips=trips.filter(function(t){return t.truck===tk.plate;});
+      var cuSet=[...new Set(tkTrips.map(function(t){return t.customer;}).filter(Boolean))];
+      var lastTrip=tkTrips.sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
+      var ma=_truckMaintAlert(tk);
+      return '<tr onclick="openFleetTruckTrips(\''+tk.plate.replace(/'/g,"\\'")+'\')" style="cursor:pointer">'
+        +'<td style="font-weight:700">'+tk.plate+'</td>'
+        +'<td>'+(tk.valid?'<span class="tag tag-ok">Released</span>':'<span class="tag tag-hold">Hold</span>')+'</td>'
+        +'<td style="font-size:12px">'+(ma?'<span style="color:'+(ma.level==='overdue'?'#EF4444':'#F97316')+'">'+Math.round(tk.odometerKm||0).toLocaleString()+' km</span>':Math.round(tk.odometerKm||0).toLocaleString()+' km')+'</td>'
+        +'<td style="font-weight:700;color:#6C3FF5">'+tkTrips.length+'</td>'
+        +'<td style="font-size:11px;color:var(--t2)">'+cuSet.slice(0,3).join(', ')+(cuSet.length>3?' +more':'')+'</td>'
+        +'<td style="font-size:11px;color:var(--t3)">'+(lastTrip.length?lastTrip[0].ts:'—')+'</td>'
+        +'</tr>';
+    }).join('')
+    +'</tbody></table></div>'
+  );
+}
+function expCustDetail(cu){
+  var trips=_anTrips().filter(function(t){return t.customer===cu;}).sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
+  var canFin=can('finance_view')||can('all');
+  var headers=['Date/Time','Trip ID','Type','Direction','Condition','Truck No.','Driver','KM'];
+  if(canFin)headers.push('Cost (EGP)');
+  headers.push('CO2 (kg)','Status');
+  var rows=trips.map(function(t){
+    var r=[t.ts||'',t.id,t.type,t.dir||'',t.condition||'',t.truck||'',t.driver||'',t.km||0];
+    if(canFin)r.push(t.cost||0);
+    r.push(t.co2||0,t.status);
+    return r;
+  });
+  uExport('Customer Report — '+cu,headers,rows);
+}
+function expFleetTypeDetail(tp){
+  var trips=_anTrips();
+  var trucks=TRUCKS.filter(function(t){return t.type===tp;});
+  var headers=['Date/Time','Trip ID','Truck No.','Customer','Type','KM','Cost (EGP)','Status'];
+  var rows=[];
+  trucks.forEach(function(tk){
+    trips.filter(function(t){return t.truck===tk.plate;})
+      .sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');})
+      .forEach(function(t){rows.push([t.ts||'',t.id,tk.plate,t.customer||'',t.type,t.km||0,t.cost||0,t.status]);});
+  });
+  uExport('Fleet Type Report — '+tp,headers,rows);
+}
 function rAnalytics(){
   var c=document.getElementById('content');
-  var comp=S.trips.filter(function(t){return t.status==='completed';});
-  var rev=comp.reduce(function(s,t){return s+(+t.cost||0);},0);
-  var co2=comp.reduce(function(s,t){return s+(+t.co2||0);},0);
-  var custStats=CUSTOMERS.map(function(cu){var trips=comp.filter(function(t){return t.customer===cu;});return {name:cu,trips:trips.length,rev:trips.reduce(function(s,t){return s+(+t.cost||0);},0),co2:trips.reduce(function(s,t){return s+(+t.co2||0);},0)};}).sort(function(a,b){return b.rev-a.rev;});
-  var maxRev=custStats[0]?custStats[0].rev||1:1;
-  c.innerHTML='<div class="page-head"><div><h2>📊 Analytics</h2></div><button class="btn btn-primary" onclick="expAnalytics()">⬇ Export</button></div>'+
-  '<div class="kpi-row">'+kpiBox('📋','purple',S.trips.length,'Total Trips',comp.length+' completed')+kpiBox('💰','green','EGP '+rev.toLocaleString('en',{maximumFractionDigits:0}),'Revenue','')+kpiBox('🌿','cyan',co2.toFixed(0),'CO₂ kg','')+kpiBox('🚛','orange',TRUCKS.filter(function(t){return t.valid;}).length,'Available','')+'</div>'+
-  '<div class="g2"><div class="card"><div class="card-hd"><div class="card-title">Revenue by Customer</div></div>'+custStats.slice(0,8).map(function(x){return '<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>'+x.name+'</span><span style="font-weight:600;color:var(--c1)">EGP '+(x.rev||0).toFixed(0)+'</span></div><div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;background:var(--c1);border-radius:4px;width:'+(maxRev>0?(x.rev/maxRev*100).toFixed(0):0)+'%"></div></div><div style="font-size:11px;color:var(--t3)">'+x.trips+' trips</div></div>';}).join('')+'</div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">Fleet Utilization</div></div>'+getTruckTypeIds().map(function(tp){var total=TRUCKS.filter(function(t){return t.type===tp;}).length;var rel=TRUCKS.filter(function(t){return t.type===tp&&t.valid;}).length;var pct=total>0?Math.round(rel/total*100):0;return '<div style="margin-bottom:12px"><div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:4px"><span>'+tp+'</span><span style="font-weight:600">'+pct+'% ('+rel+'/'+total+')</span></div><div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;background:var(--c1);border-radius:4px;width:'+pct+'%"></div></div></div>';}).join('')+'</div></div>';
+  c.innerHTML='<div class="page-head"><div><h2>&#128202; Analytics</h2></div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsCust()">&#128196; Export Customers</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsFleet()">&#128196; Export Fleet</button>'+
+    '</div></div>'+
+    // KPI row (filled by _anUpdateKpi)
+    '<div class="kpi-row" id="an-kpi"></div>'+
+    // Period filter bar
+    '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;flex-wrap:wrap;gap:10px">'+
+    '<span style="font-size:12px;font-weight:700;color:var(--t2)">&#128197; Period:</span>'+
+    ['week','month','year','custom'].map(function(p){
+      return '<button class="btn btn-sm" id="anp-'+p+'" onclick="_anSetPeriod(\''+p+'\')" style="border-radius:20px;'+(p===_anPeriod?'background:#6C3FF5;color:#fff;border-color:#6C3FF5':'background:var(--bg);color:var(--t);border:1.5px solid var(--bd)')+'">'
+        +{week:'This Week',month:'This Month',year:'This Year',custom:'Custom'}[p]+'</button>';
+    }).join('')+
+    '<div id="an-custom" style="display:'+(_anPeriod==='custom'?'flex':'none')+';align-items:center;gap:6px">'+
+    '<input type="date" id="an-from" value="'+_anFrom+'" onchange="_anRebuild()" style="padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:var(--surf);color:var(--t)"/>'+
+    '<span style="color:var(--t2)">—</span>'+
+    '<input type="date" id="an-to" value="'+_anTo+'" onchange="_anRebuild()" style="padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:var(--surf);color:var(--t)"/>'+
+    '</div></div>'+
+    // Two-column layout
+    '<div class="g2">'+
+    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+    '<div class="card-title">&#128200; Revenue by Customer</div>'+
+    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsCust()">&#128196; Export</button>'+
+    '</div><div id="an-cust-body"><div style="text-align:center;padding:30px;color:var(--t2)">Loading...</div></div></div>'+
+    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+    '<div class="card-title">&#128666; Fleet Utilization</div>'+
+    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsFleet()">&#128196; Export</button>'+
+    '</div><div id="an-fleet-body"><div style="text-align:center;padding:30px;color:var(--t2)">Loading...</div></div></div>'+
+    '</div>';
+  _anRebuild();
 }
-function expAnalytics(){var comp=S.trips.filter(function(t){return t.status==='completed';});var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(['Customer,Trips,Revenue EGP,CO2 kg'].concat(CUSTOMERS.map(function(cu){var trips=comp.filter(function(t){return t.customer===cu;});var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);return [cu,trips.length,rev.toFixed(2),co2.toFixed(2)].join(',');})).join('\n'));a.download='Analytics.csv';a.click();toast('Exported!','ok');}
+function expAnalyticsCust(){
+  var trips=_anTrips();
+  var stats=CUSTOMERS.map(function(cu){
+    var ct=trips.filter(function(t){return t.customer===cu;});
+    var trucks=[...new Set(ct.map(function(t){return t.truck;}).filter(Boolean))];
+    return[cu,ct.length,ct.reduce(function(s,t){return s+(+t.cost||0);},0).toFixed(2),ct.reduce(function(s,t){return s+(+t.km||0);},0),ct.reduce(function(s,t){return s+(+t.co2||0);},0).toFixed(2),trucks.join(' | ')];
+  }).filter(function(r){return r[1]>0;}).sort(function(a,b){return b[2]-a[2];});
+  uExport('Revenue by Customer',['Customer','Trips','Revenue (EGP)','Total KM','CO2 (kg)','Trucks Used'],stats);
+}
+function expAnalyticsFleet(){
+  var trips=_anTrips();
+  var rows=getTruckTypeIds().map(function(tp){
+    var trucks=TRUCKS.filter(function(t){return t.type===tp;});
+    var tpTrips=trips.filter(function(t){return trucks.some(function(tk){return tk.plate===t.truck;});});
+    var cuSet=[...new Set(tpTrips.map(function(t){return t.customer;}).filter(Boolean))];
+    var rel=trucks.filter(function(t){return t.valid;}).length;
+    return[tp,trucks.length,rel,trucks.length-rel,tpTrips.length,cuSet.join(' | '),tpTrips.reduce(function(s,t){return s+(+t.cost||0);},0).toFixed(2)];
+  });
+  uExport('Fleet Utilization',['Truck Type','Total','Released','On Hold','Trips','Customers','Revenue (EGP)'],rows);
+}
+function expAnalytics(){expAnalyticsCust();}
 // ══════════════════════════════════════════════════
 // INVITE CODES MANAGEMENT — Super Admin Only
 // ══════════════════════════════════════════════════
