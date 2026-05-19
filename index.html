@@ -11995,7 +11995,74 @@ function rPMSchedule(){
         '<button class="btn btn-success btn-sm" onclick="markPMDone(\''+s.id+'\')">✓ Done</button>'+
         (can('all')?'<button class="btn btn-danger btn-sm" onclick="delPMSch(\''+s.id+'\')">✕</button>':'')+
       '</div></td></tr>';
-  }).join('')+'</tbody></table></div>');
+  }).join('')+'</tbody></table></div>'+
+  // ── Service cost trend chart per truck ──────────────
+  (function(){
+    // Build cost per truck from maintenance tickets (completed or open)
+    var tks=S.maintTickets||[];
+    var truckCosts={};
+    tks.forEach(function(tk){
+      if(!tk.truck)return;
+      var cost=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+      truckCosts[tk.truck]=(truckCosts[tk.truck]||0)+cost;
+    });
+    var entries=Object.keys(truckCosts).map(function(pl){return{plate:pl,cost:truckCosts[pl]};})
+      .filter(function(x){return x.cost>0;}).sort(function(a,b){return b.cost-a.cost;});
+    if(!entries.length)return '<div class="card" style="margin-top:14px;text-align:center;padding:32px;color:var(--t2)">'+
+      '<div style="font-size:32px">📊</div><div style="margin-top:8px;font-size:13px">No maintenance cost data yet — log parts against tickets to see the trend.</div></div>';
+    var maxC=entries[0].cost||1;
+    // Also build last-6-month trend using ticket timestamps
+    var months=[];var now=new Date();
+    for(var mi=5;mi>=0;mi--){var d=new Date(now.getFullYear(),now.getMonth()-mi,1);months.push({label:d.toLocaleString('en-GB',{month:'short',year:'2-digit'}),year:d.getFullYear(),month:d.getMonth()+1,total:0});}
+    tks.forEach(function(tk){
+      var cost=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+      if(!cost||!tk.ts)return;
+      var parts=tk.ts.split(/[\/\-\s,:]/);// "DD/MM/YYYY" or ISO
+      var yr,mo;
+      if(tk.ts.indexOf('/')>-1){mo=parseInt(parts[1]);yr=parseInt(parts[2]);}
+      else{yr=parseInt(parts[0]);mo=parseInt(parts[1]);}
+      months.forEach(function(m){if(m.year===yr&&m.month===mo)m.total+=cost;});
+    });
+    var maxM=Math.max.apply(null,months.map(function(m){return m.total;}))||1;
+    return '<div class="g2" style="margin-top:14px">'+
+    '<div class="card">'+
+    '<div class="card-hd"><div class="card-title">💸 Service Cost by Truck (EGP)</div>'+
+    '<button class="btn btn-outline btn-sm" onclick="_pmExportCosts()">📥 Export</button></div>'+
+    entries.map(function(x){
+      var pct=Math.round(x.cost/maxC*100);
+      var bar='<div style="height:8px;background:var(--bd);border-radius:4px;margin:5px 0 0"><div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#6C3FF5,#F97316);border-radius:4px;transition:width .5s"></div></div>';
+      return '<div style="margin-bottom:12px">'+
+        '<div style="display:flex;justify-content:space-between;font-size:12px">'+
+        '<span style="font-weight:700">'+x.plate+'</span>'+
+        '<span style="font-weight:700;color:var(--c1)">EGP '+x.cost.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',')+'</span></div>'+bar+'</div>';
+    }).join('')+'</div>'+
+    '<div class="card">'+
+    '<div class="card-title" style="margin-bottom:14px">📉 Monthly Cost Trend (6 months)</div>'+
+    '<div style="display:flex;align-items:flex-end;gap:6px;height:120px;padding-bottom:20px;position:relative">'+
+    months.map(function(m){
+      var h=maxM>0?Math.max(4,Math.round(m.total/maxM*100)):4;
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative" title="'+m.label+': EGP '+Math.round(m.total).toLocaleString()+'">'+
+        '<div style="width:80%;height:'+h+'px;background:'+(m.total>0?'var(--c1)':'var(--bd)')+';border-radius:4px 4px 0 0;cursor:pointer;transition:opacity .15s" onmouseenter="this.style.opacity=\'.7\'" onmouseleave="this.style.opacity=\'1\'"></div>'+
+        '<div style="font-size:9px;color:var(--t3);position:absolute;bottom:-18px;white-space:nowrap">'+m.label+'</div>'+
+        (m.total>0?'<div style="font-size:8px;font-weight:700;color:var(--c1);position:absolute;top:-14px">'+Math.round(m.total/1000)+'K</div>':'')+'</div>';
+    }).join('')+'</div></div></div>';
+  })());
+}
+function _pmExportCosts(){
+  var tks=S.maintTickets||[];var truckCosts={};
+  tks.forEach(function(tk){
+    if(!tk.truck)return;
+    var cost=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+    if(cost)truckCosts[tk.truck]=(truckCosts[tk.truck]||0)+cost;
+  });
+  var rows=Object.keys(truckCosts).sort().map(function(pl){
+    var tks2=tks.filter(function(t){return t.truck===pl;});
+    var cost=truckCosts[pl];
+    var openTks=tks2.filter(function(t){return t.status==='open';}).length;
+    var doneTks=tks2.filter(function(t){return t.status==='done';}).length;
+    return[pl,tks2.length,openTks,doneTks,'EGP '+cost.toFixed(0)];
+  });
+  uExportAll('excel','Maintenance Cost by Truck',['Truck','Total Tickets','Open','Done','Total Cost (EGP)'],rows);
 }
 
 function openAddPMSch(editId){
