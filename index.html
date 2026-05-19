@@ -2075,13 +2075,13 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 .tcp-meta-key { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--t3); font-weight:600; text-transform:uppercase; letter-spacing:.4px; }
 .tcp-meta-val { font-size:15px; font-weight:800; color:var(--t); font-family:'Space Grotesk',sans-serif; }
 .tcp-meta-btn {
-  padding:14px 20px; display:flex; align-items:center; gap:8px;
-  background:linear-gradient(135deg,#6C3FF5,#4F1FD4); color:#fff;
-  border:none; border-radius:10px; font-size:13px; font-weight:700; cursor:pointer;
-  box-shadow:0 4px 16px rgba(108,63,245,.4); transition:all .2s; font-family:inherit;
-  white-space:nowrap; margin:12px 16px;
+  padding:10px 16px; display:flex; align-items:center; gap:8px;
+  background:linear-gradient(135deg,var(--c1,#6C3FF5),var(--c1-dark,#4F1FD4)); color:#fff;
+  border:none; border-radius:10px; font-size:12px; font-weight:700; cursor:pointer;
+  box-shadow:0 4px 16px var(--c1-sh,rgba(108,63,245,.4)); transition:all .2s; font-family:inherit;
+  white-space:nowrap; margin:8px 12px;
 }
-.tcp-meta-btn:hover { transform:translateY(-1px); box-shadow:0 8px 24px rgba(108,63,245,.5); }
+.tcp-meta-btn:hover { transform:translateY(-1px); box-shadow:0 8px 24px var(--c1-sh,rgba(108,63,245,.5)); }
 
 /* ═══ FLEET TRIP MODAL ═══ */
 .fleet-trip-header { padding:18px 22px; border-bottom:1px solid var(--bd); display:flex; align-items:center; gap:14px; }
@@ -8290,49 +8290,62 @@ function openKpiSP(type){
   }
 }
 
-// ── openCapSP: Truck Capacity Side Panel ──
+// ── openCapSP: Fleet Utilization Side Panel ──
 function openCapSP(){
-  var rel2=TRUCKS.filter(function(t){return t.valid;}).length;
-  var cap=TRUCKS.length>0?Math.round(rel2/TRUCKS.length*100):0;
   var inTr2=S.trips.filter(function(t){return t.status==='in_transit';});
-  var activeTruck=inTr2.length>0?TRUCKS.find(function(t){return t.plate===inTr2[0].truck;}):TRUCKS.filter(function(t){return t.valid;})[0];
-  var activeTrip=inTr2.length>0?inTr2[0]:null;
-  var tPlate=activeTruck?activeTruck.plate:'—';
-  var tType=activeTruck?activeTruck.type:'—';
-  var tMfr=activeTruck?activeTruck.mfr:'—';
-  var tCooling=activeTruck?activeTruck.cooling:'—';
-  var tCalExpiry=activeTruck&&activeTruck.calExpiry?activeTruck.calExpiry:'—';
-  var tStatusTxt=activeTruck?(activeTruck.valid?'&#10003; Released':'&#10006; Hold'):'—';
-  var tRoute=activeTrip?((activeTrip.from||'')+' → '+(activeTrip.dests||'')):'No active trip';
-  var tCustomer=activeTrip?activeTrip.customer:'—';
-  var tCondition=activeTrip?activeTrip.condition:'—';
-  openSP('&#128666; Truck Capacity Details',
-    '<div class="sp-tabs">'+
-    ['Shipping Info','Vehicle Info','Documents','Company','Billing'].map(function(t,i){return '<div class="sp-tab'+(i===0?' on':'')+'" onclick="spTab(this,\'cp'+i+'\')">'+t+'</div>';}).join('')+
+  var rel2=TRUCKS.filter(function(t){return t.valid;}).length;
+  var inPlates2=inTr2.map(function(t){return t.truck;});
+  var onTrip2=TRUCKS.filter(function(t){return inPlates2.indexOf(t.plate)>-1;}).length;
+  var avail2=TRUCKS.filter(function(t){return t.valid&&inPlates2.indexOf(t.plate)===-1;}).length;
+  var hold2=TRUCKS.filter(function(t){return!t.valid;}).length;
+  var util2=rel2>0?Math.round(onTrip2/rel2*100):0;
+
+  // Build per-truck status rows
+  var truckRows=TRUCKS.map(function(tr){
+    var trip=inTr2.find(function(x){return x.truck===tr.plate;});
+    var st=trip?'<span class="tag tag-transit" style="font-size:10px">On Trip</span>':(tr.valid?'<span class="tag tag-ok" style="font-size:10px">Available</span>':'<span class="tag tag-hold" style="font-size:10px">On Hold</span>');
+    var route=trip?(trip.from||'')+'→'+(trip.dests||''):'—';
+    var cust=trip?trip.customer:'—';
+    return '<tr onclick="'+(trip?'closeSP();setTimeout(function(){openTripSP(\''+trip.id+'\')},100)':'openFleetTruckTrips(\''+tr.plate.replace(/'/g,"\\'")+'\','+tr.valid+',[])') +'" style="cursor:pointer">'+
+      '<td style="font-weight:700;font-size:12px">'+tr.plate+'</td>'+
+      '<td style="font-size:11px">'+tr.type+'</td>'+
+      '<td>'+st+'</td>'+
+      '<td style="font-size:11px;color:var(--t2);max-width:100px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+route+'</td>'+
+      '<td style="font-size:11px">'+cust+'</td></tr>';
+  }).join('');
+
+  openSP('&#128666; Fleet Utilization',
+    // Big utilization gauge
+    '<div style="background:linear-gradient(135deg,var(--c1),var(--c1-dark,#4F1FD4));border-radius:14px;padding:18px 20px;color:#fff;margin-bottom:14px;position:relative;overflow:hidden">'+
+    '<div style="font-size:11px;font-weight:700;opacity:.8;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px">Current Fleet Utilization</div>'+
+    '<div style="font-size:48px;font-weight:900;letter-spacing:-2px;line-height:1;font-family:Space Grotesk,sans-serif">'+util2+'%</div>'+
+    '<div style="font-size:12px;opacity:.75;margin-top:4px">'+onTrip2+' of '+rel2+' released trucks on active trips</div>'+
+    '<div style="height:5px;background:rgba(255,255,255,.25);border-radius:3px;margin-top:10px"><div style="height:100%;width:'+util2+'%;background:rgba(255,255,255,.85);border-radius:3px;transition:width .6s"></div></div>'+
     '</div>'+
-    '<div id="cp0" class="sp-pane">'+
-    '<div style="font-size:14px;font-weight:700;margin-bottom:12px;color:var(--t)">Fleet Capacity Overview</div>'+
-    '<div style="position:relative;border-radius:14px;overflow:hidden;background:linear-gradient(145deg,#F0EEFF,#EEF0FA);padding:12px;margin-bottom:14px">'+
-    '<img src="truck.png" alt="InstaPort Truck" style="width:100%;height:auto;object-fit:contain;display:block;filter:drop-shadow(0 8px 20px rgba(108,63,245,0.2))"/>'+
-    '<div style="position:absolute;top:12px;right:12px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);border-radius:10px;padding:8px 14px;text-align:center;box-shadow:0 4px 12px rgba(108,63,245,0.4)">'+
-    '<div style="font-size:28px;font-weight:900;color:white;line-height:1">'+cap+'%</div>'+
-    '<div style="font-size:10px;color:rgba(255,255,255,0.85);margin-top:2px">'+rel2+'/'+TRUCKS.length+' Released</div>'+
+    // 3-stat strip
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'+
+    '<div style="background:var(--bg);border-radius:10px;padding:12px;text-align:center">'+
+      '<div style="font-size:24px;font-weight:900;color:var(--c1)">'+onTrip2+'</div>'+
+      '<div style="font-size:10px;color:var(--t2);font-weight:600;text-transform:uppercase">On Trip</div>'+
+      (inTr2.length?'<div style="font-size:10px;color:var(--t3);margin-top:2px">'+inTr2.slice(0,2).map(function(t){return t.truck||'?';}).join(', ')+(inTr2.length>2?'…':'')+'</div>':'')+'</div>'+
+    '<div style="background:var(--bg);border-radius:10px;padding:12px;text-align:center">'+
+      '<div style="font-size:24px;font-weight:900;color:#10B981">'+avail2+'</div>'+
+      '<div style="font-size:10px;color:var(--t2);font-weight:600;text-transform:uppercase">Available</div>'+
+      '<div style="font-size:10px;color:var(--t3);margin-top:2px">Released, no trip</div></div>'+
+    '<div style="background:var(--bg);border-radius:10px;padding:12px;text-align:center">'+
+      '<div style="font-size:24px;font-weight:900;color:#EF4444">'+hold2+'</div>'+
+      '<div style="font-size:10px;color:var(--t2);font-weight:600;text-transform:uppercase">On Hold</div>'+
+      '<div style="font-size:10px;color:var(--t3);margin-top:2px">Not released</div></div>'+
     '</div>'+
-    '</div>'+
-    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">'+
-    '<div><span style="font-size:13px;font-weight:600;color:var(--t)">Active Route</span> <span style="color:var(--t2);font-size:12px">'+tRoute+'</span></div>'+
-    '<button class="btn btn-outline btn-sm" onclick="nav(\'trips\')">View Trips</button></div>'+
-    '<div style="background:#F1F5F9;border-radius:var(--r);height:130px;position:relative;overflow:hidden;margin-bottom:14px">'+
-    '<svg style="position:absolute;inset:0;width:100%;height:100%"><path d="M 30 95 Q 110 45 200 72 Q 265 90 330 35" stroke="#6C3FF5" stroke-width="2" fill="none"/><circle cx="30" cy="95" r="5" fill="#10B981"/><circle cx="330" cy="35" r="5" fill="#EF4444"/></svg>'+
-    '</div>'+
-    '<div style="font-size:13px;font-weight:700;margin-bottom:10px;color:var(--t)">Cargo Photo Reports</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">'+
-    ['#1 Cargo','#2 Cargo','#3 Cargo'].map(function(p){return '<div style="background:var(--bg);border-radius:8px;height:68px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10px;color:var(--t2);border:1px dashed var(--border);cursor:pointer;gap:4px"><span style="font-size:18px">&#128230;</span>Point '+p+'</div>';}).join('')+
-    '</div></div>'+
-    '<div id="cp1" class="sp-pane" style="display:none"><div class="ig">'+[['Plate',tPlate],['Type',tType],['Make',tMfr],['Cooling',tCooling],['Cal. Expiry',tCalExpiry],['Status',tStatusTxt]].map(function(x){return '<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+'</div></div>'+
-    '<div id="cp2" class="sp-pane" style="display:none"><div style="text-align:center;padding:30px;color:var(--t2)">No documents</div></div>'+
-    '<div id="cp3" class="sp-pane" style="display:none"><div class="ig">'+[['Customer',tCustomer],['Condition',tCondition],['In Transit',inTr2.length],['Fleet Size',TRUCKS.length]].map(function(x){return '<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+'</div></div>'+
-    '<div id="cp4" class="sp-pane" style="display:none"><div style="text-align:center;padding:30px;color:var(--t2)">After completion</div></div>'
+    // Per-truck table
+    '<div style="font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Per-Truck Status</div>'+
+    '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--bd);margin-bottom:14px">'+
+    '<table class="tbl"><thead><tr><th>Plate</th><th>Type</th><th>Status</th><th>Route</th><th>Customer</th></tr></thead>'+
+    '<tbody>'+truckRows+'</tbody></table></div>'+
+    '<div style="display:flex;gap:8px">'+
+    '<button class="btn btn-primary btn-sm" style="flex:1" onclick="closeSP();nav(\'fleet\')">Manage Fleet</button>'+
+    '<button class="btn btn-outline btn-sm" style="flex:1" onclick="closeSP();nav(\'dispatch\')">Dispatch</button>'+
+    '</div>'
   );
 }
 
@@ -8709,63 +8722,81 @@ rDash = function() {
     '</div>';
 
   // SHIPMENT TRACK (enhanced, no trucks overview)
+  // Active trip to highlight on map
+  var mapTrip = lastTrip || null;
   var trackHTML = '<div class="track-card-premium">' +
     '<div class="tcp-header">' +
     '<div class="tcp-title-block">' +
-    '<div class="tcp-title">Shipment track</div>' +
+    '<div class="tcp-title">Shipment Track</div>' +
     '<div class="tcp-badge">' +
-    (lastTrip ? '<span class="tcp-id">ID: ' + lastTrip.id + '</span>&nbsp;<span class="tag tag-transit" style="font-size:11px">&#9679; In Transit</span>' : '<span class="tcp-id">No active shipment</span>') +
+    (mapTrip ? '<span class="tcp-id">ID: ' + mapTrip.id + ' &bull; ' + mapTrip.customer + '</span>&nbsp;' + stB(mapTrip.status) : '<span class="tcp-id" style="color:var(--t2)">No active shipment</span>') +
     '</div></div>' +
     '<div class="tcp-actions">' +
-    '<div class="tcp-pill-btn">All Shipments &#9660;</div>' +
-    '<div class="tcp-pill-btn" onclick="openCapSP()" title="Full Screen" style="padding:7px 10px">&#8663;</div>' +
+    '<div class="tcp-pill-btn" onclick="nav(\'trips\')" style="cursor:pointer">All Shipments &#8250;</div>' +
+    (mapTrip ? '<div class="tcp-pill-btn" onclick="openTripSP(\'' + mapTrip.id + '\')" style="cursor:pointer;color:var(--c1)">Details &#8250;</div>' : '') +
     '</div></div>' +
 
-    // Filter pills
-    '<div class="tcp-filters">' +
-    '<div class="tcp-filter on" onclick="this.closest(\'.tcp-filters\').querySelectorAll(\'.tcp-filter\').forEach(function(e){e.classList.remove(\'on\')});this.classList.add(\'on\')">Tracking</div>' +
-    '<div class="tcp-filter" onclick="this.closest(\'.tcp-filters\').querySelectorAll(\'.tcp-filter\').forEach(function(e){e.classList.remove(\'on\')});this.classList.add(\'on\')">Traffic jams</div>' +
-    '<div class="tcp-filter" onclick="this.closest(\'.tcp-filters\').querySelectorAll(\'.tcp-filter\').forEach(function(e){e.classList.remove(\'on\')});this.classList.add(\'on\')">POI</div>' +
+    // Compact active-trip info bar (no filter pills)
+    (mapTrip ?
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">' +
+      '<div style="background:var(--bg);padding:10px 12px;border-radius:10px"><div style="font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.4px">&#128205; Route</div>' +
+        '<div style="font-size:12px;font-weight:700;color:var(--t);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + (mapTrip.from||'—') + ' → ' + (mapTrip.dests||'—') + '</div></div>' +
+      '<div style="background:var(--bg);padding:10px 12px;border-radius:10px"><div style="font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.4px">&#128666; Truck</div>' +
+        '<div style="font-size:13px;font-weight:800;color:var(--c1);margin-top:2px">' + (mapTrip.truck||'—') + '</div></div>' +
+      '<div style="background:var(--bg);padding:10px 12px;border-radius:10px"><div style="font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.4px">&#128203; KM / Condition</div>' +
+        '<div style="font-size:12px;font-weight:700;color:var(--t);margin-top:2px">' + (mapTrip.km||'—') + ' km &bull; ' + (mapTrip.condition||'—') + '</div></div>' +
+      '</div>'
+    : '<div style="background:var(--bg);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);text-align:center">No active shipment — <span style="color:var(--c1);cursor:pointer;font-weight:600" onclick="nav(\'forecast\')">+ Create new</span></div>') +
+
+    // MAP — Real Leaflet map (OpenStreetMap, free) — compact height
+    '<div class="tcp-map" style="padding:0;overflow:hidden;position:relative;border-radius:12px;margin-bottom:0">' +
+    '<div id="tcp-leaflet" style="width:100%;height:190px;z-index:1;position:relative;border-radius:12px"></div>' +
     '</div>' +
 
-    // MAP — Real Leaflet map (OpenStreetMap, free)
-    '<div class="tcp-map" style="padding:0;overflow:hidden;position:relative">' +
-    '<div id="tcp-leaflet" style="width:100%;height:240px;z-index:1;position:relative"></div>' +
-    '</div>' + // end tcp-map
-
-    // META ROW
-    '<div style="display:flex;align-items:stretch;border-top:1px solid var(--bd);border-radius:0 0 14px 14px;overflow:hidden">' +
-    '<div class="tcp-meta-item">' +
-    '<div class="tcp-meta-key">&#128205; Distance</div>' +
-    '<div class="tcp-meta-val">' + (lastTrip && lastTrip.km ? lastTrip.km + ' km' : '— km') + '</div>' +
-    '</div>' +
-    '<div class="tcp-meta-item">' +
-    '<div class="tcp-meta-key">&#8987; Condition</div>' +
-    '<div class="tcp-meta-val" style="font-size:13px">' + (lastTrip ? lastTrip.condition||'—' : '—') + '</div>' +
-    '</div>' +
-    '<div class="tcp-meta-item" style="border-right:none">' +
-    '<div class="tcp-meta-key">&#128269; Traffic</div>' +
-    '<div class="tcp-meta-val" style="color:#10B981">Optimized</div>' +
-    '</div>' +
-    '<button class="tcp-meta-btn" onclick="openTripSP(\'' + (lastTrip ? lastTrip.id : '') + '\')">View Details &rsaquo;</button>' +
+    // Bottom action row
+    '<div style="display:flex;gap:8px;margin-top:12px">' +
+    '<button class="btn btn-primary btn-sm" style="flex:1" onclick="nav(\'trips\')">&#128203; All Shipments</button>' +
+    (mapTrip ? '<button class="btn btn-outline btn-sm" style="flex:1" onclick="openTripSP(\'' + mapTrip.id + '\')">Open Active Trip &#8250;</button>' : '') +
+    (canAdd ? '<button class="btn btn-outline btn-sm" onclick="nav(\'forecast\')">+ New</button>' : '') +
     '</div>' +
     '</div>'; // end track-card-premium
 
   // RIGHT COLUMN: Truck Capacity Widget + Weekly Deliveries + Alerts
-  var activeTruckPlate = inTr.length > 0 ? inTr[0].truck : (TRUCKS.filter(function(t){return t.valid;}).length > 0 ? TRUCKS.filter(function(t){return t.valid;})[0].plate : '—');
+  // Real trip-based capacity calculation
+  var inTransitPlates = inTr.map(function(t){return t.truck;});
+  var onTripCount  = TRUCKS.filter(function(t){return inTransitPlates.indexOf(t.plate)>-1;}).length;
+  var availCount   = TRUCKS.filter(function(t){return t.valid && inTransitPlates.indexOf(t.plate)===-1;}).length;
+  var holdCount    = TRUCKS.filter(function(t){return !t.valid;}).length;
+  // Utilization = trucks actively on trips vs released fleet
+  var utilPct = rel > 0 ? Math.round(onTripCount / rel * 100) : 0;
   var bhMax2real = bhMax2 > 0 ? bhMax2 : 1;
+  // Color logic: green ≥60%, orange 30-59%, accent <30%
+  var utilCol = utilPct >= 60 ? '#10B981' : utilPct >= 30 ? '#F97316' : 'var(--c1)';
   var rightHTML = '<div class="right-col">' +
 
-    // TRUCK CAPACITY MINI WIDGET
+    // TRUCK CAPACITY MINI WIDGET — real-trip based
     '<div class="cap-mini-widget" onclick="openCapSP()">' +
-    '<div class="cmw-truck" aria-hidden="true"><img src="truck.png" alt="" class="cmw-truck-img"/></div><div class="cmw-content"><div class="cmw-label">Current Truck Capacity</div>' +
+    '<div class="cmw-truck" aria-hidden="true"><img src="truck.png" alt="" class="cmw-truck-img"/></div>' +
+    '<div class="cmw-content">' +
+    '<div class="cmw-label">Fleet Utilization</div>' +
     '<div class="cmw-header">' +
-    '<div><div class="cmw-pct">' + capPct + '%</div><div class="cmw-sub">' + rel + ' of ' + TRUCKS.length + ' Released</div></div>' +
+    '<div><div class="cmw-pct">' + utilPct + '%</div>' +
+    '<div class="cmw-sub">' + onTripCount + ' truck' + (onTripCount===1?'':'s') + ' on active trips</div></div>' +
     '<div class="cmw-pill">Details &rsaquo;</div>' +
     '</div>' +
-    '<div class="cmw-bar"><div class="cmw-fill" style="width:' + capPct + '%"></div></div>' +
-    '<div class="cmw-footer"><span class="cmw-route">' + activeTruckPlate + ' &bull; ' + (inTr.length > 0 ? 'On-Route' : 'Available') + '</span>' +
-    '<span style="font-size:11px;opacity:.75">Click for details</span></div>' +
+    '<div class="cmw-bar"><div class="cmw-fill" style="width:' + utilPct + '%"></div></div>' +
+    // Mini 3-stat row
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin-top:10px;position:relative;z-index:2">' +
+    '<div style="background:rgba(255,255,255,.12);border-radius:7px;padding:5px 6px;text-align:center">' +
+      '<div style="font-size:16px;font-weight:800">' + onTripCount + '</div>' +
+      '<div style="font-size:9px;opacity:.75;font-weight:600">On Trip</div></div>' +
+    '<div style="background:rgba(255,255,255,.12);border-radius:7px;padding:5px 6px;text-align:center">' +
+      '<div style="font-size:16px;font-weight:800">' + availCount + '</div>' +
+      '<div style="font-size:9px;opacity:.75;font-weight:600">Available</div></div>' +
+    '<div style="background:rgba(255,255,255,.12);border-radius:7px;padding:5px 6px;text-align:center">' +
+      '<div style="font-size:16px;font-weight:800">' + holdCount + '</div>' +
+      '<div style="font-size:9px;opacity:.75;font-weight:600">On Hold</div></div>' +
+    '</div>' +
     '</div>' +
     '</div>' + // end cap-mini-widget
 
