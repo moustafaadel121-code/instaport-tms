@@ -12251,9 +12251,17 @@ function _expSLAReport(){
     '<div style="padding:10px 14px;background:var(--bg);border-radius:8px;margin-bottom:14px;font-size:12px;color:var(--t2)">'+
     '📦 <strong style="color:var(--t)">'+rows.length+' customers</strong> · Period: <strong>'+_anPeriod+'</strong></div>'+
     '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
-    '<button class="btn btn-primary" onclick="(function(){var f=document.querySelector(\'input[name=sla-fmt]:checked\').value;closeM();uExportAll(f,\'Customer SLA Report — \'+_anPeriod,'+JSON.stringify(hdrs)+',window._slaRows);})()">📄 Export</button></div>'
+    '<button class="btn btn-primary" onclick="_doSLAExport()">📄 Export</button></div>'
   );
   window._slaRows=rows;
+  window._slaHdrs=hdrs;
+}
+function _doSLAExport(){
+  var f=document.querySelector('input[name="sla-fmt"]:checked');
+  var fmt=f?f.value:'csv';
+  closeM();
+  uExportAll(fmt,'Customer SLA Report — '+_anPeriod,window._slaHdrs,window._slaRows);
+  audit('EXPORT_SLA',fmt.toUpperCase()+' — '+(window._slaRows||[]).length+' customers','');
 }
 function _expDriverReport(){
   var trips=_anTrips();
@@ -12287,9 +12295,17 @@ function _expDriverReport(){
     '<div style="padding:10px 14px;background:var(--bg);border-radius:8px;margin-bottom:14px;font-size:12px;color:var(--t2)">'+
     '🚛 <strong style="color:var(--t)">'+rows.length+' drivers</strong> · Period: <strong>'+_anPeriod+'</strong></div>'+
     '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
-    '<button class="btn btn-primary" onclick="(function(){var f=document.querySelector(\'input[name=drv-fmt]:checked\').value;closeM();uExportAll(f,\'Driver Performance Report — \'+_anPeriod,'+JSON.stringify(hdrs)+',window._drvRows);})()">📄 Export</button></div>'
+    '<button class="btn btn-primary" onclick="_doDrvExport()">📄 Export</button></div>'
   );
   window._drvRows=rows;
+  window._drvHdrs=hdrs;
+}
+function _doDrvExport(){
+  var f=document.querySelector('input[name="drv-fmt"]:checked');
+  var fmt=f?f.value:'csv';
+  closeM();
+  uExportAll(fmt,'Driver Performance Report — '+_anPeriod,window._drvHdrs,window._drvRows);
+  audit('EXPORT_DRIVERS',fmt.toUpperCase()+' — '+(window._drvRows||[]).length+' drivers','');
 }
 function _anExportReport(){
   var trips=_anTrips();
