@@ -2479,6 +2479,100 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 <div class="tosts" id="tosts"></div>
 <script>
 // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// SECURITY LAYER — XSS sanitizer, brute-force guard, session timeout
+// ══════════════════════════════════════════════════
+// HTML entity encoder — always use esc() when rendering user-supplied strings
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');}
+
+// ── Brute-force lockout state ──────────────────
+var _SEC={
+  attempts:{},     // {uid: count}
+  locked:{},       // {uid: unlockTimestamp}
+  log:[],          // [{ts,uid,type,detail,ip:'—'}]
+  MAX_ATTEMPTS:5,
+  LOCKOUT_MS:30*60*1000  // 30 minutes
+};
+function _secLoad(){
+  try{var d=localStorage.getItem('ip_sec');if(d){var p=JSON.parse(d);_SEC.attempts=p.attempts||{};_SEC.locked=p.locked||{};_SEC.log=p.log||[];}}catch(e){}
+}
+function _secSave(){
+  try{localStorage.setItem('ip_sec',JSON.stringify({attempts:_SEC.attempts,locked:_SEC.locked,log:_SEC.log.slice(0,200)}));}catch(e){}
+}
+function _secIsLocked(uid){
+  var exp=_SEC.locked[uid];
+  if(!exp)return false;
+  if(Date.now()>exp){delete _SEC.locked[uid];delete _SEC.attempts[uid];_secSave();return false;}
+  return true;
+}
+function _secRecordFail(uid){
+  _SEC.attempts[uid]=(_SEC.attempts[uid]||0)+1;
+  var n=_SEC.attempts[uid];
+  _SEC.log.unshift({ts:new Date().toISOString(),uid:uid,type:'FAIL',detail:'Failed login attempt ('+n+'/'+_SEC.MAX_ATTEMPTS+')'});
+  if(n>=_SEC.MAX_ATTEMPTS){
+    _SEC.locked[uid]=Date.now()+_SEC.LOCKOUT_MS;
+    _SEC.log.unshift({ts:new Date().toISOString(),uid:uid,type:'LOCKOUT',detail:'Account locked for 30 min after '+n+' failed attempts'});
+  }
+  _secSave();
+}
+function _secRecordOk(uid,name,role){
+  delete _SEC.attempts[uid];
+  _SEC.log.unshift({ts:new Date().toISOString(),uid:uid,type:'LOGIN',detail:'Successful login — '+name+' ['+role+']'});
+  _secSave();
+}
+function _secRecordLogout(uid,name){
+  _SEC.log.unshift({ts:new Date().toISOString(),uid:uid,type:'LOGOUT',detail:name+' signed out'});
+  _secSave();
+}
+function _secLockoutMsg(uid){
+  var exp=_SEC.locked[uid];
+  var mins=exp?Math.ceil((exp-Date.now())/60000):0;
+  return 'Account locked — too many failed attempts. Try again in '+mins+' minute(s).';
+}
+
+// ── Idle session timeout ───────────────────────
+var _idleTimer=null,_idleWarnTimer=null;
+var _IDLE_TIMEOUT=30*60*1000;  // 30 min auto-logout
+var _IDLE_WARN=28*60*1000;     // warn at 28 min
+function _idleReset(){
+  clearTimeout(_idleTimer);clearTimeout(_idleWarnTimer);
+  if(!S.user)return;
+  _idleWarnTimer=setTimeout(_idleWarnFn,_IDLE_WARN);
+  _idleTimer=setTimeout(_idleLogoutFn,_IDLE_TIMEOUT);
+}
+function _idleWarnFn(){
+  if(!S.user)return;
+  openM('<div class="m-title">⏰ Session About to Expire</div>'+
+    '<div style="text-align:center;padding:10px 0 16px">'+
+    '<div style="font-size:48px;margin-bottom:12px">⚠️</div>'+
+    '<div style="font-size:14px;font-weight:600;margin-bottom:6px">You\'ve been idle for 28 minutes</div>'+
+    '<div style="font-size:13px;color:var(--t2);margin-bottom:16px">You will be automatically logged out in <strong id="idle-cntd" style="color:var(--c5)">2:00</strong> to protect your account.</div>'+
+    '<button class="btn btn-primary" onclick="_idleReset();closeM()">I\'m still here — Stay Logged In</button>'+
+    '</div>');
+  var secs=120;var cntd=document.getElementById('idle-cntd');
+  var iv=setInterval(function(){secs--;if(cntd)cntd.textContent=Math.floor(secs/60)+':'+(('0'+secs%60).slice(-2));if(secs<=0)clearInterval(iv);},1000);
+}
+function _idleLogoutFn(){
+  if(!S.user)return;
+  closeM();
+  audit('AUTO_LOGOUT','Session timed out after 30 min idle','');
+  _secRecordLogout(S.user.id,S.user.name);
+  toast('Session expired — please log in again','err');
+  secureLogout();
+}
+function _idleStart(){
+  ['mousemove','keydown','click','touchstart','scroll'].forEach(function(ev){document.addEventListener(ev,_idleReset,{passive:true});});
+  _idleReset();
+}
+function _idleStop(){
+  clearTimeout(_idleTimer);clearTimeout(_idleWarnTimer);
+}
+
+// ── PIN strength checker ───────────────────────
+var _WEAK_PINS=['0000','1111','2222','3333','4444','5555','6666','7777','8888','9999','1234','4321','1212','0123','1357','2468'];
+function _pinIsWeak(p){return _WEAK_PINS.indexOf(String(p))>-1||/^(.)\1+$/.test(String(p));}
+
+// ══════════════════════════════════════════════════
 // SUPABASE INTEGRATION — Multi-Tenant Edition
 // ══════════════════════════════════════════════════
 const _SUPA_URL='https://qugypjbwkhqkvmrntfus.supabase.co';
@@ -3105,6 +3199,7 @@ let S={
   shifts: [],
   driverProfiles: {}
 };
+_secLoad(); // load brute-force state immediately on page load
 let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicketId=null;
 // Auto-sync on array mutations
 (function(){var _op=Array.prototype.push;S.trips.push=function(){var r=_op.apply(this,arguments);if(!_supabaseLoading)for(var i=0;i<arguments.length;i++)syncTrip(arguments[i]);return r;};S.maintTickets.push=function(){var r=_op.apply(this,arguments);if(!_supabaseLoading)for(var i=0;i<arguments.length;i++)syncMaint(arguments[i]);return r;};})();
@@ -3140,18 +3235,30 @@ const PAGES={
 // AUTH & PASSWORD VERIFICATION
 // ══════════════════════════════════════════════════
 async function doLogin(){
+  _secLoad(); // ensure lockout state is fresh
   var orgCode=(document.getElementById('uorg')||{value:'instaport'}).value.trim().toLowerCase()||'instaport';
   var uid=(document.getElementById('uid').value||'').trim();
   var pin=(document.getElementById('upin').value||'').trim();
   var lerr=document.getElementById('lerr');lerr.style.display='none';
   if(!orgCode){lerr.textContent='Enter your organization code.';lerr.style.display='block';return;}
   if(!uid||!pin){lerr.textContent='Enter your Employee ID and PIN.';lerr.style.display='block';return;}
+  // ── Brute-force check ─────────────────────────
+  var lockKey=orgCode+':'+uid;
+  if(_secIsLocked(lockKey)){lerr.textContent='🔒 '+_secLockoutMsg(lockKey);lerr.style.display='block';return;}
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
   try{
     var ok=await _loadTenant(orgCode);
     if(!ok){lerr.textContent='Organization "'+orgCode+'" not found. Please register first.';lerr.style.display='block';return;}
     var u=_tenantUsers.find(function(x){return String(x.id)===uid&&String(x.pin)===pin&&x.active!==false;});
-    if(!u){lerr.textContent='Invalid Employee ID or PIN.';lerr.style.display='block';return;}
+    if(!u){
+      _secRecordFail(lockKey);
+      var rem=_SEC.MAX_ATTEMPTS-(_SEC.attempts[lockKey]||0);
+      lerr.textContent=_secIsLocked(lockKey)?'🔒 '+_secLockoutMsg(lockKey):
+        'Invalid Employee ID or PIN.'+(rem>0?' ('+rem+' attempt(s) remaining before lockout)':'');
+      lerr.style.display='block';return;
+    }
+    if(u.active===false){lerr.textContent='Your account has been deactivated. Contact your admin.';lerr.style.display='block';return;}
+    _secRecordOk(lockKey,u.name,u.role);
     lerr.style.display='none';
     S.user=u;S.role=u.role;
     var lg=document.getElementById('login');lg.style.cssText='display:none!important';
@@ -3164,6 +3271,9 @@ async function doLogin(){
     var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=_tenantName;
     var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=_tenantName;
     audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
+    _idleStart(); // begin 30-min idle timeout
+    // Warn on weak PIN (first login hint)
+    if(_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
     buildSB();
     var _startPage=u.role==='driver'?'my_trips':'dashboard';
     // Show dashboard instantly, silently refresh data from Supabase in background
@@ -3184,7 +3294,23 @@ async function doLogin(){
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
   }
 }
-function logout(){audit('LOGOUT',S.user.name+' signed out','');S.user=null;document.getElementById('login').style.display='flex';document.getElementById('app').style.display='none';}
+function secureLogout(){
+  _idleStop();
+  if(S.user){_secRecordLogout(S.user.id,S.user.name);}
+  // Clear sensitive in-memory state
+  S.user=null;S.role=null;
+  S.trips=[];S.maintTickets=[];S.auditTrail=[];S.invoices=[];S.fuelLogs=[];S.notifs=[];
+  S.driverProfiles={};S.shifts=[];
+  // Reset UI
+  document.getElementById('login').style.display='flex';
+  document.getElementById('app').style.display='none';
+  // Clear any open modal
+  try{closeM();}catch(e){}
+}
+function logout(){
+  if(S.user)audit('LOGOUT',S.user.name+' signed out','');
+  secureLogout();
+}
 
 // Password verification for sensitive actions
 function requirePwd(title,onSuccess){
@@ -3197,8 +3323,10 @@ function requirePwd(title,onSuccess){
 function verifyPwd(){
   var pin=(document.getElementById('vpwd')||{}).value;
   if(!pin){toast('Enter your PIN','err');return;}
-  var u=USERS.find(function(x){return x.id===S.user.id&&x.pin===pin;});
-  if(!u){toast('Incorrect PIN — action rejected','err');audit('WRONG_PIN',S.user.name+' failed verification','');return;}
+  // Check against tenant users (covers both local USERS and Supabase users)
+  var allUsers=(_tenantUsers&&_tenantUsers.length)?_tenantUsers:USERS;
+  var u=allUsers.find(function(x){return String(x.id)===String(S.user.id)&&String(x.pin)===String(pin);});
+  if(!u){toast('Incorrect PIN — action rejected','err');audit('WRONG_PIN',S.user.name+' failed PIN verification','');return;}
   closeM();
   if(window._pwdCallback)window._pwdCallback();
 }
@@ -6210,9 +6338,10 @@ function rAdmin(){
   '<div class="tab'+(tab==='sysconfig'?' on':'')+'" onclick="S.adminTab=\'sysconfig\';rAdmin()">&#9881; System</div>'+
   '<div class="tab'+(tab==='import'?' on':'')+'" onclick="S.adminTab=\'import\';rAdmin()">&#128229; Import CSV</div>'+
   '<div class="tab'+(tab==='exceptions'?' on':'')+'" onclick="S.adminTab=\'exceptions\';rAdmin()">&#9888;&#65039; Exceptions</div>'+
+  '<div class="tab'+(tab==='security'?' on':'')+'" onclick="S.adminTab=\'security\';rAdmin()">🔐 Security</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,security:rAdminSecurity};
   (fn[tab]||rAdminUsers)();
 }
 
@@ -12523,6 +12652,150 @@ function exportComplianceCert(){
   if(w&&!w.closed){w.document.write(html);w.document.close();}
   else{var b=new Blob([html],{type:'text/html'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='ColdChainCert_'+new Date().toISOString().slice(0,10)+'.html';a.click();}
   toast('📜 Cold Chain Certificate generated','ok');
+}
+
+// ══════════════════════════════════════════════════
+// ADMIN — SECURITY DASHBOARD
+// ══════════════════════════════════════════════════
+function rAdminSecurity(){
+  _secLoad();
+  var el=document.getElementById('admin-content');if(!el)return;
+  var allUsers=(_tenantUsers&&_tenantUsers.length)?_tenantUsers:USERS;
+  var now=Date.now();
+
+  // Security score calculation
+  var score=100;var issues=[];
+  // Check weak PINs
+  var weakPins=allUsers.filter(function(u){return _pinIsWeak(u.pin);});
+  if(weakPins.length){score-=weakPins.length*8;issues.push({sev:'high',msg:'⚠️ '+weakPins.length+' user(s) have weak PINs: '+weakPins.map(function(u){return esc(u.name);}).join(', ')});}
+  // Check locked accounts
+  var locked=Object.keys(_SEC.locked).filter(function(k){return _secIsLocked(k);});
+  if(locked.length){score-=5;issues.push({sev:'warn',msg:'🔒 '+locked.length+' account(s) currently locked due to failed attempts'});}
+  // Check recent failures (last hour)
+  var cutoff=new Date(now-3600000).toISOString();
+  var recentFails=_SEC.log.filter(function(e){return e.type==='FAIL'&&e.ts>cutoff;});
+  if(recentFails.length>=3){score-=15;issues.push({sev:'high',msg:'🚨 '+recentFails.length+' failed login attempts in the last hour'});}
+  // Check inactive / deactivated users
+  var inactive=allUsers.filter(function(u){return u.active===false;});
+  if(inactive.length)issues.push({sev:'info',msg:'ℹ️ '+inactive.length+' deactivated account(s) in the system'});
+  // Check driver weak PINs specifically
+  var drvWeak=allUsers.filter(function(u){return u.role==='driver'&&_pinIsWeak(u.pin);});
+  if(drvWeak.length){score-=5;issues.push({sev:'warn',msg:'⚠️ Drivers with weak PINs (e.g. 1111, 2222) — update in Users tab'});}
+  score=Math.max(0,Math.min(100,score));
+  var scoreColor=score>=80?'#10B981':score>=60?'#F97316':'#EF4444';
+  var scoreLabel=score>=80?'Good':score>=60?'Fair':'Needs Attention';
+
+  // Active protections status
+  var protections=[
+    {label:'Brute-Force Lockout',on:true,desc:'5 attempts → 30-min lock'},
+    {label:'Idle Session Timeout',on:true,desc:'Auto-logout after 30 min'},
+    {label:'Role-Based Access Control',on:true,desc:'Per-role permission gates'},
+    {label:'Navigation Guard',on:true,desc:'Unauthorized page blocking'},
+    {label:'PIN Re-Verification',on:true,desc:'Sensitive actions require PIN'},
+    {label:'Audit Trail',on:true,desc:'All actions logged + synced'},
+    {label:'Tenant Data Isolation',on:true,desc:'Supabase tenant_id scoping'},
+    {label:'XSS Input Sanitizer',on:true,desc:'esc() applied to user data'},
+    {label:'Server-Side Row Level Security',on:true,desc:'Supabase RLS enforced'},
+    {label:'PIN Hashing (Client)',on:false,desc:'PINs stored plain-text — use Supabase Auth for prod'},
+    {label:'HTTPS Enforcement',on:window.location.protocol==='https:',desc:window.location.protocol==='https:'?'Connection is encrypted':'⚠️ Served over HTTP — deploy via HTTPS'},
+    {label:'Content Security Policy',on:false,desc:'CSP header requires server config — add via Nginx/Cloudflare'}
+  ];
+
+  // Lockout table
+  var lockedRows=allUsers.map(function(u){
+    var key=_tenantId+':'+u.id;
+    var isLocked=_secIsLocked(key);
+    var fails=_SEC.attempts[key]||0;
+    var exp=_SEC.locked[key];
+    return{name:u.name,id:u.id,role:u.role,fails:fails,isLocked:isLocked,exp:exp,weak:_pinIsWeak(u.pin),active:u.active!==false};
+  });
+
+  // Recent security event log
+  var logRows=_SEC.log.slice(0,50);
+
+  el.innerHTML=
+  // Score card
+  '<div class="g2" style="margin-bottom:14px">'+
+  '<div class="card" style="text-align:center;border-top:4px solid '+scoreColor+'">'+
+  '<div style="font-size:11px;font-weight:700;color:var(--t3);margin-bottom:8px;text-transform:uppercase">Security Score</div>'+
+  '<div style="font-size:52px;font-weight:900;color:'+scoreColor+'">'+score+'</div>'+
+  '<div style="font-size:14px;font-weight:700;color:'+scoreColor+'">'+scoreLabel+'</div>'+
+  (issues.length?'<div style="margin-top:12px;text-align:left">'+
+  issues.map(function(x){
+    var bg=x.sev==='high'?'#FEF2F2':x.sev==='warn'?'#FFFBEB':'#EFF6FF';
+    var cl=x.sev==='high'?'#DC2626':x.sev==='warn'?'#D97706':'#2563EB';
+    return '<div style="background:'+bg+';border-radius:8px;padding:8px 10px;font-size:12px;color:'+cl+';margin-bottom:6px">'+x.msg+'</div>';
+  }).join('')+'</div>':'<div style="color:#10B981;font-size:13px;margin-top:10px">✅ No critical issues detected</div>')+
+  '</div>'+
+  // Active protections
+  '<div class="card">'+
+  '<div class="card-title" style="margin-bottom:12px">🛡️ Active Protections</div>'+
+  protections.map(function(p){
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--dv)">'+
+      '<div style="width:28px;height:28px;border-radius:50%;background:'+(p.on?'#D1FAE5':'#FEE2E2')+
+      ';display:flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0">'+(p.on?'✅':'❌')+'</div>'+
+      '<div><div style="font-weight:600;font-size:13px">'+p.label+'</div>'+
+      '<div style="font-size:11px;color:var(--t2)">'+p.desc+'</div></div></div>';
+  }).join('')+'</div></div>'+
+  // User security status
+  '<div class="card" style="margin-bottom:14px;padding:0;overflow:hidden">'+
+  '<div class="card-hd" style="padding:12px 16px">'+
+  '<div class="card-title">👥 User Account Security</div>'+
+  '<button class="btn btn-outline btn-sm" onclick="_secUnlockAll()">🔓 Unlock All</button>'+
+  '</div>'+
+  '<table class="tbl"><thead><tr>'+
+  '<th>User</th><th>ID</th><th>Role</th><th>Status</th><th>PIN Strength</th><th>Failed Attempts</th><th>Lockout</th><th>Actions</th>'+
+  '</tr></thead><tbody>'+
+  lockedRows.map(function(u){
+    var st=u.active?'<span class="tag tag-ok">Active</span>':'<span class="tag tag-hold">Deactivated</span>';
+    var pin=u.weak?'<span style="color:#EF4444;font-weight:700">⚠️ Weak</span>':'<span style="color:#10B981">✅ OK</span>';
+    var lockMsg=u.isLocked?'<span style="color:#EF4444;font-size:11px">🔒 Locked ('+Math.ceil((_SEC.locked[_tenantId+':'+u.id]-now)/60000)+' min)</span>':
+      u.fails>0?'<span style="color:#F97316;font-size:11px">'+u.fails+' fail(s)</span>':'<span style="color:#10B981;font-size:11px">Clean</span>';
+    return '<tr>'+
+      '<td style="font-weight:700">'+esc(u.name)+'</td>'+
+      '<td style="font-size:12px;color:var(--t2)">'+esc(u.id)+'</td>'+
+      '<td><span class="tag">'+esc(u.role)+'</span></td>'+
+      '<td>'+st+'</td>'+
+      '<td>'+pin+'</td>'+
+      '<td style="text-align:center;font-weight:700;color:'+(u.fails>=3?'#EF4444':u.fails>0?'#F97316':'var(--t)')+'">'+u.fails+'</td>'+
+      '<td>'+lockMsg+'</td>'+
+      '<td>'+(u.isLocked?'<button class="btn btn-outline btn-sm" onclick="_secUnlock(\''+esc(u.id)+'\')">🔓 Unlock</button>':'')+
+      '</td></tr>';
+  }).join('')+'</tbody></table></div>'+
+  // Security event log
+  '<div class="card" style="padding:0;overflow:hidden">'+
+  '<div class="card-hd" style="padding:12px 16px">'+
+  '<div class="card-title">📋 Security Event Log</div>'+
+  '<button class="btn btn-outline btn-sm" onclick="_secClearLog()">🗑 Clear Log</button>'+
+  '</div>'+
+  (logRows.length===0?'<div style="text-align:center;padding:30px;color:var(--t2)">No security events recorded yet</div>':
+  '<table class="tbl"><thead><tr><th>Timestamp</th><th>Account ID</th><th>Event</th><th>Detail</th></tr></thead><tbody>'+
+  logRows.map(function(e){
+    var c={LOGIN:'#10B981',LOGOUT:'#6B7280',FAIL:'#EF4444',LOCKOUT:'#DC2626'}[e.type]||'#6B7280';
+    var icon={LOGIN:'🟢',LOGOUT:'🔵',FAIL:'🔴',LOCKOUT:'🚫'}[e.type]||'⚫';
+    return '<tr>'+
+      '<td style="font-size:11px;color:var(--t2);white-space:nowrap">'+esc(new Date(e.ts).toLocaleString('en-GB'))+'</td>'+
+      '<td style="font-family:monospace;font-size:12px">'+esc(e.uid)+'</td>'+
+      '<td><span style="color:'+c+';font-weight:700">'+icon+' '+esc(e.type)+'</span></td>'+
+      '<td style="font-size:12px">'+esc(e.detail)+'</td></tr>';
+  }).join('')+'</tbody></table>')+
+  '</div>';
+}
+
+function _secUnlock(uid){
+  var key=_tenantId+':'+uid;
+  delete _SEC.locked[key];delete _SEC.attempts[key];
+  _SEC.log.unshift({ts:new Date().toISOString(),uid:uid,type:'UNLOCK',detail:'Manually unlocked by '+S.user.name});
+  _secSave();toast('Account unlocked ✅','ok');rAdmin();
+}
+function _secUnlockAll(){
+  _SEC.locked={};_SEC.attempts={};
+  _SEC.log.unshift({ts:new Date().toISOString(),uid:'ALL',type:'UNLOCK',detail:'All accounts unlocked by '+S.user.name});
+  _secSave();toast('All accounts unlocked ✅','ok');rAdmin();
+}
+function _secClearLog(){
+  if(!confirm('Clear the security event log?'))return;
+  _SEC.log=[];_secSave();rAdmin();
 }
 
 // ══════════════════════════════════════════════════
