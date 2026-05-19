@@ -3168,6 +3168,7 @@ async function doLogin(){
       try{_loadInvoices();}catch(e){}
       try{_loadFuelLogs();}catch(e){}
       try{_loadESGConfig();}catch(e){}
+      try{_loadRolePages();}catch(e){}
     },2500);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
@@ -3210,8 +3211,52 @@ function audit(action,detail,tripId){
 // ══════════════════════════════════════════════════
 // SIDEBAR & NAVIGATION
 // ══════════════════════════════════════════════════
+// ── Master page list for admin-configurable access ──
+const ALL_PAGES_MASTER=[
+  {id:'dashboard',   icon:'📊',l:'Dashboard',        always:true},
+  {id:'fleet',       icon:'🚛',l:'Fleet'},
+  {id:'trips',       icon:'📋',l:'Trips'},
+  {id:'forecast',    icon:'📅',l:'Shipment Planning'},
+  {id:'dispatch',    icon:'🚦',l:'Dispatch'},
+  {id:'quality',     icon:'🧪',l:'Quality'},
+  {id:'controlroom', icon:'🎛️',l:'Control Room'},
+  {id:'security',    icon:'🔒',l:'Security Gate'},
+  {id:'finance',     icon:'💰',l:'Finance'},
+  {id:'maintenance', icon:'🔧',l:'Maintenance'},
+  {id:'spare_parts', icon:'🔩',l:'Spare Parts'},
+  {id:'validation',  icon:'✅',l:'Validation'},
+  {id:'billing',     icon:'📄',l:'Invoices'},
+  {id:'fuel',        icon:'⛽',l:'Fuel'},
+  {id:'esg',         icon:'🌿',l:'ESG Report'},
+  {id:'analytics',   icon:'📈',l:'Analytics / CO₂'},
+  {id:'audit',       icon:'📜',l:'Audit Trail'},
+  {id:'exceptions',  icon:'⚠️',l:'Exceptions'},
+  {id:'ai',          icon:'🤖',l:'AI Assistant'},
+  {id:'my_trips',    icon:'🚛',l:'My Trips (Driver)'},
+  {id:'nr_trip',     icon:'🔄',l:'Non-Revenue Trip'},
+  {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'}
+];
+
+// Returns the current role's allowed page list (admin-overridden or default)
+function _getRolePages(role){
+  if(!S.rolePages)S.rolePages=JSON.parse(JSON.stringify(PAGES));
+  return S.rolePages[role]||PAGES[role]||PAGES.admin;
+}
+
+// Save/load rolePages to localStorage
+function _saveRolePages(){
+  try{localStorage.setItem('ip_rolepages',JSON.stringify(S.rolePages));}catch(e){}
+}
+function _loadRolePages(){
+  try{
+    var s=localStorage.getItem('ip_rolepages');
+    if(s){S.rolePages=JSON.parse(s);}
+    else{S.rolePages=JSON.parse(JSON.stringify(PAGES));}
+  }catch(e){S.rolePages=JSON.parse(JSON.stringify(PAGES));}
+}
+
 function buildSB(){
-  var pp=PAGES[S.role]||PAGES.admin;
+  var pp=_getRolePages(S.role);
   var pnd=S.trips.filter(function(t){return t.status==='awaiting_truck'&&t.type!=='Non-Revenue';}).length;
   document.getElementById('sidebar').innerHTML='<div class="sb-section">Menu</div>'+
     pp.map(function(p){return '<div class="sbi'+(S.page===p.id?' active':'')+'" onclick="nav(\''+p.id+'\')"><span class="sbi-icon">'+p.icon+'</span>'+p.l+(p.id==='dispatch'&&pnd>0?'<span class="sbi-badge">'+pnd+'</span>':'')+'</div>';}).join('')+
@@ -3219,6 +3264,23 @@ function buildSB(){
 }
 function nav(page){
   _destroyDashMap();_destroyTripMap();
+  // ── Navigation guard ──────────────────────────────
+  // Admin always passes; others must have the page in their allowed list
+  if(!can('all')&&page!=='dashboard'){
+    var allowed=_getRolePages(S.role);
+    var pageOk=allowed.some(function(p){return p.id===page;});
+    if(!pageOk){
+      toast('🔒 Access denied — contact your admin','err');
+      S.page='dashboard';buildSB();
+      document.getElementById('content').innerHTML=
+        '<div class="card" style="text-align:center;padding:60px 20px;max-width:480px;margin:40px auto">'+
+        '<div style="font-size:52px;margin-bottom:12px">🔒</div>'+
+        '<div style="font-size:18px;font-weight:700;margin-bottom:6px">Access Restricted</div>'+
+        '<div style="font-size:13px;color:var(--t2);margin-bottom:20px">You don\'t have permission to view <strong>'+page+'</strong>.<br>Ask your administrator to grant access.</div>'+
+        '<button class="btn btn-primary" onclick="nav(\'dashboard\')">← Back to Dashboard</button></div>';
+      return;
+    }
+  }
   S.page=page;buildSB();document.getElementById('content').innerHTML='';
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
@@ -4893,7 +4955,8 @@ function rMaint(){
     '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'excel\')" style="padding:5px 9px">&#128196; XLS</button>'+
     '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'pdf\')" style="padding:5px 9px">&#128444;&#65039; PDF</button>'+
     '<button class="btn btn-outline" onclick="nav(\'spare_parts\')">&#128297; Spare Parts</button>'+
-    '<button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button></div></div>'+
+    (can('maintenance_create')||can('all')?'<button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button>':'')+
+    '</div></div>'+
   '<div class="kpi-row">'+ckpi('🔧','orange',_opn,'Open Tickets','open')+ckpi('✅','green',_don,'Completed','done')+kpiBox('⚠️','red',_hld,'Trucks On Hold','')+kpiBox('🤖','purple',_aut,'Auto Tickets','')+'</div>'+
   (shown.length===0?'<div class="card" style="text-align:center;padding:40px;color:var(--t2)">'+(S._maintFilter?'No '+S._maintFilter+' tickets':'No tickets')+'</div>':'')+
   shown.slice().reverse().map(function(tk){return '<div class="card" id="maint-tk-'+tk.id+'" style="border-left:4px solid '+(tk.status==='done'?'var(--c4)':tk.auto?'var(--c3)':'var(--c2)')+'">'+
@@ -4930,6 +4993,7 @@ function deleteMaintTicket(id){
   });
 }
 function openMaint(savedState){
+  if(!can('maintenance_create')&&!can('all')){toast('🔒 No permission to create tickets — contact admin','err');return;}
   // savedState allows re-opening with preserved data
   if(!savedState){
     _parts=[{name:'',qty:1,cost:0}];
@@ -5983,6 +6047,15 @@ function expFleetTypeDetail(tp){
 }
 function rAnalytics(){
   var c=document.getElementById('content');
+  if(!can('graph_export')&&!can('all')){
+    c.innerHTML='<div class="card" style="text-align:center;padding:60px 20px;max-width:480px;margin:40px auto">'+
+      '<div style="font-size:52px;margin-bottom:12px">🔒</div>'+
+      '<div style="font-size:18px;font-weight:700;margin-bottom:6px">Analytics Restricted</div>'+
+      '<div style="font-size:13px;color:var(--t2);margin-bottom:20px">You need <strong>Analytics / Graph Export</strong> permission.<br>Ask your administrator to enable it for your role.</div>'+
+      '<button class="btn btn-primary" onclick="nav(\'esg\')">View ESG Report instead</button>'+
+      '&nbsp;<button class="btn btn-outline" onclick="nav(\'dashboard\')">← Dashboard</button></div>';
+    return;
+  }
   c.innerHTML='<div class="page-head"><div><h2>&#128202; Analytics</h2></div>'+
     '<div style="display:flex;gap:8px">'+
     '<button class="btn btn-outline btn-sm" onclick="expAnalyticsCust()">&#128196; Export Customers</button>'+
@@ -6116,6 +6189,7 @@ function rAdmin(){
   '<div class="tab'+(tab==='trucks'?' on':'')+'" onclick="S.adminTab=\'trucks\';rAdmin()">🚛 Trucks</div>'+
   '<div class="tab'+(tab==='pricing'?' on':'')+'" onclick="S.adminTab=\'pricing\';rAdmin()">💰 Pricing</div>'+
   '<div class="tab'+(tab==='rbac'?' on':'')+'" onclick="S.adminTab=\'rbac\';rAdmin()">🔐 Role Access</div>'+
+  '<div class="tab'+(tab==='pages'?' on':'')+'" onclick="S.adminTab=\'pages\';rAdmin()">📋 Page Access</div>'+
   '<div class="tab'+(tab==='dashboard'?' on':'')+'" onclick="S.adminTab=\'dashboard\';rAdmin()">📊 Dashboard</div>'+
   '<div class="tab'+(tab==='spare'?' on':'')+'" onclick="S.adminTab=\'spare\';rAdmin()">🔩 Spare Parts</div>'+
   '<div class="tab'+(tab==='settings'?' on':'')+'" onclick="S.adminTab=\'settings\';rAdmin()">⚙️ Settings</div>'+
@@ -6125,7 +6199,7 @@ function rAdmin(){
   '<div class="tab'+(tab==='exceptions'?' on':'')+'" onclick="S.adminTab=\'exceptions\';rAdmin()">&#9888;&#65039; Exceptions</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions};
   (fn[tab]||rAdminUsers)();
 }
 
@@ -6482,6 +6556,76 @@ function saveRBAC(){
   audit('RBAC_UPDATE','Role permissions updated','');toast('Role permissions saved!','ok');
 }
 function rbacReset(){PERMS=JSON.parse(JSON.stringify(DEFAULT_PERMISSIONS));rAdminRBAC();toast('Reset to defaults','ok');}
+
+// ── PAGE ACCESS CONFIGURATION ──────────────────────────────────────────────
+// Admin controls which sidebar pages each role can see
+function rAdminPageAccess(){
+  var el=document.getElementById('admin-content');if(!el)return;
+  if(!S.rolePages)_loadRolePages();
+  var roles=Object.keys(RL).filter(function(r){return r!=='admin';});
+  var pages=ALL_PAGES_MASTER;
+  el.innerHTML=
+    '<div class="card"><div class="card-hd"><div class="card-title">📋 Sidebar Page Access by Role</div>'+
+    '<button class="btn btn-primary btn-sm" onclick="savePageAccess()">💾 Save Changes</button></div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">'+
+    'Control which pages appear in the left sidebar for each role. Changes take effect immediately on next login or nav refresh. '+
+    '<strong>Dashboard is always visible.</strong> '+
+    '<span style="color:var(--c5)">Removing a page also blocks direct navigation to it.</span></div>'+
+    '<div style="overflow-x:auto"><table class="tbl"><thead><tr>'+
+    '<th style="min-width:180px">Page / Section</th>'+
+    roles.map(function(r){return '<th style="text-align:center;font-size:11px;white-space:nowrap">'+RL[r]+'</th>';}).join('')+
+    '</tr></thead><tbody>'+
+    pages.map(function(pg){
+      var isAlways=pg.always;
+      return '<tr>'+
+        '<td><span style="font-size:14px">'+pg.icon+'</span> <span style="font-weight:600">'+pg.l+'</span>'+
+        (isAlways?'<span style="font-size:10px;color:var(--t3);margin-left:6px">[always on]</span>':'')+
+        '</td>'+
+        roles.map(function(r){
+          var pages_r=(S.rolePages[r]||PAGES[r]||[]);
+          var checked=isAlways||pages_r.some(function(p){return p.id===pg.id;});
+          return '<td style="text-align:center">'+
+            '<input type="checkbox" id="pa-'+r+'-'+pg.id+'" '+(checked?'checked':'')+
+            (isAlways?' disabled':'')+
+            ' style="width:16px;height:16px;cursor:'+(isAlways?'not-allowed':'pointer')+'" '+
+            'title="'+RL[r]+': '+pg.l+'"/></td>';
+        }).join('')+
+        '</tr>';
+    }).join('')+
+    '</tbody></table></div>'+
+    '<div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn btn-outline btn-sm" onclick="pageAccessReset()">↺ Reset to Defaults</button>'+
+    '<button class="btn btn-primary" onclick="savePageAccess()">💾 Save All Changes</button></div></div>';
+}
+
+function savePageAccess(){
+  if(!S.rolePages)S.rolePages={};
+  var roles=Object.keys(RL).filter(function(r){return r!=='admin';});
+  roles.forEach(function(r){
+    var newPages=[];
+    ALL_PAGES_MASTER.forEach(function(pg){
+      var cb=document.getElementById('pa-'+r+'-'+pg.id);
+      if(pg.always||(cb&&cb.checked)){
+        // Find the matching page object from PAGES[r] or ALL_PAGES_MASTER for icon+label
+        var def=ALL_PAGES_MASTER.find(function(p){return p.id===pg.id;});
+        if(def)newPages.push({id:def.id,icon:def.icon,l:def.l});
+      }
+    });
+    S.rolePages[r]=newPages;
+  });
+  _saveRolePages();
+  buildSB(); // refresh current user's sidebar live if their role changed
+  audit('PAGE_ACCESS_UPDATE','Sidebar page access updated by admin','');
+  toast('✅ Page access saved! Changes active immediately.','ok');
+}
+
+function pageAccessReset(){
+  S.rolePages=JSON.parse(JSON.stringify(PAGES));
+  _saveRolePages();
+  rAdminPageAccess();
+  buildSB();
+  toast('Page access reset to defaults','ok');
+}
 
 // ── DASHBOARD CUSTOMIZATION ──
 function rAdminDashboard(){
