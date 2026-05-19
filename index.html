@@ -9258,6 +9258,34 @@ var _EX_DEFAULT_RULES = [
 // Grace tracking: key = ruleId+'|'+tripId → ms timestamp when breach first seen
 var _exBreachTimes = {};
 
+// Per-customer temperature SLA: {customer:{Ambient:{min,max,graceMins,transitHours}, Cold:{...}, Frozen:{...}}}
+var _custTempSLA = {};
+
+function _saveCustTempSLA(){
+  try{ localStorage.setItem('ip_custtempsla', JSON.stringify(_custTempSLA)); } catch(e){}
+}
+
+// Map trip condition string → Ambient | Cold | Frozen
+function _exGetCondKey(tripCond){
+  if(!tripCond) return 'Cold';
+  var tc = tripCond.toLowerCase();
+  if(tc.indexOf('ambient') > -1) return 'Ambient';
+  if(tc.indexOf('frozen') > -1 || tc.indexOf('-18') > -1 || tc.indexOf('-25') > -1) return 'Frozen';
+  return 'Cold'; // cold, controlled, chilled, refrigerated
+}
+
+// Build default SLA for one customer from custModifiers
+function _exBuildCustDefaults(customer){
+  var m = (S.custModifiers || {})[customer] || {};
+  var isAmb = (m.slaMin !== undefined && m.slaMin >= 10);
+  return {
+    Ambient:{ min:(isAmb ? m.slaMin : 15), max:(isAmb ? m.slaMax : 25), graceMins:5,  transitHours:4 },
+    Cold:   { min:(isAmb ? 2 : m.slaMin !== undefined ? m.slaMin : 2),
+               max:(isAmb ? 8 : m.slaMax !== undefined ? m.slaMax : 8),  graceMins:5,  transitHours:4 },
+    Frozen: { min:-25,  max:-10, graceMins:3,  transitHours:4 }
+  };
+}
+
 // ── Persistence ──
 function _exLoadRules(){
   try{
@@ -9265,6 +9293,13 @@ function _exLoadRules(){
     S.exRules = sr ? JSON.parse(sr) : JSON.parse(JSON.stringify(_EX_DEFAULT_RULES));
     var se = localStorage.getItem('ip_exceptions');
     if(se) S.exceptions = JSON.parse(se);
+    // Load per-customer temp SLA
+    var sc = localStorage.getItem('ip_custtempsla');
+    _custTempSLA = sc ? JSON.parse(sc) : {};
+    // Seed any missing customers with defaults
+    Object.keys(S.custModifiers || {}).forEach(function(cu){
+      if(!_custTempSLA[cu]) _custTempSLA[cu] = _exBuildCustDefaults(cu);
+    });
   } catch(e){ S.exRules = JSON.parse(JSON.stringify(_EX_DEFAULT_RULES)); }
 }
 function _exSaveRules(){
@@ -9285,20 +9320,19 @@ function _exCondMatch(ruleCond, tripCond){
   return tc.indexOf(ruleCond.toLowerCase()) > -1;
 }
 
-// ── Get effective temp range for a trip+customer ──
-function _exGetTempRange(rule, customer){
-  // 1. Per-customer override on the rule itself (set via admin modal)
-  var ov = rule.customerOverrides && rule.customerOverrides[customer];
-  if(ov && ov.tempMin !== undefined) return {min: ov.tempMin, max: ov.tempMax};
-  // 2. Customer SLA from custModifiers (pricing settings)
-  var cm = S.custModifiers && S.custModifiers[customer];
-  if(cm && cm.slaMin !== undefined && cm.slaMax !== undefined){
-    // Only use custModifier SLA if the condition type matches
-    if(rule.condition === 'Ambient' && cm.slaMin >= 10) return {min: cm.slaMin, max: cm.slaMax};
-    if(rule.condition === 'Cold'    && cm.slaMin < 10)  return {min: cm.slaMin, max: cm.slaMax};
+// ── Get effective temp range for a trip+customer+condition ──
+function _exGetTempRange(rule, customer, tripCondition){
+  // 1. Per-customer, per-condition SLA (highest priority — set via Exception admin)
+  var condKey = tripCondition ? _exGetCondKey(tripCondition) : rule.condition;
+  var csl = _custTempSLA[customer];
+  if(csl && csl[condKey] && csl[condKey].min !== undefined){
+    return {min: csl[condKey].min, max: csl[condKey].max, graceMins: csl[condKey].graceMins};
   }
+  // 2. Per-customer override on the rule itself (legacy)
+  var ov = rule.customerOverrides && rule.customerOverrides[customer];
+  if(ov && ov.tempMin !== undefined) return {min: ov.tempMin, max: ov.tempMax, graceMins: rule.graceMins};
   // 3. Rule defaults
-  return {min: rule.tempMin, max: rule.tempMax};
+  return {min: rule.tempMin, max: rule.tempMax, graceMins: rule.graceMins};
 }
 
 // ── Get transit start time (ms) ──
@@ -9390,16 +9424,17 @@ function _runExceptionCheck(){
         if(!_exCondMatch(rule.condition, trip.condition)) return;
         var temp = _tb; // global simulated sensor
         if(temp === null || temp === undefined) return;
-        var range = _exGetTempRange(rule, trip.customer);
+        var range = _exGetTempRange(rule, trip.customer, trip.condition);
         var inBreach = (temp < range.min || temp > range.max);
         var bKey = rule.id + '|' + trip.id;
+        var graceMin = range.graceMins !== undefined ? range.graceMins : rule.graceMins;
         if(inBreach){
           if(!_exBreachTimes[bKey]) _exBreachTimes[bKey] = now;
           var elapsedMin = (now - _exBreachTimes[bKey]) / 60000;
-          if(elapsedMin >= rule.graceMins){
+          if(elapsedMin >= graceMin){
             _exRaiseAlert(rule, trip,
               temp.toFixed(1) + '°C',
-              'Temp ' + temp.toFixed(1) + '°C outside range [' + range.min + ',' + range.max + ']°C grace ' + rule.graceMins + 'min');
+              'Temp ' + temp.toFixed(1) + '°C outside [' + range.min + ',' + range.max + ']°C — grace ' + graceMin + 'min');
           }
         } else {
           // Back in range — clear grace timer + auto-resolve open exception
@@ -9421,12 +9456,16 @@ function _runExceptionCheck(){
       inTr.forEach(function(trip){
         var startMs = _exGetTransitStart(trip);
         var hrs = (now - startMs) / 3600000;
+        // Priority: per-customer per-condition transit hours → rule customer override → rule default
         var thresh = rule.thresholdHours;
+        var condKey = _exGetCondKey(trip.condition);
+        var csl = _custTempSLA[trip.customer];
+        if(csl && csl[condKey] && csl[condKey].transitHours) thresh = csl[condKey].transitHours;
         var ov = rule.customerOverrides && rule.customerOverrides[trip.customer];
         if(ov && ov.thresholdHours) thresh = ov.thresholdHours;
         if(hrs >= thresh){
           _exRaiseAlert(rule, trip, hrs.toFixed(1) + 'h',
-            'In transit ' + hrs.toFixed(1) + 'h (limit ' + thresh + 'h)');
+            'In transit ' + hrs.toFixed(1) + 'h (limit ' + thresh + 'h for ' + condKey + ')');
         }
       });
     }
@@ -9669,27 +9708,48 @@ function rAdminExceptions(){
     }).join('') +
     '</tbody></table></div>' +
 
-    // Per-customer SLA reference
+    // Per-customer configurable SLA
     '<div class="card">' +
-    '<div style="font-size:14px;font-weight:800;margin-bottom:6px">&#128100; Per-Customer Temperature Ranges (from Pricing SLA)</div>' +
-    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Temperature exception rules automatically use these customer-specific ranges. Edit in Admin → Pricing.</div>' +
-    '<table class="tbl"><thead><tr><th>Customer</th><th>Min Temp (°C)</th><th>Max Temp (°C)</th><th>Chain Type</th></tr></thead><tbody>' +
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">' +
+    '<div><div style="font-size:14px;font-weight:800">&#128100; Per-Customer Temperature &amp; Time Tolerance</div>' +
+    '<div style="font-size:12px;color:var(--t2);margin-top:2px">Each customer can have different ranges for Ambient, Cold, and Frozen shipments plus max transit time per condition.</div></div>' +
+    '<button class="btn btn-outline btn-sm" onclick="_exResetAllCustSLA()">&#8635; Reset Defaults</button></div>' +
+    '<div style="overflow-x:auto">' +
+    '<table class="tbl" style="min-width:900px"><thead><tr>' +
+    '<th>Customer</th>' +
+    '<th style="background:rgba(249,115,22,.07);border-left:2px solid rgba(249,115,22,.3)">&#9728;&#65039; Ambient Min °C</th><th style="background:rgba(249,115,22,.07)">Max °C</th><th style="background:rgba(249,115,22,.07)">Grace min</th><th style="background:rgba(249,115,22,.07)">Transit hrs</th>' +
+    '<th style="background:rgba(59,130,246,.07);border-left:2px solid rgba(59,130,246,.3)">&#10052;&#65039; Cold Min °C</th><th style="background:rgba(59,130,246,.07)">Max °C</th><th style="background:rgba(59,130,246,.07)">Grace min</th><th style="background:rgba(59,130,246,.07)">Transit hrs</th>' +
+    '<th style="background:rgba(6,182,212,.07);border-left:2px solid rgba(6,182,212,.3)">&#10052; Frozen Min °C</th><th style="background:rgba(6,182,212,.07)">Max °C</th><th style="background:rgba(6,182,212,.07)">Grace min</th><th style="background:rgba(6,182,212,.07)">Transit hrs</th>' +
+    '<th>Edit</th>' +
+    '</tr></thead><tbody>' +
     Object.keys(S.custModifiers || {}).map(function(cu){
-      var m = S.custModifiers[cu];
-      var isAmb = m.slaMin >= 10;
+      var sla = _custTempSLA[cu] || _exBuildCustDefaults(cu);
+      var A = sla.Ambient || {min:15,max:25,graceMins:5,transitHours:4};
+      var C = sla.Cold    || {min:2, max:8, graceMins:5,transitHours:4};
+      var F = sla.Frozen  || {min:-25,max:-10,graceMins:3,transitHours:4};
       return '<tr>' +
-        '<td style="font-weight:700">' + cu + '</td>' +
-        '<td style="color:#06B6D4;font-weight:700">' + m.slaMin + '</td>' +
-        '<td style="color:#EF4444;font-weight:700">' + m.slaMax + '</td>' +
-        '<td><span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;' +
-          'background:' + (isAmb ? 'rgba(249,115,22,.1)' : 'rgba(59,130,246,.1)') + ';' +
-          'color:' + (isAmb ? '#F97316' : '#3B82F6') + '">' + (isAmb ? 'Ambient' : 'Cold Chain') + '</span></td>' +
+        '<td style="font-weight:700;white-space:nowrap">' + cu + '</td>' +
+        // Ambient
+        '<td style="background:rgba(249,115,22,.04);border-left:2px solid rgba(249,115,22,.2);color:#F97316;font-weight:700">' + A.min + '</td>' +
+        '<td style="background:rgba(249,115,22,.04);color:#F97316;font-weight:700">' + A.max + '</td>' +
+        '<td style="background:rgba(249,115,22,.04);font-size:12px">' + A.graceMins + '</td>' +
+        '<td style="background:rgba(249,115,22,.04);font-size:12px">' + A.transitHours + '</td>' +
+        // Cold
+        '<td style="background:rgba(59,130,246,.04);border-left:2px solid rgba(59,130,246,.2);color:#3B82F6;font-weight:700">' + C.min + '</td>' +
+        '<td style="background:rgba(59,130,246,.04);color:#3B82F6;font-weight:700">' + C.max + '</td>' +
+        '<td style="background:rgba(59,130,246,.04);font-size:12px">' + C.graceMins + '</td>' +
+        '<td style="background:rgba(59,130,246,.04);font-size:12px">' + C.transitHours + '</td>' +
+        // Frozen
+        '<td style="background:rgba(6,182,212,.04);border-left:2px solid rgba(6,182,212,.2);color:#06B6D4;font-weight:700">' + F.min + '</td>' +
+        '<td style="background:rgba(6,182,212,.04);color:#06B6D4;font-weight:700">' + F.max + '</td>' +
+        '<td style="background:rgba(6,182,212,.04);font-size:12px">' + F.graceMins + '</td>' +
+        '<td style="background:rgba(6,182,212,.04);font-size:12px">' + F.transitHours + '</td>' +
+        '<td><button class="btn btn-sm btn-outline" onclick="openCustTempModal(\'' + cu + '\')">&#9998; Edit</button></td>' +
         '</tr>';
     }).join('') +
-    '</tbody></table>' +
-    '<div style="margin-top:12px;padding:10px 14px;background:rgba(108,63,245,.06);border-radius:8px;font-size:12px;color:var(--c1)">' +
-    '&#9432; Rules with <strong>Ambient</strong> condition will apply SLA Min/Max from customers with slaMin ≥ 10°C. ' +
-    'Rules with <strong>Cold</strong> condition apply to customers with slaMin &lt; 10°C. Override per-rule via Edit.</div>' +
+    '</tbody></table></div>' +
+    '<div style="margin-top:10px;padding:10px 14px;background:rgba(108,63,245,.06);border-radius:8px;font-size:12px;color:var(--c1)">' +
+    '&#9432; These ranges override the global rule thresholds for each customer. Transit Hours = max time in transit before exception fires for that condition. Grace = minutes before alert triggers after breach.</div>' +
     '</div>';
 }
 
@@ -9812,6 +9872,74 @@ function saveExRule(ruleId, isNew){
   _exSaveRules();
   audit('EXCEPTION_RULE_SAVE', name, '');
   closeM();
+  rAdminExceptions();
+}
+
+// ══════════════════════════════════════════════════
+// PER-CUSTOMER TEMPERATURE SLA EDITOR
+// ══════════════════════════════════════════════════
+
+function openCustTempModal(customer){
+  var sla = _custTempSLA[customer] || _exBuildCustDefaults(customer);
+  var A = sla.Ambient || {min:15, max:25, graceMins:5, transitHours:4};
+  var C = sla.Cold    || {min:2,  max:8,  graceMins:5, transitHours:4};
+  var F = sla.Frozen  || {min:-25,max:-10,graceMins:3, transitHours:4};
+
+  function row(id, label, color, bg, d){
+    return '<div style="background:' + bg + ';border-radius:12px;padding:14px;border-left:4px solid ' + color + '">' +
+      '<div style="font-size:13px;font-weight:800;color:' + color + ';margin-bottom:10px">' + label + '</div>' +
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:8px">' +
+        '<div class="fg" style="margin:0"><label style="font-size:11px">Min Temp (°C)</label>' +
+          '<input type="number" id="cst-' + id + '-min" value="' + d.min + '" step="0.5" style="font-weight:700;color:' + color + '"/></div>' +
+        '<div class="fg" style="margin:0"><label style="font-size:11px">Max Temp (°C)</label>' +
+          '<input type="number" id="cst-' + id + '-max" value="' + d.max + '" step="0.5" style="font-weight:700;color:' + color + '"/></div>' +
+        '<div class="fg" style="margin:0"><label style="font-size:11px">Grace (minutes)</label>' +
+          '<input type="number" id="cst-' + id + '-grace" value="' + d.graceMins + '" min="0" max="120"/></div>' +
+        '<div class="fg" style="margin:0"><label style="font-size:11px">Max Transit (hours)</label>' +
+          '<input type="number" id="cst-' + id + '-transit" value="' + d.transitHours + '" min="0.5" step="0.5"/></div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--t2);margin-top:6px">Grace = minutes after breach before alert fires &bull; Transit = max hours in transit before time exception</div>' +
+      '</div>';
+  }
+
+  openM(
+    '<div class="m-title">&#128100; ' + customer + ' — Temperature SLA</div>' +
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Set allowed temperature ranges and time tolerances for each shipment condition. Overrides global rule defaults for this customer.</div>' +
+    '<div style="display:flex;flex-direction:column;gap:10px;margin-bottom:16px">' +
+      row('A', '☀️ Ambient',  '#F97316', 'rgba(249,115,22,.06)', A) +
+      row('C', '❄️ Cold Chain','#3B82F6', 'rgba(59,130,246,.06)', C) +
+      row('F', '🧊 Frozen',   '#06B6D4', 'rgba(6,182,212,.06)',  F) +
+    '</div>' +
+    '<div class="m-foot">' +
+      '<button class="btn btn-outline" onclick="closeM()">Cancel</button>' +
+      '<button class="btn btn-outline" onclick="_custTempSLA[\'' + customer + '\']=_exBuildCustDefaults(\'' + customer + '\');_saveCustTempSLA();closeM();rAdminExceptions();toast(\'Reset to defaults\',\'ok\')">Reset</button>' +
+      '<button class="btn btn-primary" onclick="saveCustTempSLA(\'' + customer + '\')">&#10003; Save</button>' +
+    '</div>'
+  );
+}
+
+function saveCustTempSLA(customer){
+  function g(id){ return +(document.getElementById(id)||{value:0}).value || 0; }
+  _custTempSLA[customer] = {
+    Ambient:{ min:g('cst-A-min'), max:g('cst-A-max'), graceMins:g('cst-A-grace'), transitHours:g('cst-A-transit') },
+    Cold:   { min:g('cst-C-min'), max:g('cst-C-max'), graceMins:g('cst-C-grace'), transitHours:g('cst-C-transit') },
+    Frozen: { min:g('cst-F-min'), max:g('cst-F-max'), graceMins:g('cst-F-grace'), transitHours:g('cst-F-transit') }
+  };
+  _saveCustTempSLA();
+  audit('CUST_TEMP_SLA_SAVE', customer, '');
+  closeM();
+  toast(customer + ' temperature SLA saved!', 'ok');
+  rAdminExceptions();
+}
+
+function _exResetAllCustSLA(){
+  if(!confirm('Reset ALL customers to default temperature ranges?')) return;
+  _custTempSLA = {};
+  Object.keys(S.custModifiers || {}).forEach(function(cu){
+    _custTempSLA[cu] = _exBuildCustDefaults(cu);
+  });
+  _saveCustTempSLA();
+  toast('All customer SLA ranges reset to defaults', 'ok');
   rAdminExceptions();
 }
 
