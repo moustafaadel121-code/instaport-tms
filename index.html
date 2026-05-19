@@ -2700,7 +2700,14 @@ async function _initDashMap(){
 // ════ TRIP MAP PICKER ════
 var _tripMap=null,_tripFromMarker=null,_tripToMarker=null,_tripRouteLine=null;
 var _mpPickedFrom=null,_mpPickedTo=null;
-function _destroyTripMap(){if(_tripMap){try{_tripMap.remove();}catch(e){}  _tripMap=null;_tripFromMarker=null;_tripToMarker=null;_tripRouteLine=null;}}
+// Coord stores for picked locations (lat/lng from Nominatim or map click)
+var _tripFromCoords=null; // [lat,lng]
+var _tripDestCoords=[];   // [[lat,lng], ...] per destination index
+
+function _destroyTripMap(){
+  if(_tripMap){try{_tripMap.remove();}catch(e){} _tripMap=null;_tripFromMarker=null;_tripToMarker=null;_tripRouteLine=null;}
+  _tripFromCoords=null; _tripDestCoords=[];
+}
 function _initTripMap(){
   var el=document.getElementById('trip-map-el');
   if(!el||!window.L)return;
@@ -2711,23 +2718,21 @@ function _initTripMap(){
   setTimeout(function(){if(_tripMap)_tripMap.invalidateSize();},200);
 }
 function _tripMapClick(lat,lng){
+  // Use exact clicked coords, label with nearest preset or "Custom location"
   var nearest=null,minD=Infinity;
   Object.keys(_EG_LOCS).forEach(function(k){var c=_EG_LOCS[k];var d=Math.pow(c[0]-lat,2)+Math.pow(c[1]-lng,2);if(d<minD){minD=d;nearest=k;}});
-  var name=nearest||'Custom';
+  var name=minD<0.1?(nearest||'Custom location'):'Custom location ('+lat.toFixed(4)+','+lng.toFixed(4)+')';
+  var coords=[lat,lng];
   var fromEl=document.getElementById('tf');
   if(fromEl&&!fromEl.value){
-    fromEl.value=name;
-    var c=_EG_LOCS[name]||[lat,lng];
-    _setTripMarker('from',c[0],c[1],name);
-    toast('Origin set: '+name,'ok');
-    _autoRouteTrip();
+    fromEl.value=name; _tripFromCoords=coords;
+    _setTripMarker('from',lat,lng,name);
+    toast('Origin set','ok'); _autoRouteTrip();
   } else if(_dests&&_dests.length&&!_dests[0]){
-    _dests[0]=name;
+    _dests[0]=name; _tripDestCoords[0]=coords;
     rDestList();
-    var c2=_EG_LOCS[name]||[lat,lng];
-    _setTripMarker('to',c2[0],c2[1],name);
-    toast('Destination set: '+name,'ok');
-    _autoRouteTrip();
+    _setTripMarker('to',lat,lng,name);
+    toast('Destination set','ok'); _autoRouteTrip();
   }
 }
 function _setTripMarker(type,lat,lng,name){
@@ -2737,27 +2742,108 @@ function _setTripMarker(type,lat,lng,name){
   if(type==='from'){if(_tripFromMarker)_tripMap.removeLayer(_tripFromMarker);_tripFromMarker=L.marker([lat,lng],{icon:gI}).addTo(_tripMap).bindPopup('<b>&#128994; Origin</b><br>'+name);}
   else{if(_tripToMarker)_tripMap.removeLayer(_tripToMarker);_tripToMarker=L.marker([lat,lng],{icon:rI}).addTo(_tripMap).bindPopup('<b>&#128308; Destination</b><br>'+name);}
 }
+
+// ── Nominatim geocoding helpers ──────────────────────────────
+var _nomTimers={};
+async function _nominatimCoords(query){
+  try{
+    var url='https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(query+', Egypt')+'&format=json&limit=1&countrycodes=eg';
+    var r=await fetch(url,{headers:{'Accept-Language':'en','User-Agent':'InstaPort-TMS/1.0'}});
+    var d=await r.json();
+    if(d&&d.length){return[parseFloat(d[0].lat),parseFloat(d[0].lon)];}
+  }catch(e){}
+  return null;
+}
+function _nomInput(inputId,type,idx){
+  var el=document.getElementById(inputId);
+  var dropId=inputId+'-drop';
+  var drop=document.getElementById(dropId);
+  if(!el||!drop)return;
+  var q=el.value.trim();
+  if(q.length<2){drop.style.display='none';return;}
+  // Check preset cities first
+  var presets=Object.keys(_EG_LOCS).filter(function(k){return k.toLowerCase().indexOf(q.toLowerCase())>=0;}).slice(0,4);
+  clearTimeout(_nomTimers[inputId]);
+  _nomTimers[inputId]=setTimeout(async function(){
+    var results=[];
+    // Add matching presets at top
+    presets.forEach(function(k){results.push({display:k,lat:_EG_LOCS[k][0],lon:_EG_LOCS[k][1],isPreset:true});});
+    // Fetch from Nominatim
+    try{
+      var url='https://nominatim.openstreetmap.org/search?q='+encodeURIComponent(q+', Egypt')+'&format=json&limit=5&countrycodes=eg';
+      var resp=await fetch(url,{headers:{'Accept-Language':'en','User-Agent':'InstaPort-TMS/1.0'}});
+      var data=await resp.json();
+      data.forEach(function(item){
+        var nm=item.display_name.replace(/, Egypt$/,'').replace(/Egypt,\s*/,'');
+        // Avoid duplicates with presets
+        var dup=results.some(function(r){return Math.abs(r.lat-parseFloat(item.lat))<0.01;});
+        if(!dup)results.push({display:nm,lat:parseFloat(item.lat),lon:parseFloat(item.lon)});
+      });
+    }catch(e){}
+    if(!results.length){drop.style.display='none';return;}
+    drop.innerHTML=results.slice(0,6).map(function(r){
+      var icon=r.isPreset?'&#127981;':'&#128205;';
+      var lat=r.lat,lon=r.lon,nm=r.display.replace(/'/g,'&#39;');
+      return '<div onclick="_nomPick(\''+inputId+'\',\''+nm.replace(/'/g,"\\'").replace(/"/g,'&quot;')+'\','+lat+','+lon+',\''+type+'\','+idx+')" '+
+             'style="padding:9px 12px;cursor:pointer;border-bottom:1px solid var(--bd);font-size:12px;color:var(--t);display:flex;align-items:center;gap:8px" '+
+             'onmouseenter="this.style.background=\'var(--bg)\'" onmouseleave="this.style.background=\'\'">'
+             +icon+' <span>'+r.display.slice(0,60)+(r.display.length>60?'...':'')+'</span></div>';
+    }).join('');
+    drop.style.display='block';
+  },350);
+}
+function _nomPick(inputId,name,lat,lng,type,idx){
+  var el=document.getElementById(inputId);
+  var drop=document.getElementById(inputId+'-drop');
+  if(el)el.value=name;
+  if(drop)drop.style.display='none';
+  if(type==='from'){_tripFromCoords=[lat,lng];_setTripMarker('from',lat,lng,name);}
+  else if(type==='dest'){if(!_tripDestCoords)_tripDestCoords=[];_tripDestCoords[idx]=lat&&lng?[lat,lng]:null;if(_dests&&idx>=0){_dests[idx]=name;}_setTripMarker('to',lat,lng,name);}
+  _autoRouteTrip();
+}
+// Hide all dropdowns on outside click
+document.addEventListener('click',function(e){
+  document.querySelectorAll('[id$="-drop"]').forEach(function(d){
+    if(!d.contains(e.target)&&d.style.display!=='none'){d.style.display='none';}
+  });
+},true);
+
 async function _autoRouteTrip(){
-  var fromName=(document.getElementById('tf')||{}).value||'';
+  var fromEl=document.getElementById('tf');
+  var fromName=(fromEl||{}).value||'';
   var dests=(_dests||[]).filter(function(d){return d.trim();});
-  var toName=dests.length?dests[dests.length-1]:'';
-  if(!fromName||!toName)return;
-  var fc=_egCoords(fromName),tc=_egCoords(toName);
-  if(!fc||!tc)return;
+  if(!fromName||!dests.length)return;
+  // Resolve origin coords
+  var fc=_tripFromCoords||_egCoords(fromName);
+  if(!fc){fc=await _nominatimCoords(fromName);if(fc)_tripFromCoords=fc;}
+  if(!fc)return;
+  // Resolve all dest coords
+  var allCoords=[fc];
+  for(var i=0;i<dests.length;i++){
+    var dc=(_tripDestCoords&&_tripDestCoords[i])||_egCoords(dests[i]);
+    if(!dc){dc=await _nominatimCoords(dests[i]);if(dc&&_tripDestCoords)_tripDestCoords[i]=dc;}
+    if(dc)allCoords.push(dc);
+  }
+  if(allCoords.length<2)return;
   _setTripMarker('from',fc[0],fc[1],fromName);
-  _setTripMarker('to',tc[0],tc[1],toName);
+  _setTripMarker('to',allCoords[allCoords.length-1][0],allCoords[allCoords.length-1][1],dests[dests.length-1]);
   var dlbl=document.getElementById('dlbl');
   if(dlbl)dlbl.innerHTML='<span style="color:#6C3FF5">&#9679; Calculating route...</span>';
-  var route=await _osrmRoute(fc[0],fc[1],tc[0],tc[1]);
-  var km=route?route.distance:_straightKm(fc[0],fc[1],tc[0],tc[1]);
+  // Multi-leg routing: sum all legs
+  var totalKm=0,totalDur=0,allPts=[fc];
+  for(var j=0;j<allCoords.length-1;j++){
+    var route=await _osrmRoute(allCoords[j][0],allCoords[j][1],allCoords[j+1][0],allCoords[j+1][1]);
+    if(route){totalKm+=route.distance;totalDur+=route.duration;allPts=allPts.concat(route.coords.slice(1));}
+    else{totalKm+=_straightKm(allCoords[j][0],allCoords[j][1],allCoords[j+1][0],allCoords[j+1][1]);allPts.push(allCoords[j+1]);}
+  }
   if(_tripMap){
     if(_tripRouteLine)_tripMap.removeLayer(_tripRouteLine);
-    var pts=route?route.coords:[fc,tc];
-    _tripRouteLine=L.polyline(pts,{color:'#6C3FF5',weight:3,opacity:.85}).addTo(_tripMap);
+    _tripRouteLine=L.polyline(allPts,{color:'#6C3FF5',weight:3,opacity:.85}).addTo(_tripMap);
     _tripMap.fitBounds(_tripRouteLine.getBounds(),{padding:[20,20]});
   }
-  var ki=document.getElementById('tkm');if(ki&&ki.value==150||!ki.value){if(ki)ki.value=km;}
-  if(dlbl)dlbl.innerHTML='<span style="color:#10B981;font-weight:700">&#10003;</span> '+fromName+' &#8594; '+toName+' &bull; <strong>'+km+' km</strong>'+(route?' &bull; ~'+Math.floor(route.duration/60)+'h '+route.duration%60+'min':'');
+  var ki=document.getElementById('tkm');if(ki)ki.value=totalKm;
+  var durText=totalDur>0?' &bull; ~'+Math.floor(totalDur/60)+'h '+(totalDur%60)+'min':'';
+  if(dlbl)dlbl.innerHTML='<span style="color:#10B981;font-weight:700">&#10003;</span> '+fromName+' &#8594; '+dests.join(' &#8594; ')+' &bull; <strong>'+totalKm+' km</strong>'+durText;
   calcC();
 }
 
@@ -3379,9 +3465,8 @@ function openTrip(){
   '<div class="fg"><label>Type</label><select id="tt" onchange="calcC()">'+types.map(function(t){return '<option>'+t+'</option>';}).join('')+'</select></div></div>'+
   '<div class="frow"><div class="fg"><label>Direction</label><select id="td"><option>Outbound</option><option>Inbound</option></select></div><div class="fg"><label>Condition</label><select id="tco" onchange="calcC()">'+getConditionOptions()+'</select></div></div>'+
   '<div class="fg f1"><label>Origin *</label>'+
-  '<div style="display:flex;gap:6px"><input id="tf" placeholder="e.g. Cairo - Obour City" list="eg-locs-list" oninput="_autoRouteTrip()" style="flex:1"/>'+
-  '<datalist id="eg-locs-list">'+Object.keys(_EG_LOCS).map(function(k){return'<option value="'+k+'">';}).join('')+'</datalist>'+
-  '</div></div>'+
+  '<div style="position:relative"><input id="tf" placeholder="&#128269; Type any address or city in Egypt..." oninput="_nomInput(\'tf\',\'from\',-1)" autocomplete="off" style="width:100%"/>'+
+  '<div id="tf-drop" style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:var(--surf);border:1.5px solid var(--bd);border-radius:8px;z-index:9999;max-height:190px;overflow-y:auto;display:none;box-shadow:0 8px 24px rgba(0,0,0,.15)"></div></div></div>'+
   '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px"><label style="font-size:12px;font-weight:600">Destinations</label><button class="btn btn-outline btn-sm" onclick="addDest()">+ Add Stop</button></div>'+
   '<div id="dest-list"></div>'+
   '<div id="trip-map-el" style="width:100%;height:220px;border-radius:10px;overflow:hidden;border:1px solid var(--bd);margin-bottom:8px;z-index:0;position:relative"></div>'+
@@ -3404,23 +3489,14 @@ function addDest(){_dests.push('');rDestList();}
 function remDest(i){if(_dests.length>1){_dests.splice(i,1);rDestList();}}
 function rDestList(){
   var el=document.getElementById('dest-list');if(!el)return;
-  el.innerHTML=_dests.map(function(d,i){var col=i===0?'var(--c4)':i===_dests.length-1?'var(--c2)':'var(--c1)';return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center"><div style="width:22px;height:22px;border-radius:50%;background:'+col+';color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div><input style="flex:1;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;outline:none" placeholder="Destination '+(i+1)+'..." list="eg-locs-list" value="'+d+'" oninput="_dests['+i+']=this.value;updRoute()"/>'+(_dests.length>1?'<div style="width:28px;height:28px;border:1px solid #FECACA;background:#FEF2F2;border-radius:var(--r);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--c5);font-size:12px" onclick="remDest('+i+')">x</div>':'')+'</div>';}).join('');updRoute();}
+  el.innerHTML=_dests.map(function(d,i){var col=i===0?'var(--c4)':i===_dests.length-1?'var(--c2)':'var(--c1)';var uid='tdst-'+i;return '<div style="display:flex;gap:6px;margin-bottom:6px;align-items:center"><div style="width:22px;height:22px;border-radius:50%;background:'+col+';color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div><div style="position:relative;flex:1"><input id="'+uid+'" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;outline:none" placeholder="&#128269; Address or city..." autocomplete="off" value="'+d+'" oninput="_dests['+i+']=this.value;_nomInput(\''+uid+'\',\'dest\','+i+')"/><div id="'+uid+'-drop" style="position:absolute;top:calc(100% + 2px);left:0;right:0;background:var(--surf);border:1.5px solid var(--bd);border-radius:8px;z-index:9999;max-height:180px;overflow-y:auto;display:none;box-shadow:0 8px 24px rgba(0,0,0,.15)"></div></div>'+(_dests.length>1?'<div style="width:28px;height:28px;border:1px solid #FECACA;background:#FEF2F2;border-radius:var(--r);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--c5);font-size:12px" onclick="remDest('+i+')">x</div>':'')+'</div>';}).join('');updRoute();}
 function updRoute(){
   var fromName=(document.getElementById('tf')||{}).value||'';
   var dests=_dests.filter(function(d){return d.trim();});
   var dl=document.getElementById('dlbl');
-  if(!fromName||!dests.length){if(dl)dl.textContent='&#128205; Select origin & destination — or click map to set points';calcC();return;}
-  // Try OSRM if coords known, else estimate
-  var fc=_egCoords(fromName),tc=_egCoords(dests[dests.length-1]);
-  if(fc&&tc){
-    _autoRouteTrip();
-  } else {
-    var estKm=dests.length*80+120;
-    var ki=document.getElementById('tkm');if(ki)ki.value=estKm;
-    if(dl)dl.textContent=dests.length+1+' stops, Est. '+estKm+' km';
-    calcC();
-  }
-  calcC();
+  if(!fromName||!dests.length){if(dl)dl.textContent='&#128205; Select origin & destination — or click the map';calcC();return;}
+  // Always try to route (uses stored Nominatim coords or preset coords)
+  _autoRouteTrip();
 }
 function calcC(){
   var cu=(document.getElementById('tc')||{}).value;var km=+((document.getElementById('tkm')||{}).value||0);
@@ -6272,6 +6348,29 @@ function openFleetTruckTrips(plate) {
       '</div>' : '') +
     '</div>' +
 
+    // ── KM MAINTENANCE TRACKER ──
+    (function(){
+      var odo=t.odometerKm||0;var last=t.lastMaintKm||0;var interval=t.maintIntervalKm||10000;
+      var since=odo-last;var pct=Math.min(Math.round(since/interval*100),100);
+      var mAlert=_truckMaintAlert(t);
+      var barCol=mAlert?(mAlert.level==='overdue'?'#EF4444':'#F97316'):'#10B981';
+      return '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:14px;padding:14px;margin-bottom:14px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">'+
+        '<div style="font-size:13px;font-weight:800;color:var(--t)">&#128295; KM Maintenance Tracker</div>'+
+        (mAlert?'<span style="font-size:11px;font-weight:700;color:'+barCol+';background:'+(mAlert.level==='overdue'?'rgba(239,68,68,.1)':'rgba(249,115,22,.1)')+';padding:3px 8px;border-radius:20px">'+(mAlert.level==='overdue'?'&#128308; OVERDUE':'&#9888; Due Soon')+'</span>':
+        '<span style="font-size:11px;font-weight:700;color:#10B981;background:rgba(16,185,129,.1);padding:3px 8px;border-radius:20px">&#9989; OK</span>')+
+        '</div>'+
+        '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">'+
+        '<div class="ib"><div class="ib-l">Odometer</div><div class="ib-v">'+Math.round(odo).toLocaleString()+' km</div></div>'+
+        '<div class="ib"><div class="ib-l">Since Service</div><div class="ib-v" style="color:'+barCol+'">'+Math.round(since).toLocaleString()+' km</div></div>'+
+        '<div class="ib"><div class="ib-l">Service Interval</div><div class="ib-v">'+interval.toLocaleString()+' km</div></div>'+
+        '</div>'+
+        '<div style="height:8px;background:var(--bd);border-radius:4px;margin-bottom:6px"><div style="height:100%;width:'+pct+'%;background:'+barCol+';border-radius:4px;transition:width .5s"></div></div>'+
+        '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3);margin-bottom:10px"><span>0 km</span><span style="font-weight:700;color:'+barCol+'">'+pct+'% used</span><span>'+interval.toLocaleString()+' km</span></div>'+
+        (can('all')||can('validation')?'<button class="btn btn-outline btn-sm" onclick="resetTruckMaint(\''+t.plate.replace(/'/g,"\\'")+'\')" style="width:100%">&#128295; Reset After Service</button>':'')+
+        '</div>';
+    })()+
+
     // TRIPS LIST
     '<div style="font-size:14px;font-weight:800;color:var(--t);margin-bottom:12px;font-family:Space Grotesk,sans-serif">' +
     (trips.length > 0 ? 'Trip History (' + trips.length + ')' : 'No Trips Yet') +
@@ -7769,7 +7868,6 @@ rDash = function() {
     // MAP — Real Leaflet map (OpenStreetMap, free)
     '<div class="tcp-map" style="padding:0;overflow:hidden;position:relative">' +
     '<div id="tcp-leaflet" style="width:100%;height:240px;z-index:1;position:relative"></div>' +
-    '</div>' + // end hidden div
     '</div>' + // end tcp-map
 
     // META ROW
