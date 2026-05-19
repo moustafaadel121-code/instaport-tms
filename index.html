@@ -402,7 +402,7 @@ input, select, textarea { font-family: inherit; }
   position: relative;
   z-index: 10;
 }
-[data-theme=dark] .sidebar { background: #0D0B1F; }
+[data-theme=dark] .sidebar { background: var(--sidebar-bg); }
 .sidebar::after {
   content: '';
   position: absolute;
@@ -410,9 +410,27 @@ input, select, textarea { font-family: inherit; }
   left: 0;
   right: 0;
   height: 200px;
-  background: linear-gradient(to top, rgba(108,63,245,.15), transparent);
+  background: linear-gradient(to top, var(--sb-glow, rgba(108,63,245,.15)), transparent);
   pointer-events: none;
 }
+/* Sidebar color swatches */
+.sb-theme-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 8px;
+}
+.sb-sw {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: transform .2s, border-color .2s;
+  flex-shrink: 0;
+}
+.sb-sw:hover { transform: scale(1.2); }
+.sb-sw.on { border-color: #fff; transform: scale(1.15); }
 .sb-header {
   padding: 22px 20px 18px;
   display: flex;
@@ -458,9 +476,9 @@ input, select, textarea { font-family: inherit; }
 }
 .sbi:hover { background: rgba(255,255,255,.08); color: rgba(255,255,255,.85); }
 .sbi.active {
-  background: linear-gradient(135deg, rgba(108,63,245,.9), rgba(79,31,212,.8));
+  background: var(--sb-act, linear-gradient(135deg, rgba(108,63,245,.9), rgba(79,31,212,.8)));
   color: #fff;
-  box-shadow: 0 4px 16px rgba(108,63,245,.4);
+  box-shadow: var(--sb-sh, 0 4px 16px rgba(108,63,245,.4));
 }
 .sbi-icon {
   width: 32px;
@@ -2348,6 +2366,15 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
     <div id="sb-tenant-badge" style="margin:0 10px 6px;padding:5px 10px;background:rgba(255,255,255,.08);border-radius:8px;font-size:10px;color:rgba(255,255,255,.55);display:flex;align-items:center;gap:6px">
       <span style="font-size:12px">&#127970;</span>
       <span id="sb-tenant-badge-name" style="font-weight:600;color:rgba(255,255,255,.8);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">InstaPort</span>
+    </div>
+    <!-- Sidebar color theme picker -->
+    <div class="sb-theme-row" title="Sidebar color">
+      <span style="font-size:9px;color:rgba(255,255,255,.35);text-transform:uppercase;letter-spacing:.8px;font-weight:700;margin-right:2px">Skin</span>
+      <span class="sb-sw" id="sw-purple" style="background:linear-gradient(135deg,#6C3FF5,#4F1FD4)" onclick="setSbTheme('purple')" title="Purple (default)"></span>
+      <span class="sb-sw" id="sw-lime"   style="background:linear-gradient(135deg,#84CC16,#4D7C0F)"  onclick="setSbTheme('lime')"   title="Lime Green"></span>
+      <span class="sb-sw" id="sw-slate"  style="background:linear-gradient(135deg,#64748B,#334155)"  onclick="setSbTheme('slate')"  title="Slate Grey"></span>
+      <span class="sb-sw" id="sw-ocean"  style="background:linear-gradient(135deg,#06B6D4,#0E7490)"  onclick="setSbTheme('ocean')"  title="Ocean Teal"></span>
+      <span class="sb-sw" id="sw-rose"   style="background:linear-gradient(135deg,#F43F5E,#9F1239)"  onclick="setSbTheme('rose')"   title="Rose Red"></span>
     </div>
     <div class="sb-user" id="sb-user">
       <div class="sb-user-av" id="sb-av">--</div>
@@ -6365,6 +6392,80 @@ function applyLanguage(){
   nav(S.page||'dashboard');
 }
 // ══════════════════════════════════════════════════
+// SIDEBAR COLOR THEMES
+// ══════════════════════════════════════════════════
+var _sbThemes = {
+  purple: {
+    bg:'#1E1453', bgDark:'#0D0B1F',
+    act:'linear-gradient(135deg,rgba(108,63,245,.9),rgba(79,31,212,.8))',
+    sh:'0 4px 16px rgba(108,63,245,.4)',
+    glow:'rgba(108,63,245,.15)',
+    c1:'#6C3FF5', c1l:'#EEE9FD', c1m:'#9B7FF8'
+  },
+  lime: {
+    bg:'#14290E', bgDark:'#0A1A06',
+    act:'linear-gradient(135deg,rgba(132,204,22,.85),rgba(77,124,15,.9))',
+    sh:'0 4px 16px rgba(132,204,22,.35)',
+    glow:'rgba(132,204,22,.12)',
+    c1:'#84CC16', c1l:'#ECFCCB', c1m:'#A3E635'
+  },
+  slate: {
+    bg:'#1E2633', bgDark:'#0F1520',
+    act:'linear-gradient(135deg,rgba(100,116,139,.9),rgba(51,65,85,.95))',
+    sh:'0 4px 16px rgba(100,116,139,.4)',
+    glow:'rgba(100,116,139,.15)',
+    c1:'#64748B', c1l:'#F1F5F9', c1m:'#94A3B8'
+  },
+  ocean: {
+    bg:'#0A2233', bgDark:'#061520',
+    act:'linear-gradient(135deg,rgba(6,182,212,.85),rgba(14,116,144,.9))',
+    sh:'0 4px 16px rgba(6,182,212,.35)',
+    glow:'rgba(6,182,212,.13)',
+    c1:'#06B6D4', c1l:'#CFFAFE', c1m:'#22D3EE'
+  },
+  rose: {
+    bg:'#2A0A16', bgDark:'#1A0510',
+    act:'linear-gradient(135deg,rgba(244,63,94,.85),rgba(159,18,57,.9))',
+    sh:'0 4px 16px rgba(244,63,94,.35)',
+    glow:'rgba(244,63,94,.13)',
+    c1:'#F43F5E', c1l:'#FFE4E6', c1m:'#FB7185'
+  }
+};
+var _sbCurrent = 'purple';
+
+function setSbTheme(name) {
+  var t = _sbThemes[name]; if(!t) return;
+  _sbCurrent = name;
+  localStorage.setItem('ip_sb', name);
+  // Inject / update dynamic style
+  var el = document.getElementById('_sbThemeStyle');
+  if(!el){ el = document.createElement('style'); el.id='_sbThemeStyle'; document.head.appendChild(el); }
+  var dark = (document.documentElement.getAttribute('data-theme')==='dark');
+  el.textContent = [
+    ':root {',
+    '  --sidebar-bg:'+t.bg+';',
+    '  --sb-act:'+t.act+';',
+    '  --sb-sh:'+t.sh+';',
+    '  --sb-glow:'+t.glow+';',
+    '  --c1:'+t.c1+';',
+    '  --c1-light:'+t.c1l+';',
+    '  --c1-mid:'+t.c1m+';',
+    '}',
+    '[data-theme=dark] { --sidebar-bg:'+t.bgDark+'; }'
+  ].join('\n');
+  // Update active swatch ring
+  ['purple','lime','slate','ocean','rose'].forEach(function(k){
+    var sw=document.getElementById('sw-'+k);
+    if(sw) sw.classList.toggle('on', k===name);
+  });
+}
+
+function _sbThemeInit() {
+  var saved = localStorage.getItem('ip_sb') || 'purple';
+  setSbTheme(saved);
+}
+
+// ══════════════════════════════════════════════════
 // TEMPERATURE SIMULATION + TIMESTAMPS
 // ══════════════════════════════════════════════════
 var _tb=3.5;
@@ -7610,6 +7711,7 @@ function toggleDark(){
   if(l)l.textContent=d?'Light':'Dark';
   if(lb)lb.innerHTML=d?'&#127769; Dark':'&#9728;&#65039; Light';
   try{localStorage.setItem('ip_th',d?'light':'dark');}catch(e){}
+  try{_sbThemeInit();}catch(e){}
 }
 
 // ── toggleLang: RTL layout ──
@@ -8102,6 +8204,8 @@ function secHoldC(id){
     if(lb)lb.innerHTML=t==='dark'?'&#127769; Dark':'&#9728;&#65039; Light';
   }catch(e){}
 })();
+// ── Init sidebar color theme on page load ──
+(function(){try{_sbThemeInit();}catch(e){}})();
 
 
 // ════ PREMIUM UI OVERRIDES ════
@@ -8117,6 +8221,8 @@ function toggleDark(){
   if(lbl) lbl.textContent = d ? 'Light' : 'Dark';
   if(lbtn) lbtn.innerHTML = d ? '&#9728;&#65039; Light' : '&#127769; Dark';
   try { localStorage.setItem('ip_th', d ? 'light' : 'dark'); } catch(e) {}
+  // Re-apply sidebar theme so dark/light variant of bg-color is picked
+  try { _sbThemeInit(); } catch(e) {}
 }
 
 // Language
@@ -8811,6 +8917,7 @@ function exportRates() {
     if(lbl) lbl.textContent = t === 'dark' ? 'Dark' : 'Light';
     if(lbtn) lbtn.innerHTML = t === 'dark' ? '&#9728;&#65039; Light' : '&#127769; Dark';
   } catch(e) {}
+  try { _sbThemeInit(); } catch(e) {}
 })();
 
 </script>
