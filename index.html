@@ -965,19 +965,19 @@ input, select, textarea { font-family: inherit; }
   align-items: center;
   gap: 8px;
   padding: 10px 20px;
-  background: linear-gradient(135deg, #6C3FF5, #4F1FD4);
+  background: linear-gradient(135deg, var(--c1,#6C3FF5), var(--c1-dark,#4F1FD4));
   color: #fff;
   border: none;
   border-radius: var(--r);
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 16px rgba(108,63,245,.4);
+  box-shadow: 0 4px 16px var(--c1-sh,rgba(108,63,245,.4));
   transition: transform .15s, box-shadow .15s;
   white-space: nowrap;
   font-family: inherit;
 }
-.track-details-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(108,63,245,.5); }
+.track-details-btn:hover { transform: translateY(-1px); box-shadow: 0 8px 24px var(--c1-sh,rgba(108,63,245,.5)); }
 
 /* ═══ RIGHT COLUMN ═══ */
 .right-col { display: flex; flex-direction: column; gap: 14px; }
@@ -1326,11 +1326,11 @@ input, select, textarea { font-family: inherit; }
   font-family: inherit;
 }
 .btn-primary {
-  background: linear-gradient(135deg, #6C3FF5, #4F1FD4);
+  background: linear-gradient(135deg, var(--c1,#6C3FF5), var(--c1-dark,#4F1FD4));
   color: #fff;
-  box-shadow: 0 4px 14px rgba(108,63,245,.35);
+  box-shadow: 0 4px 14px var(--c1-sh,rgba(108,63,245,.35));
 }
-.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(108,63,245,.45); }
+.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px var(--c1-sh,rgba(108,63,245,.45)); }
 .btn-success { background: linear-gradient(135deg, #10B981, #059669); color: #fff; }
 .btn-danger { background: linear-gradient(135deg, #EF4444, #DC2626); color: #fff; }
 .btn-outline {
@@ -2017,7 +2017,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   border-radius:8px; font-size:12px; font-weight:600; color:var(--t2);
   cursor:pointer; transition:all .2s;
 }
-.tcp-pill-btn:hover { border-color:#6C3FF5; color:#6C3FF5; background:var(--c1-light); }
+.tcp-pill-btn:hover { border-color:var(--c1,#6C3FF5); color:var(--c1,#6C3FF5); background:var(--c1-light); }
 /* Filter pills */
 .tcp-filters { display:flex; gap:8px; margin-bottom:16px; }
 .tcp-filter {
@@ -2025,7 +2025,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   border:1.5px solid var(--bd); background:var(--surf); color:var(--t2);
   cursor:pointer; transition:all .2s;
 }
-.tcp-filter.on { background:#6C3FF5; color:#fff; border-color:#6C3FF5; box-shadow:0 4px 12px rgba(108,63,245,.3); }
+.tcp-filter.on { background:var(--c1,#6C3FF5); color:#fff; border-color:var(--c1,#6C3FF5); box-shadow:0 4px 12px var(--c1-sh,rgba(108,63,245,.3)); }
 /* Route map premium */
 .tcp-map {
   background:linear-gradient(145deg,#F4F5FA,#EEF0F8);
@@ -6428,8 +6428,7 @@ var _sbThemes = {
     c1d:'#4F1FD4', c1dp:'#3B0764', c1sh:'rgba(108,63,245,.45)'
   },
   lime: {
-    bg:'#E8F8E0', bgDark:'#0B2D06',
-    light:true,
+    bg:'#1A3A0A', bgDark:'#0B2306',
     act:'linear-gradient(135deg,rgba(34,197,94,.9),rgba(22,163,74,.85))',
     sh:'0 4px 16px rgba(34,197,94,.4)',
     glow:'rgba(34,197,94,.15)',
@@ -6453,8 +6452,7 @@ var _sbThemes = {
     c1d:'#0E7490', c1dp:'#164E63', c1sh:'rgba(6,182,212,.42)'
   },
   rose: {
-    bg:'#FEE7ED', bgDark:'#4C0519',
-    light:true,
+    bg:'#3A0A18', bgDark:'#250510',
     act:'linear-gradient(135deg,rgba(244,63,94,.9),rgba(190,18,60,.85))',
     sh:'0 4px 16px rgba(244,63,94,.4)',
     glow:'rgba(244,63,94,.15)',
@@ -8059,6 +8057,239 @@ rDash=function(){
   }).join('')+'</tbody></table></div></div>':'');
 };
 
+// ══════════════════════════════════════════════════
+// KPI DRILL-DOWN SIDE PANELS
+// ══════════════════════════════════════════════════
+function openKpiSP(type){
+  var inTrK=S.trips.filter(function(t){return t.status==='in_transit';});
+  var compK=S.trips.filter(function(t){return t.status==='completed';});
+  var pendK=S.trips.filter(function(t){return!['completed','cancelled'].includes(t.status);});
+  var relK=TRUCKS.filter(function(t){return t.valid;}).length;
+  var revK=compK.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var co2K=compK.reduce(function(s,t){return s+(+t.co2||0);},0);
+
+  // ── helpers ──
+  function secH(icon,label,val,color){
+    return '<div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg);border-radius:10px;margin-bottom:8px">'+
+      '<div style="width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:17px;background:'+(color||'var(--c1-light)')+'">'+icon+'</div>'+
+      '<div><div style="font-size:10px;color:var(--t2);font-weight:600;text-transform:uppercase;letter-spacing:.5px">'+label+'</div>'+
+      '<div style="font-size:18px;font-weight:800;color:var(--t)">'+val+'</div></div></div>';
+  }
+  function spBtn(label,action,cls){
+    return '<button class="btn '+(cls||'btn-primary')+' btn-sm" style="flex:1" onclick="'+action+'">'+label+'</button>';
+  }
+  function tripRow(t){
+    return '<tr style="cursor:pointer" onclick="closeSP();setTimeout(function(){openTripSP(\''+t.id+'\')},100)">'+
+      '<td style="font-weight:700;color:var(--c1);font-size:12px">'+t.id+'</td>'+
+      '<td>'+t.customer+'</td>'+
+      '<td style="font-size:11px;color:var(--t2)">'+(t.truck||'—')+'</td>'+
+      '<td style="font-size:11px;color:var(--t3)">'+(t.from||'')+(t.dests?' → '+t.dests:'')+'</td>'+
+      '</tr>';
+  }
+
+  if(type==='fleet'){
+    var holdK=TRUCKS.filter(function(t){return!t.valid;}).length;
+    var rows=TRUCKS.map(function(t){
+      var inT=inTrK.find(function(x){return x.truck===t.plate;});
+      var st=inT?'🚛 Transit':(t.valid?'✅ Released':'🔴 Hold');
+      var odo=t.odometerKm?Math.round(t.odometerKm).toLocaleString()+' km':'—';
+      return '<tr onclick="closeSP();setTimeout(function(){openFleetTruckTrips(\''+t.plate.replace(/'/g,"\\'")+'\',' +
+        (t.valid?'true':'false')+',[])},100)" style="cursor:pointer">'+
+        '<td style="font-weight:700;font-size:12px">'+t.plate+'</td>'+
+        '<td style="font-size:11px">'+t.type+'</td>'+
+        '<td style="font-size:11px">'+t.cooling+'</td>'+
+        '<td style="font-size:11px">'+st+'</td>'+
+        '<td style="font-size:11px;color:var(--t2)">'+odo+'</td></tr>';
+    }).join('');
+    openSP('🚛 Fleet Overview',
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'+
+        '<div style="background:var(--bg);padding:12px;border-radius:10px;text-align:center"><div style="font-size:22px;font-weight:900;color:var(--c1)">'+TRUCKS.length+'</div><div style="font-size:10px;color:var(--t2);font-weight:600">Total</div></div>'+
+        '<div style="background:var(--bg);padding:12px;border-radius:10px;text-align:center"><div style="font-size:22px;font-weight:900;color:#10B981">'+relK+'</div><div style="font-size:10px;color:var(--t2);font-weight:600">Released</div></div>'+
+        '<div style="background:var(--bg);padding:12px;border-radius:10px;text-align:center"><div style="font-size:22px;font-weight:900;color:#EF4444">'+holdK+'</div><div style="font-size:10px;color:var(--t2);font-weight:600">On Hold</div></div>'+
+      '</div>'+
+      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">All Trucks</div>'+
+      '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--bd)">'+
+        '<table class="tbl"><thead><tr><th>Plate</th><th>Type</th><th>Cooling</th><th>Status</th><th>Odometer</th></tr></thead>'+
+        '<tbody>'+rows+'</tbody></table></div>'+
+      '<div style="display:flex;gap:8px;margin-top:14px">'+
+        spBtn('Manage Fleet',"closeSP();nav('fleet')")+
+        spBtn('Maintenance',"closeSP();nav('maintenance')",'btn-outline')+
+      '</div>');
+  }
+
+  else if(type==='transit'){
+    var rows2=inTrK.length?inTrK.map(function(t){return tripRow(t);}).join(''):'<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:20px">No active shipments</td></tr>';
+    openSP('🚛 In Transit — Active',
+      secH('🚛','Currently On Route',inTrK.length+' truck'+(inTrK.length===1?'':'s'),'rgba(16,185,129,.15)')+
+      '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--bd);margin-bottom:14px">'+
+        '<table class="tbl"><thead><tr><th>ID</th><th>Customer</th><th>Truck</th><th>Route</th></tr></thead>'+
+        '<tbody>'+rows2+'</tbody></table></div>'+
+      (inTrK.length?'<div style="font-size:11px;color:var(--t2);text-align:center;margin-bottom:12px">Click any row to open full trip details</div>':'')+
+      '<div style="display:flex;gap:8px">'+
+        spBtn('Go to Dispatch',"closeSP();nav('dispatch')")+
+        spBtn('All Shipments',"closeSP();nav('trips')",'btn-outline')+
+      '</div>');
+  }
+
+  else if(type==='pending'){
+    var statLabels={awaiting_truck:'⏳ Awaiting Truck',awaiting_quality:'🧪 Quality Check',awaiting_ctrl:'🎛️ Control Room',awaiting_security:'🔒 Gate Security'};
+    var groups={};
+    pendK.forEach(function(t){groups[t.status]=(groups[t.status]||[]).concat(t);});
+    var groupHTML=Object.keys(statLabels).map(function(st){
+      var arr=groups[st]||[];
+      if(!arr.length)return '';
+      return '<div style="margin-bottom:12px">'+
+        '<div style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px;padding:4px 8px;background:var(--dv);border-radius:6px">'+
+          statLabels[st]+' ('+arr.length+')</div>'+
+        arr.map(function(t){
+          return '<div style="padding:8px 10px;background:var(--bg);border-radius:8px;margin-bottom:4px;cursor:pointer;display:flex;align-items:center;justify-content:space-between" '+
+            'onclick="closeSP();setTimeout(function(){openTripSP(\''+t.id+'\')},100)">'+
+            '<div><div style="font-size:12px;font-weight:700;color:var(--c1)">'+t.id+'</div>'+
+            '<div style="font-size:11px;color:var(--t2)">'+t.customer+' &bull; '+(t.truck||'No truck')+'</div></div>'+
+            '<span style="font-size:16px">›</span></div>';
+        }).join('')+'</div>';
+    }).join('');
+    openSP('⏳ Pending — Action Required',
+      secH('⏳','Total Pending',pendK.length+' shipment'+(pendK.length===1?'':'s'),'rgba(249,115,22,.15)')+
+      (groupHTML||'<div style="text-align:center;padding:20px;color:var(--t2)">✅ No pending shipments</div>')+
+      '<div style="display:flex;gap:8px;margin-top:6px">'+
+        spBtn('Open Dispatch',"closeSP();nav('dispatch')")+
+        spBtn('All Trips',"closeSP();nav('trips')",'btn-outline')+
+      '</div>');
+  }
+
+  else if(type==='revenue'){
+    var avg=compK.length>0?Math.round(revK/compK.length):0;
+    var topCu={};compK.forEach(function(t){topCu[t.customer]=(topCu[t.customer]||0)+(+t.cost||0);});
+    var topList=Object.entries(topCu).sort(function(a,b){return b[1]-a[1];}).slice(0,5);
+    var revRows=compK.slice(-8).reverse().map(function(t){
+      return '<tr onclick="closeSP();setTimeout(function(){openTripSP(\''+t.id+'\')},100)" style="cursor:pointer">'+
+        '<td style="font-size:11px;color:var(--t2)">'+(t.ts||'—').split(' ')[0]+'</td>'+
+        '<td style="font-weight:700;font-size:12px;color:var(--c1)">'+t.id+'</td>'+
+        '<td>'+t.customer+'</td>'+
+        '<td style="font-size:11px">'+(t.truck||'—')+'</td>'+
+        '<td style="font-weight:700;color:#059669">EGP '+(+t.cost||0).toLocaleString()+'</td></tr>';
+    }).join('');
+    openSP('💰 Revenue Breakdown',
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'+
+        '<div style="background:linear-gradient(135deg,var(--c1),var(--c1-dark,#4F1FD4));padding:16px;border-radius:12px;color:#fff">'+
+          '<div style="font-size:10px;opacity:.8;font-weight:600;text-transform:uppercase;letter-spacing:.5px">Total Revenue</div>'+
+          '<div style="font-size:24px;font-weight:900;letter-spacing:-1px">EGP '+Math.round(revK).toLocaleString()+'</div>'+
+          '<div style="font-size:11px;opacity:.7;margin-top:2px">'+compK.length+' completed trips</div></div>'+
+        '<div style="background:var(--bg);padding:16px;border-radius:12px;display:flex;flex-direction:column;gap:6px">'+
+          '<div><div style="font-size:10px;color:var(--t2);font-weight:600">Avg Per Trip</div><div style="font-size:18px;font-weight:800;color:var(--t)">EGP '+avg.toLocaleString()+'</div></div>'+
+          '<div><div style="font-size:10px;color:var(--t2);font-weight:600">Total CO2</div><div style="font-size:15px;font-weight:700;color:#10B981">'+co2K.toFixed(0)+' kg</div></div></div>'+
+      '</div>'+
+      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Top Customers</div>'+
+      topList.map(function(cu,i){return '<div style="display:flex;align-items:center;gap:10px;padding:8px 10px;background:var(--bg);border-radius:8px;margin-bottom:4px">'+
+        '<div style="width:22px;height:22px;border-radius:50%;background:var(--c1);color:#fff;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+(i+1)+'</div>'+
+        '<div style="flex:1;font-weight:600;font-size:12px">'+cu[0]+'</div>'+
+        '<div style="font-weight:700;color:#059669;font-size:12px">EGP '+Math.round(cu[1]).toLocaleString()+'</div></div>';}).join('')+
+      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin:12px 0 8px;text-transform:uppercase;letter-spacing:.5px">Recent Completed</div>'+
+      '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--bd);margin-bottom:14px">'+
+        '<table class="tbl"><thead><tr><th>Date</th><th>ID</th><th>Customer</th><th>Truck</th><th>Revenue</th></tr></thead>'+
+        '<tbody>'+(revRows||'<tr><td colspan="5" style="text-align:center;color:var(--t2);padding:16px">No completed trips yet</td></tr>')+'</tbody></table></div>'+
+      '<div style="display:flex;gap:8px">'+
+        spBtn('Finance Page',"closeSP();nav('finance')")+
+        spBtn('Analytics',"closeSP();nav('analytics')",'btn-outline')+
+      '</div>');
+  }
+
+  else if(type==='temp'){
+    var tmp=(_tb||3.5);var ok=tmp>=2&&tmp<=8;
+    var tmpCol=ok?'#10B981':'#EF4444';
+    var tmpStatus=ok?'✅ Normal Range':'⚠️ Out of Range';
+    var fakeHours=[];for(var _h=11;_h>=0;_h--){var _hv=3.5+(Math.sin(_h*.8)*.9)+((Math.random()-.5)*.4);fakeHours.push(Math.max(-2,Math.min(12,+_hv.toFixed(1))));}
+    var hMax=Math.max.apply(null,fakeHours)||1;
+    var hBars=fakeHours.map(function(v,i){var pct=Math.round(v/hMax*100);var col=v>=2&&v<=8?'#10B981':'#EF4444';return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">'+
+      '<div style="flex:1;width:100%;display:flex;align-items:flex-end">'+
+        '<div style="width:100%;height:'+pct+'%;background:'+col+';border-radius:3px 3px 0 0;min-height:4px;transition:.3s"></div></div>'+
+      '<div style="font-size:9px;color:var(--t3)">'+(11-i)+'h</div></div>';}).join('');
+    openSP('🌡️ Temperature Monitor',
+      '<div style="background:linear-gradient(135deg,'+tmpCol+','+tmpCol+'dd);padding:20px;border-radius:14px;color:#fff;text-align:center;margin-bottom:14px">'+
+        '<div style="font-size:48px;font-weight:900;letter-spacing:-2px;font-family:Space Grotesk,sans-serif">'+tmp.toFixed(1)+'°C</div>'+
+        '<div style="font-size:13px;opacity:.9;font-weight:600;margin-top:4px">'+tmpStatus+'</div>'+
+        '<div style="font-size:11px;opacity:.7;margin-top:2px">Optimal range: 2°C – 8°C</div></div>'+
+      '<div style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Last 12 Hours</div>'+
+      '<div style="display:flex;align-items:flex-end;gap:3px;height:80px;margin-bottom:14px;padding:0 4px">'+hBars+'</div>'+
+      secH('🌡️','Sensor Location','Truck 1 (Cab)','rgba(16,185,129,.12)')+
+      secH('⚠️','Alert Threshold','Below 2°C or above 8°C','rgba(239,68,68,.1)')+
+      '<div style="display:flex;gap:8px;margin-top:6px">'+
+        spBtn('View Alerts',"closeSP();nav('alerts')")+
+        spBtn('Fleet',"closeSP();nav('fleet')",'btn-outline')+
+      '</div>');
+  }
+
+  else if(type==='co2'){
+    var eq_trees=Math.round(co2K/21);var eq_km=Math.round(co2K/0.21);
+    var co2Rows=compK.slice(-8).reverse().map(function(t){
+      return '<tr>'+
+        '<td style="font-size:11px;color:var(--t2)">'+(t.ts||'—').split(' ')[0]+'</td>'+
+        '<td style="font-weight:700;font-size:12px;color:var(--c1)">'+t.id+'</td>'+
+        '<td>'+t.customer+'</td>'+
+        '<td style="font-weight:700;color:#10B981">'+(+t.co2||0).toFixed(1)+' kg</td></tr>';
+    }).join('');
+    openSP('🌿 Carbon Footprint',
+      '<div style="background:linear-gradient(135deg,#059669,#047857);padding:20px;border-radius:14px;color:#fff;text-align:center;margin-bottom:14px">'+
+        '<div style="font-size:40px;font-weight:900;letter-spacing:-1px">'+co2K.toFixed(0)+' kg</div>'+
+        '<div style="font-size:12px;opacity:.8;margin-top:4px">Total CO2 emissions</div></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">'+
+        '<div style="background:rgba(5,150,105,.1);padding:14px;border-radius:10px;text-align:center">'+
+          '<div style="font-size:22px">🌳</div>'+
+          '<div style="font-size:18px;font-weight:800;color:#059669">'+eq_trees+'</div>'+
+          '<div style="font-size:10px;color:var(--t2);font-weight:600">Trees needed<br>to offset</div></div>'+
+        '<div style="background:rgba(5,150,105,.1);padding:14px;border-radius:10px;text-align:center">'+
+          '<div style="font-size:22px">🚗</div>'+
+          '<div style="font-size:18px;font-weight:800;color:#059669">'+eq_km.toLocaleString()+'</div>'+
+          '<div style="font-size:10px;color:var(--t2);font-weight:600">Equivalent km<br>by car</div></div>'+
+      '</div>'+
+      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px;text-transform:uppercase;letter-spacing:.5px">Per-Trip Breakdown</div>'+
+      '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--bd);margin-bottom:14px">'+
+        '<table class="tbl"><thead><tr><th>Date</th><th>ID</th><th>Customer</th><th>CO2</th></tr></thead>'+
+        '<tbody>'+(co2Rows||'<tr><td colspan="4" style="text-align:center;color:var(--t2);padding:16px">No data yet</td></tr>')+'</tbody></table></div>'+
+      '<div style="display:flex;gap:8px">'+
+        spBtn('Analytics',"closeSP();nav('analytics')")+
+        spBtn('Export',"_spExport('csv','CO2 Report',['Date','Trip ID','Customer','CO2 kg'],S.trips.filter(function(t){return t.co2;}).map(function(t){return[t.ts,t.id,t.customer,(+t.co2||0).toFixed(1)];}))",'btn-outline')+
+      '</div>');
+  }
+
+  else if(type==='weekly'){
+    var now7w=new Date(),dayLabelsW=[],bhW=[],dayDatesW=[];
+    for(var _dw=6;_dw>=0;_dw--){var _dtw=new Date(now7w);_dtw.setDate(_dtw.getDate()-_dw);var _dsw=_dtw.toLocaleDateString('en-GB');var _trpsW=S.trips.filter(function(t){return(t.ts||'').startsWith(_dsw);});dayLabelsW.push(['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][_dtw.getDay()]);dayDatesW.push(_dsw);bhW.push(_trpsW);}
+    var bhWmax=Math.max.apply(null,bhW.map(function(a){return a.length;}))||1;
+    var barHTML=bhW.map(function(arr,i){var pct=Math.round(arr.length/bhWmax*100)||3;var isPk=arr.length===Math.max.apply(null,bhW.map(function(a){return a.length;}));
+      return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:5px">'+
+        '<div style="font-size:10px;font-weight:700;color:'+(isPk?'var(--c1)':'var(--t2)')+'">'+arr.length+'</div>'+
+        '<div style="width:100%;background:'+(isPk?'var(--c1)':'var(--c1-light,#EEE9FD)')+';border-radius:5px 5px 0 0;height:'+pct+'%;min-height:4px"></div>'+
+        '<div style="font-size:10px;color:var(--t3)">'+dayLabelsW[i]+'</div></div>';
+    }).join('');
+    var weekComp=bhW.reduce(function(s,a){return s+a.filter(function(t){return t.status==='completed';}).length;},0);
+    var weekTotal=bhW.reduce(function(s,a){return s+a.length;},0);
+    var dayRows=bhW.map(function(arr,i){
+      var dc=arr.filter(function(t){return t.status==='completed';}).length;
+      var dp=arr.filter(function(t){return!['completed','cancelled'].includes(t.status);}).length;
+      return '<tr><td>'+dayLabelsW[i]+'</td><td style="font-size:11px;color:var(--t2)">'+dayDatesW[i]+'</td>'+
+        '<td style="font-weight:700;color:var(--c1)">'+arr.length+'</td>'+
+        '<td style="color:#10B981;font-weight:600">'+dc+'</td>'+
+        '<td style="color:#F97316">'+dp+'</td></tr>';
+    }).join('');
+    openSP('📦 Weekly Overview',
+      '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'+
+        '<div style="background:var(--bg);padding:12px;border-radius:10px;text-align:center"><div style="font-size:22px;font-weight:900;color:var(--c1)">'+weekTotal+'</div><div style="font-size:10px;color:var(--t2);font-weight:600">Total Trips</div></div>'+
+        '<div style="background:var(--bg);padding:12px;border-radius:10px;text-align:center"><div style="font-size:22px;font-weight:900;color:#10B981">'+weekComp+'</div><div style="font-size:10px;color:var(--t2);font-weight:600">Completed</div></div>'+
+        '<div style="background:var(--bg);padding:12px;border-radius:10px;text-align:center"><div style="font-size:22px;font-weight:900;color:#F97316">'+(weekTotal-weekComp)+'</div><div style="font-size:10px;color:var(--t2);font-weight:600">Active/Pending</div></div>'+
+      '</div>'+
+      '<div style="display:flex;align-items:flex-end;gap:5px;height:90px;margin-bottom:14px;padding:0 4px">'+barHTML+'</div>'+
+      '<div style="overflow-x:auto;border-radius:10px;border:1px solid var(--bd);margin-bottom:14px">'+
+        '<table class="tbl"><thead><tr><th>Day</th><th>Date</th><th>Trips</th><th>Done</th><th>Pending</th></tr></thead>'+
+        '<tbody>'+dayRows+'</tbody></table></div>'+
+      '<div style="display:flex;gap:8px">'+
+        spBtn('All Trips',"closeSP();nav('trips')")+
+        spBtn('Analytics',"closeSP();nav('analytics')",'btn-outline')+
+      '</div>');
+  }
+}
+
 // ── openCapSP: Truck Capacity Side Panel ──
 function openCapSP(){
   var rel2=TRUCKS.filter(function(t){return t.valid;}).length;
@@ -8450,31 +8681,31 @@ rDash = function() {
 
   // KPI ROW
   var kpiHTML = '<div class="kpi-row">' +
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:#6C3FF5">&#128666;</div>' +
+    '<div class="kpi-card" onclick="openKpiSP(\'fleet\')" title="Click for details"><div class="kpi-icon-wrap" style="background:var(--c1-light,rgba(108,63,245,.1));color:var(--c1,#6C3FF5)">&#128666;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Fleet</div><div class="kpi-val">' + TRUCKS.length + '</div>' +
-    '<div class="kpi-sub">' + rel + ' Released</div></div></div>' +
+    '<div class="kpi-sub">' + rel + ' Released &#8250;</div></div></div>' +
 
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#128230;</div>' +
+    '<div class="kpi-card" onclick="openKpiSP(\'transit\')" title="Click for details"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#128230;</div>' +
     '<div class="kpi-body"><div class="kpi-label">In Transit</div><div class="kpi-val">' + inTr.length + '</div>' +
-    '<div class="kpi-sub">' + (inTr.length?'Active now':'None active') + '</div></div></div>' +
+    '<div class="kpi-sub">' + (inTr.length?'Active now &#8250;':'None active') + '</div></div></div>' +
 
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#9200;</div>' +
+    '<div class="kpi-card" onclick="openKpiSP(\'pending\')" title="Click for details"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#9200;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Pending</div><div class="kpi-val">' + pend.length + '</div>' +
-    '<div class="kpi-sub">Awaiting action</div></div></div>' +
+    '<div class="kpi-sub">Awaiting action &#8250;</div></div></div>' +
 
     (can('finance_view')||can('all') ?
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(6,182,212,.1);color:#06B6D4">&#128176;</div>' +
+    '<div class="kpi-card" onclick="openKpiSP(\'revenue\')" title="Click for details"><div class="kpi-icon-wrap" style="background:rgba(6,182,212,.1);color:#06B6D4">&#128176;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Revenue</div><div class="kpi-val">EGP ' + Math.round(rev/1000) + 'K</div>' +
-    '<div class="kpi-sub">' + comp.length + ' trips completed</div></div></div>' : '') +
+    '<div class="kpi-sub">' + comp.length + ' trips &#8250;</div></div></div>' : '') +
 
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">&#127777;</div>' +
+    '<div class="kpi-card" onclick="openKpiSP(\'temp\')" title="Click for details"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">&#127777;</div>' +
     '<div class="kpi-body"><div class="kpi-label">Live Temp</div>' +
     '<div class="kpi-val" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + temp.toFixed(1) + '°C</div>' +
-    '<div class="kpi-sub" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + (temp>=2&&temp<=8?'Normal range':'Check truck') + '</div></div></div>' +
+    '<div class="kpi-sub" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + (temp>=2&&temp<=8?'Normal &#8250;':'Check! &#8250;') + '</div></div></div>' +
 
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.08);color:#10B981">&#127807;</div>' +
+    '<div class="kpi-card" onclick="openKpiSP(\'co2\')" title="Click for details"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.08);color:#10B981">&#127807;</div>' +
     '<div class="kpi-body"><div class="kpi-label">CO2</div><div class="kpi-val">' + co2.toFixed(0) + ' kg</div>' +
-    '<div class="kpi-sub">' + comp.length + ' trips</div></div></div>' +
+    '<div class="kpi-sub">' + comp.length + ' trips &#8250;</div></div></div>' +
     '</div>';
 
   // SHIPMENT TRACK (enhanced, no trucks overview)
@@ -8539,8 +8770,8 @@ rDash = function() {
     '</div>' + // end cap-mini-widget
 
     // WEEKLY DELIVERIES
-    '<div class="weekly-widget">' +
-    '<div class="ww-header"><div class="ww-title">Weekly Deliveries Overview</div><div class="ww-period">This Week &#9660;</div></div>' +
+    '<div class="weekly-widget" onclick="openKpiSP(\'weekly\')" style="cursor:pointer" title="Click to expand">' +
+    '<div class="ww-header"><div class="ww-title">Weekly Deliveries Overview</div><div class="ww-period">Details &#8250;</div></div>' +
     '<div class="ww-bars">' +
     bh2.map(function(v, i) {
       var isPeak = v === Math.max.apply(null, bh2);
