@@ -11959,7 +11959,11 @@ function rPMSchedule(){
   var overdue=sch.filter(function(s){return getDue(s).st==='overdue';}).length;
   var warning=sch.filter(function(s){return getDue(s).st==='warning';}).length;
   c.innerHTML=ph('📅 PM Scheduler','Preventive Maintenance Schedules',
-    (can('maintenance_create')||can('all')?'<button class="btn btn-primary" onclick="openAddPMSch()">+ New Schedule</button>':''))+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+    (can('maintenance_create')||can('all')?'<button class="btn btn-primary" onclick="openAddPMSch()">+ New Schedule</button>':'')+
+    '<button class="btn btn-outline btn-sm" onclick="openImportCSV(\'pm\')">📥 Import CSV</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="_dlCSVTemplate(\'pm\')" title="Download blank template">📄 Template</button>'+
+    '</div>')+
   '<div class="kpi-row">'+
     kpiBox('📅','purple',sch.length,'Schedules','')+
     kpiBox('🔴','red',overdue,'Overdue','Auto-tickets raised')+
@@ -12121,7 +12125,11 @@ function rVendors(){
   var c=document.getElementById('content');
   var vend=S.vendors||[];
   c.innerHTML=ph('🏪 Vendors & Workshops','Service provider directory',
-    (can('all')||can('maintenance_create')?'<button class="btn btn-primary" onclick="openAddVendor()">+ Add Vendor</button>':''))+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+    (can('all')||can('maintenance_create')?'<button class="btn btn-primary" onclick="openAddVendor()">+ Add Vendor</button>':'')+
+    '<button class="btn btn-outline btn-sm" onclick="openImportCSV(\'vendors\')">📥 Import CSV</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="_dlCSVTemplate(\'vendors\')" title="Download blank template">📄 Template</button>'+
+    '</div>')+
   '<div class="kpi-row">'+
     kpiBox('🏪','purple',vend.length,'Total Vendors','')+
     kpiBox('🔧','orange',vend.filter(function(v){return v.type==='Workshop';}).length,'Workshops','')+
@@ -12238,34 +12246,16 @@ function _tripProfitMargin(trip){
   return{rev:rev,fuel:fuelCost,parts:partsCost,overhead:overhead,margin:margin,pct:pct};
 }
 
-// VAT breakdown export
+// VAT breakdown export — opens filter modal
 function exportVATBreakdown(){
   if(!can('all')&&!can('finance_view')){toast('Finance permission required','err');return;}
-  var cfg=S.billingConfig||{};var tax=cfg.taxRate||14;
-  var rows=CUSTOMERS.map(function(cu){
-    var cuInv=(S.invoices||[]).filter(function(i){return i.customer===cu&&i.status!=='cancelled';});
-    if(!cuInv.length)return null;
-    var sub=cuInv.reduce(function(s,i){return s+(+i.subtotal||0);},0);
-    var taxAmt=cuInv.reduce(function(s,i){return s+(+i.tax||0);},0);
-    var paid=cuInv.filter(function(i){return i.status==='paid';}).reduce(function(s,i){return s+(+i.total||0);},0);
-    return[cu,cuInv.length,sub.toFixed(2),taxAmt.toFixed(2),(sub+taxAmt).toFixed(2),paid.toFixed(2),(sub+taxAmt-paid).toFixed(2),tax+'%'];
-  }).filter(Boolean);
-  uExportAll('excel','VAT Breakdown by Customer',
-    ['Customer','Invoices','Subtotal (EGP)','VAT (EGP)','Total (EGP)','Paid (EGP)','Outstanding (EGP)','VAT Rate'],rows);
+  openFinExport('vat');
 }
 
-// Profit margin export
+// Profit margin export — opens filter modal
 function exportProfitMargins(){
   if(!can('all')&&!can('finance_view')){toast('Finance permission required','err');return;}
-  var comp=S.trips.filter(function(t){return t.status==='completed';});
-  var rows=comp.map(function(t){
-    var pm=_tripProfitMargin(t);
-    return[t.id,t.customer,t.type,t.truck||'',t.km||0,
-      pm.rev.toFixed(0),pm.fuel.toFixed(0),pm.parts.toFixed(0),pm.overhead.toFixed(0),
-      pm.margin.toFixed(0),pm.pct+'%',t.ts||''];
-  });
-  uExportAll('excel','Trip Profit Margins',
-    ['Trip ID','Customer','Type','Truck','KM','Revenue','Fuel Cost','Parts Cost','Overhead (10%)','Net Margin','Margin %','Date'],rows);
+  openFinExport('profit');
 }
 
 // ══════════════════════════════════════════════════
@@ -12328,9 +12318,12 @@ function _hrRenderDrivers(drivers,profiles,today){
     var dComp=S.trips.filter(function(t){return t.driver===d.name&&t.status==='completed';}).length;
     return '<div class="card">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
-      '<div><div style="font-weight:700;font-size:15px">'+d.name+'</div>'+
+      '<div><div style="font-weight:700;font-size:15px">'+d.name+
+        ((p.docs&&p.docs.length)?'<span style="margin-left:6px;background:var(--c1);color:#fff;font-size:10px;border-radius:10px;padding:1px 6px;font-weight:700;vertical-align:middle">'+p.docs.length+' 📎</span>':'')+'</div>'+
       '<div style="font-size:11px;color:var(--t2)">ID: '+d.id+'</div></div>'+
-      '<button class="btn btn-outline btn-sm" onclick="openEditDriverProfile(\''+d.id+'\')">✎ Profile</button></div>'+
+      '<div style="display:flex;gap:4px">'+
+      '<button class="btn btn-outline btn-sm" onclick="openDriverDocs(\''+d.id+'\')" title="Documents">📎 Docs</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="openEditDriverProfile(\''+d.id+'\')">✎ Profile</button></div></div>'+
       '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:8px">'+
       '<div style="background:var(--bg);border-radius:6px;padding:6px">'+
         '<div style="color:var(--t3);font-size:10px">License No.</div>'+
@@ -12448,12 +12441,22 @@ function openEditDriverProfile(uid){
     '<div class="fg"><label>Join Date</label><input type="date" id="dp-join" value="'+(p.joinDate||'')+'"/></div>'+
     '<div class="fg"><label>Vehicle Class</label><input id="dp-vclass" value="'+(p.vehicleClass||'')+'" placeholder="e.g. Refrigerated Truck"/></div>'+
     '</div>'+
+    '</div>'+
+    // Attached documents section inside profile modal
+    '<div style="margin-top:14px;border-top:1px solid var(--bd);padding-top:12px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+    '<div style="font-weight:700;font-size:13px">📎 Attached Documents</div>'+
+    '<label class="btn btn-outline btn-sm" style="cursor:pointer;margin:0">+ Attach<input type="file" id="dp-file-input" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display:none" onchange="attachDriverDoc(\''+uid+'\',this)"/></label></div>'+
+    '<div id="dp-docs-list">'+_hrDocsList(uid)+'</div>'+
+    '</div>'+
     '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
-    '<button class="btn btn-primary" onclick="saveDriverProfile(\''+uid+'\')">💾 Save</button></div>');
+    '<button class="btn btn-primary" onclick="saveDriverProfile(\''+uid+'\')">💾 Save Profile</button></div>');
 }
 function saveDriverProfile(uid){
   if(!S.driverProfiles)S.driverProfiles={};
-  S.driverProfiles[uid]={
+  // Preserve existing docs — only update text fields
+  var existing=S.driverProfiles[uid]||{};
+  S.driverProfiles[uid]=Object.assign({},existing,{
     licenseNo:(document.getElementById('dp-lno')||{}).value||'',
     licenseType:(document.getElementById('dp-ltype')||{}).value||'',
     licenseExpiry:(document.getElementById('dp-lexp')||{}).value||'',
@@ -12461,7 +12464,7 @@ function saveDriverProfile(uid){
     emergencyContact:(document.getElementById('dp-emg')||{}).value||'',
     joinDate:(document.getElementById('dp-join')||{}).value||'',
     vehicleClass:(document.getElementById('dp-vclass')||{}).value||''
-  };
+  });
   _saveDriverProfiles();closeM();toast('Driver profile saved ✅','ok');rHR();
 }
 
@@ -12520,6 +12523,432 @@ function exportComplianceCert(){
   if(w&&!w.closed){w.document.write(html);w.document.close();}
   else{var b=new Blob([html],{type:'text/html'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='ColdChainCert_'+new Date().toISOString().slice(0,10)+'.html';a.click();}
   toast('📜 Cold Chain Certificate generated','ok');
+}
+
+// ══════════════════════════════════════════════════
+// DRIVER PROFILE DOCUMENTS (Tier 14 Enhancement)
+// ══════════════════════════════════════════════════
+var _DP_TYPES=[
+  {id:'license',     label:'License Copy',         icon:'📋'},
+  {id:'drug_test',   label:'Drug Analysis',         icon:'🧪'},
+  {id:'medical',     label:'Medical Certificate',   icon:'🏥'},
+  {id:'training',    label:'Training Certificate',  icon:'🎓'},
+  {id:'vehicle_reg', label:'Vehicle Registration',  icon:'🚛'},
+  {id:'insurance',   label:'Insurance',             icon:'🛡️'},
+  {id:'other',       label:'Other Document',        icon:'📄'}
+];
+
+function _hrDocsList(uid){
+  var p=(S.driverProfiles||{})[uid]||{};
+  var docs=p.docs||[];
+  if(!docs.length)return '<div style="font-size:12px;color:var(--t2);padding:8px 0">No documents attached yet.</div>';
+  return docs.map(function(doc,i){
+    var tp=_DP_TYPES.find(function(t){return t.id===doc.type;})||_DP_TYPES[6];
+    return '<div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid var(--dv)">'+
+      '<span style="font-size:18px">'+tp.icon+'</span>'+
+      '<div style="flex:1;min-width:0">'+
+        '<div style="font-weight:600;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+doc.name+'</div>'+
+        '<div style="font-size:10px;color:var(--t3)">'+tp.label+' · '+doc.uploadDate+'</div>'+
+      '</div>'+
+      '<button class="btn btn-outline btn-sm" onclick="downloadDriverDoc(\''+uid+'\','+i+')" title="View / Download" style="flex-shrink:0">⬇</button>'+
+      '<button class="btn btn-danger btn-sm" onclick="removeDriverDoc(\''+uid+'\','+i+')" title="Delete" style="flex-shrink:0">✕</button>'+
+    '</div>';
+  }).join('');
+}
+
+function openDriverDocs(uid){
+  var d=USERS.find(function(u){return u.id===uid;});
+  var p=(S.driverProfiles||{})[uid]||{};
+  var typeOpts=_DP_TYPES.map(function(t){return'<option value="'+t.id+'">'+t.icon+' '+t.label+'</option>';}).join('');
+  openM('<div class="m-title">📎 Driver Documents — '+(d?d.name:'')+'</div>'+
+    '<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
+    '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:8px">Attach New Document</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">'+
+    '<div class="fg" style="margin:0"><label>Document Type</label><select id="doc-type">'+typeOpts+'</select></div>'+
+    '<div class="fg" style="margin:0"><label>File</label>'+
+    '<label class="btn btn-outline btn-sm" style="cursor:pointer;width:100%;text-align:center;padding:8px;margin:0">'+
+    '📎 Choose File<input type="file" id="doc-file-input" accept=".pdf,.jpg,.jpeg,.png,.doc,.docx" style="display:none" onchange="this.nextSibling&&0;document.getElementById(\'doc-file-lbl\').textContent=this.files[0]?this.files[0].name:\'Choose File\'"/></label>'+
+    '</div></div>'+
+    '<div id="doc-file-lbl" style="font-size:11px;color:var(--t2);margin-bottom:8px">No file selected</div>'+
+    '<button class="btn btn-primary btn-sm" onclick="attachDriverDocFromModal(\''+uid+'\')">+ Attach Document</button>'+
+    '</div>'+
+    '<div style="font-weight:700;font-size:13px;margin-bottom:8px">Attached Documents</div>'+
+    '<div id="modal-doc-list">'+_hrDocsList(uid)+'</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Close</button></div>');
+}
+
+function attachDriverDocFromModal(uid){
+  var inp=document.getElementById('doc-file-input');
+  var typeEl=document.getElementById('doc-type');
+  if(!inp||!inp.files||!inp.files[0]){toast('Choose a file first','err');return;}
+  var file=inp.files[0];
+  if(file.size>5*1024*1024){toast('File too large (max 5 MB)','err');return;}
+  var type=typeEl?typeEl.value:'other';
+  var reader=new FileReader();
+  reader.onload=function(e){
+    if(!S.driverProfiles)S.driverProfiles={};
+    if(!S.driverProfiles[uid])S.driverProfiles[uid]={};
+    if(!S.driverProfiles[uid].docs)S.driverProfiles[uid].docs=[];
+    S.driverProfiles[uid].docs.push({
+      name:file.name,type:type,
+      dataUrl:e.target.result,
+      uploadDate:new Date().toISOString().slice(0,10)
+    });
+    _saveDriverProfiles();
+    var el=document.getElementById('modal-doc-list');
+    if(el)el.innerHTML=_hrDocsList(uid);
+    var lbl=document.getElementById('doc-file-lbl');
+    if(lbl)lbl.textContent='No file selected';
+    inp.value='';
+    toast('Document attached ✅','ok');
+  };
+  reader.readAsDataURL(file);
+}
+
+// Called from file input inside profile modal
+function attachDriverDoc(uid,inp){
+  if(!inp||!inp.files||!inp.files[0])return;
+  var file=inp.files[0];
+  if(file.size>5*1024*1024){toast('File too large (max 5 MB)','err');inp.value='';return;}
+  // Pick type from filename keywords
+  var fn=file.name.toLowerCase();
+  var type=fn.indexOf('license')>-1||fn.indexOf('licence')>-1?'license':
+            fn.indexOf('drug')>-1?'drug_test':fn.indexOf('medical')>-1?'medical':
+            fn.indexOf('train')>-1?'training':fn.indexOf('reg')>-1?'vehicle_reg':
+            fn.indexOf('insur')>-1?'insurance':'other';
+  var reader=new FileReader();
+  reader.onload=function(e){
+    if(!S.driverProfiles)S.driverProfiles={};
+    if(!S.driverProfiles[uid])S.driverProfiles[uid]={};
+    if(!S.driverProfiles[uid].docs)S.driverProfiles[uid].docs=[];
+    S.driverProfiles[uid].docs.push({
+      name:file.name,type:type,
+      dataUrl:e.target.result,
+      uploadDate:new Date().toISOString().slice(0,10)
+    });
+    _saveDriverProfiles();
+    var el=document.getElementById('dp-docs-list');
+    if(el)el.innerHTML=_hrDocsList(uid);
+    inp.value='';
+    toast('Document attached ✅','ok');
+  };
+  reader.readAsDataURL(file);
+}
+
+function removeDriverDoc(uid,idx){
+  if(!confirm('Remove this document?'))return;
+  if(!S.driverProfiles||!S.driverProfiles[uid])return;
+  var docs=S.driverProfiles[uid].docs||[];
+  docs.splice(idx,1);
+  S.driverProfiles[uid].docs=docs;
+  _saveDriverProfiles();
+  // Refresh whichever list is visible
+  var el=document.getElementById('dp-docs-list')||document.getElementById('modal-doc-list');
+  if(el)el.innerHTML=_hrDocsList(uid);
+  toast('Document removed','ok');
+}
+
+function downloadDriverDoc(uid,idx){
+  var p=(S.driverProfiles||{})[uid]||{};
+  var doc=(p.docs||[])[idx];
+  if(!doc){toast('Document not found','err');return;}
+  var a=document.createElement('a');
+  a.href=doc.dataUrl;
+  a.download=doc.name;
+  a.click();
+}
+
+// ══════════════════════════════════════════════════
+// FINANCE EXPORT MODAL — VAT / PROFIT MARGINS
+// (PDF, CSV, Excel with date + customer + condition filters)
+// ══════════════════════════════════════════════════
+function openFinExport(type){
+  // Build customer options
+  var cuOpts='<option value="">All Customers</option>'+
+    CUSTOMERS.map(function(c){return'<option value="'+c+'">'+c+'</option>';}).join('');
+  // Condition options (for profit margins)
+  var condOpts='<option value="">All Conditions</option>'+
+    (S.tripConditions||[]).map(function(c){return'<option value="'+c.id+'">'+c.label+'</option>';}).join('');
+  // Default date range: start of current year to today
+  var today=new Date().toISOString().slice(0,10);
+  var yearStart=today.slice(0,4)+'-01-01';
+  var iStyle='padding:7px 10px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;background:var(--surf);color:var(--t);width:100%';
+  var lStyle='font-size:11px;font-weight:700;color:var(--t2);margin-bottom:4px;display:block';
+  var title=type==='vat'?'📊 Export VAT Breakdown':'💹 Export Profit Margins';
+  openM('<div class="m-title">'+title+'</div>'+
+    // Format selector
+    '<div style="margin-bottom:14px">'+
+    '<div style="'+lStyle+'">EXPORT FORMAT</div>'+
+    '<div style="display:flex;gap:8px">'+
+    ['pdf','csv','excel'].map(function(f){
+      var lbl={pdf:'📄 PDF',csv:'📊 CSV',excel:'📗 Excel'}[f];
+      return '<button id="fin-fmt-'+f+'" class="btn '+(f==='excel'?'btn-primary':'btn-outline')+'" onclick="_finSelectFmt(\''+f+'\')" style="flex:1">'+lbl+'</button>';
+    }).join('')+'</div></div>'+
+    // Date range
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">'+
+    '<div><span style="'+lStyle+'">FROM DATE</span><input type="date" id="fin-from" value="'+yearStart+'" style="'+iStyle+'" onchange="_finUpdateCount(\''+type+'\')"/></div>'+
+    '<div><span style="'+lStyle+'">TO DATE</span><input type="date" id="fin-to" value="'+today+'" style="'+iStyle+'" onchange="_finUpdateCount(\''+type+'\')"/></div>'+
+    '</div>'+
+    // Customer filter
+    '<div style="margin-bottom:10px">'+
+    '<span style="'+lStyle+'">CUSTOMER</span>'+
+    '<select id="fin-cu" style="'+iStyle+'" onchange="_finUpdateCount(\''+type+'\')">'+cuOpts+'</select></div>'+
+    // Condition filter (only for profit)
+    (type==='profit'?
+    '<div style="margin-bottom:10px">'+
+    '<span style="'+lStyle+'">CONDITION</span>'+
+    '<select id="fin-cond" style="'+iStyle+'" onchange="_finUpdateCount(\''+type+'\')">'+condOpts+'</select></div>':'<input type="hidden" id="fin-cond" value=""/>')+
+    // Record count
+    '<div id="fin-count" style="font-size:12px;color:var(--t2);margin-bottom:14px;padding:8px 10px;background:var(--bg);border-radius:8px">Calculating...</div>'+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_runFinExport(\''+type+'\')">⬇ Export</button>'+
+    '</div>');
+  // Init
+  setTimeout(function(){_finSelectFmt('excel');_finUpdateCount(type);},0);
+}
+
+function _finSelectFmt(f){
+  ['pdf','csv','excel'].forEach(function(x){
+    var b=document.getElementById('fin-fmt-'+x);
+    if(!b)return;
+    b.className='btn '+(x===f?'btn-primary':'btn-outline');
+  });
+  window._finFmt=f;
+}
+
+// Parse invoice date to ISO "YYYY-MM-DD" — handles both dueDate (ISO) and locale createdAt
+function _invISODate(inv){
+  if(inv.dueDate)return inv.dueDate.slice(0,10);
+  // createdAt is locale: "DD/MM/YYYY, HH:MM:SS" or "DD/MM/YYYY"
+  var ca=inv.createdAt||'';
+  var m=ca.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return m?m[3]+'-'+m[2]+'-'+m[1]:'';
+}
+function _invMatchesFilters(inv,filters){
+  if(inv.status==='cancelled')return false;
+  if(filters.customer&&inv.customer!==filters.customer)return false;
+  var d=_invISODate(inv);
+  if(filters.from&&d&&d<filters.from)return false;
+  if(filters.to&&d&&d>filters.to)return false;
+  return true;
+}
+function _finUpdateCount(type){
+  var el=document.getElementById('fin-count');if(!el)return;
+  var filters=_getFinFilters(type);
+  if(type==='vat'){
+    var cfg=S.billingConfig||{};var tax=cfg.taxRate||14;
+    var n=(filters.customer?[filters.customer]:CUSTOMERS).filter(function(cu){
+      return (S.invoices||[]).some(function(i){return i.customer===cu&&_invMatchesFilters(i,filters);});
+    }).length;
+    el.innerHTML='📊 <strong>'+n+'</strong> customer(s) with matching invoices | VAT rate: '+tax+'%';
+  } else {
+    var n=_getFinProfitRows(filters).length;
+    el.innerHTML='💹 <strong>'+n+'</strong> completed trip(s) match the filters';
+  }
+}
+
+function _getFinFilters(type){
+  return{
+    from:(document.getElementById('fin-from')||{}).value||'',
+    to:(document.getElementById('fin-to')||{}).value||'',
+    customer:(document.getElementById('fin-cu')||{}).value||'',
+    condition:(document.getElementById('fin-cond')||{}).value||''
+  };
+}
+
+function _getFinProfitRows(filters){
+  return S.trips.filter(function(t){
+    if(t.status!=='completed')return false;
+    var d=(t.ts||'').slice(0,10);
+    if(filters.from&&d<filters.from)return false;
+    if(filters.to&&d>filters.to)return false;
+    if(filters.customer&&t.customer!==filters.customer)return false;
+    if(filters.condition&&!(t.condition||'').includes(filters.condition))return false;
+    return true;
+  });
+}
+
+function _runFinExport(type){
+  var fmt=window._finFmt||'excel';
+  var filters=_getFinFilters(type);
+  if(type==='vat'){
+    var cfg=S.billingConfig||{};var tax=cfg.taxRate||14;
+    var customers=filters.customer?[filters.customer]:CUSTOMERS;
+    var rows=customers.map(function(cu){
+      var cuInv=(S.invoices||[]).filter(function(i){return i.customer===cu&&_invMatchesFilters(i,filters);});
+      if(!cuInv.length)return null;
+      var sub=cuInv.reduce(function(s,i){return s+(+i.subtotal||0);},0);
+      var taxAmt=cuInv.reduce(function(s,i){return s+(+i.tax||0);},0);
+      var paid=cuInv.filter(function(i){return i.status==='paid';}).reduce(function(s,i){return s+(+i.total||0);},0);
+      return[cu,cuInv.length,sub.toFixed(2),taxAmt.toFixed(2),(sub+taxAmt).toFixed(2),paid.toFixed(2),(sub+taxAmt-paid).toFixed(2),tax+'%'];
+    }).filter(Boolean);
+    if(!rows.length){toast('No matching data','err');return;}
+    uExportAll(fmt,'VAT Breakdown by Customer',
+      ['Customer','Invoices','Subtotal (EGP)','VAT (EGP)','Total (EGP)','Paid (EGP)','Outstanding (EGP)','VAT Rate'],rows);
+  } else {
+    var trips=_getFinProfitRows(filters);
+    if(!trips.length){toast('No matching trips','err');return;}
+    var rows2=trips.map(function(t){
+      var pm=_tripProfitMargin(t);
+      return[t.id,t.customer,t.condition||'',t.truck||'',t.km||0,
+        pm.rev.toFixed(0),pm.fuel.toFixed(0),pm.parts.toFixed(0),pm.overhead.toFixed(0),
+        pm.margin.toFixed(0),(isNaN(pm.pct)?'—':pm.pct+'%'),t.ts||''];
+    });
+    uExportAll(fmt,'Trip Profit Margins',
+      ['Trip ID','Customer','Condition','Truck','KM','Revenue','Fuel Cost','Parts Cost','Overhead (10%)','Net Margin','Margin %','Date'],rows2);
+  }
+  closeM();
+}
+
+// ══════════════════════════════════════════════════
+// CSV IMPORT — PM Scheduler & Vendors
+// ══════════════════════════════════════════════════
+var _CSV_TEMPLATES={
+  pm:{
+    headers:['plate','serviceType','intervalKm','intervalDays','lastKm','lastDate','vendorName','notes'],
+    sample:[
+      ['TRK-001','Oil Change','10000','90','45000','2026-01-15','ABC Workshop',''],
+      ['TRK-002','Filter Change','15000','180','30000','2025-12-01','','Check air filter']
+    ],
+    label:'PM Schedules'
+  },
+  vendors:{
+    headers:['name','type','speciality','phone','address','contactName','email'],
+    sample:[
+      ['ABC Workshop','Workshop','Oil & Filters','010-1234567','Cairo Industrial Zone','Ahmed Ali','ahmed@abc.com'],
+      ['Parts Plus','Supplier','Spare Parts','011-7654321','Giza','Sara Mohamed','']
+    ],
+    label:'Vendors'
+  }
+};
+
+function _dlCSVTemplate(target){
+  var tpl=_CSV_TEMPLATES[target];if(!tpl)return;
+  var lines=[tpl.headers.join(',')].concat(tpl.sample.map(function(r){return r.map(function(c){return'"'+c+'"';}).join(',');}));
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(lines.join('\n'));
+  a.download='InstaPort_'+tpl.label.replace(/\s/g,'_')+'_Template.csv';
+  a.click();
+  toast('Template downloaded 📄','ok');
+}
+
+function _parseCSV(text){
+  var lines=text.trim().split(/\r?\n/);
+  return lines.map(function(line){
+    var result=[];var cur='';var inQ=false;
+    for(var i=0;i<line.length;i++){
+      var ch=line[i];
+      if(ch==='"')inQ=!inQ;
+      else if(ch===','&&!inQ){result.push(cur.trim());cur='';}
+      else cur+=ch;
+    }
+    result.push(cur.trim());
+    return result;
+  });
+}
+
+window._csvImportBuf=null; // {target, headers, rows}
+
+function openImportCSV(target){
+  var tpl=_CSV_TEMPLATES[target];if(!tpl)return;
+  openM('<div class="m-title">📥 Import '+tpl.label+' from CSV</div>'+
+    '<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:var(--t2)">'+
+    '<strong>Expected columns:</strong> '+tpl.headers.map(function(h){return'<code style="background:var(--dv);border-radius:4px;padding:1px 5px">'+h+'</code>';}).join(' ')+'<br>'+
+    '<span style="font-size:11px">First row must be the header row. Maximum 500 rows.</span>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;margin-bottom:12px">'+
+    '<label class="btn btn-primary" style="cursor:pointer;margin:0">'+
+    '📂 Choose CSV File<input type="file" accept=".csv,text/csv" style="display:none" onchange="previewImportCSV(\''+target+'\',this)"/></label>'+
+    '<button class="btn btn-outline btn-sm" onclick="_dlCSVTemplate(\''+target+'\')">📄 Download Template</button>'+
+    '</div>'+
+    '<div id="csv-preview" style="overflow:auto;max-height:300px;border:1px solid var(--bd);border-radius:8px;display:none"></div>'+
+    '<div id="csv-msg" style="font-size:12px;color:var(--t2);padding:8px 0">No file selected.</div>'+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" id="csv-import-btn" disabled onclick="confirmImportCSV(\''+target+'\')">⬆ Import</button>'+
+    '</div>');
+  window._csvImportBuf=null;
+}
+
+function previewImportCSV(target,inp){
+  if(!inp||!inp.files||!inp.files[0])return;
+  var file=inp.files[0];
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var text=e.target.result;
+    var rows=_parseCSV(text);
+    if(rows.length<2){
+      document.getElementById('csv-msg').innerHTML='<span style="color:#ef4444">File is empty or has no data rows.</span>';
+      return;
+    }
+    var headers=rows[0].map(function(h){return h.replace(/"/g,'').trim().toLowerCase();});
+    var dataRows=rows.slice(1).filter(function(r){return r.some(function(c){return c.replace(/"/g,'').trim();});});
+    window._csvImportBuf={target:target,headers:headers,rows:dataRows};
+    // Render preview table
+    var tpl=_CSV_TEMPLATES[target];
+    var missing=tpl.headers.filter(function(h){return headers.indexOf(h)<0;});
+    var warn=missing.length?'<div style="background:#FEF2F2;color:#DC2626;font-size:11px;padding:6px 10px;border-radius:6px;margin-bottom:6px">⚠️ Missing columns: '+missing.join(', ')+'</div>':'';
+    var preview='<table style="width:100%;border-collapse:collapse;font-size:11px">'+
+      '<thead><tr style="background:var(--dv)">'+headers.map(function(h){return'<th style="padding:5px 8px;text-align:left;white-space:nowrap">'+h+'</th>';}).join('')+'</tr></thead>'+
+      '<tbody>'+dataRows.slice(0,20).map(function(r){
+        return'<tr>'+r.map(function(c){return'<td style="padding:4px 8px;border-bottom:1px solid var(--dv);white-space:nowrap">'+c.replace(/"/g,'')+'</td>';}).join('')+'</tr>';
+      }).join('')+'</tbody></table>'+
+      (dataRows.length>20?'<div style="text-align:center;font-size:11px;color:var(--t2);padding:6px">…and '+(dataRows.length-20)+' more rows</div>':'');
+    var el=document.getElementById('csv-preview');
+    if(el){el.innerHTML=warn+preview;el.style.display='block';}
+    var msg=document.getElementById('csv-msg');
+    if(msg)msg.innerHTML='<span style="color:#10B981">✅ Found <strong>'+dataRows.length+'</strong> data row(s) ready to import.</span>';
+    var btn=document.getElementById('csv-import-btn');
+    if(btn){btn.disabled=false;btn.textContent='⬆ Import '+dataRows.length+' Record(s)';}
+  };
+  reader.readAsText(file);
+}
+
+function confirmImportCSV(target){
+  var buf=window._csvImportBuf;
+  if(!buf||!buf.rows||!buf.rows.length){toast('No data to import','err');return;}
+  var h=buf.headers;
+  var get=function(row,col){var i=h.indexOf(col);return i>-1?row[i].replace(/"/g,'').trim():'';};
+  var added=0;
+  if(target==='pm'){
+    if(!S.serviceSchedules)S.serviceSchedules=[];
+    buf.rows.forEach(function(r){
+      var plate=get(r,'plate');var stype=get(r,'serviceType');
+      if(!plate||!stype)return;
+      // Find vendor by name
+      var vName=get(r,'vendorName');
+      var vendor=(S.vendors||[]).find(function(v){return v.name.toLowerCase()===vName.toLowerCase();});
+      S.serviceSchedules.push({
+        id:'PM-'+Date.now()+'-'+added,plate:plate,serviceType:stype,
+        intervalKm:+get(r,'intervalKm')||0,intervalDays:+get(r,'intervalDays')||0,
+        lastKm:+get(r,'lastKm')||0,lastDate:get(r,'lastDate')||'',
+        vendorId:vendor?vendor.id:'',notes:get(r,'notes')||'',active:true
+      });
+      added++;
+    });
+    _savePMSchedules();
+    toast('✅ Imported '+added+' PM schedule(s)','ok');
+    closeM();rPMSchedule();
+  } else if(target==='vendors'){
+    if(!S.vendors)S.vendors=[];
+    buf.rows.forEach(function(r){
+      var name=get(r,'name');if(!name)return;
+      S.vendors.push({
+        id:'VN-'+Date.now()+'-'+added,name:name,
+        type:get(r,'type')||'Workshop',
+        speciality:get(r,'speciality')||'',
+        phone:get(r,'phone')||'',
+        address:get(r,'address')||'',
+        contactName:get(r,'contactName')||'',
+        email:get(r,'email')||''
+      });
+      added++;
+    });
+    _saveVendors();
+    toast('✅ Imported '+added+' vendor(s)','ok');
+    closeM();rVendors();
+  }
 }
 
 </script>
