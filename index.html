@@ -10600,6 +10600,246 @@ function saveESGConfig(){
   closeM();toast('ESG config saved!','ok');rESG();
 }
 
+// ══════════════════════════════════════════════════
+// UNIVERSAL EXPORT ENGINE
+// CSV • Excel (XML Spreadsheet) • PDF (print window)
+// Every export includes: timestamp + logged-in user
+// ══════════════════════════════════════════════════
+
+// Sanitised filename with date stamp
+function _expFname(title,ext){
+  return title.replace(/[^a-z0-9]+/gi,'_').slice(0,40)+'_'+new Date().toISOString().slice(0,10)+'.'+ext;
+}
+
+// Dispatcher: get current page data → export
+function _pageExport(format){
+  var d=_getPageExportData();
+  if(!d||!d.rows||!d.rows.length){toast('No data to export on this page','err');return;}
+  uExportAll(format,d.title,d.headers,d.rows);
+  audit('EXPORT_'+format.toUpperCase(),d.title+' ('+d.rows.length+' rows)','');
+}
+
+// Universal dispatcher — injects timestamp + user
+function uExportAll(format,title,headers,rows){
+  var ts=new Date().toLocaleString('en-GB');
+  var rlMap=typeof RL!=='undefined'?RL:{admin:'Admin',supervisor:'Supervisor',driver:'Driver',finance:'Finance'};
+  var usr=S.user?S.user.name+' ('+(rlMap[S.role]||S.role||'')+')':'System';
+  if(format==='csv')  _expCSV(title,headers,rows,ts,usr);
+  if(format==='excel')_expExcel(title,headers,rows,ts,usr);
+  if(format==='pdf')  _expPDF(title,headers,rows,ts,usr);
+}
+
+// ── CSV (UTF-8 BOM so Excel opens correctly) ──────
+function _expCSV(title,headers,rows,ts,usr){
+  var q=function(v){return'"'+String(v==null?'':v).replace(/"/g,'""')+'"';};
+  var lines=[q(title),q('Exported: '+ts+' | By: '+usr),'',headers.map(q).join(',')];
+  rows.forEach(function(r){lines.push(r.map(q).join(','));});
+  var a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,﻿'+encodeURIComponent(lines.join('\r\n'));
+  a.download=_expFname(title,'csv');
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  toast('&#128202; CSV exported — '+rows.length+' rows','ok');
+}
+
+// ── Excel XML Spreadsheet (no external library) ───
+function _expExcel(title,headers,rows,ts,usr){
+  var esc=function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');};
+  var cl=function(v,sid){return '<Cell'+(sid?' ss:StyleID="'+sid+'"':'')+'><Data ss:Type="String">'+esc(v)+'</Data></Cell>';};
+  var xml='<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'+
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">\n'+
+    '<Styles>'+
+    '<Style ss:ID="ti"><Font ss:Bold="1" ss:Size="13"/><Interior ss:Color="#EEF2FF" ss:Pattern="Solid"/></Style>'+
+    '<Style ss:ID="me"><Font ss:Color="#64748B" ss:Italic="1"/></Style>'+
+    '<Style ss:ID="hd"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4F46E5" ss:Pattern="Solid"/></Style>'+
+    '<Style ss:ID="ev"><Interior ss:Color="#F8FAFC" ss:Pattern="Solid"/></Style>'+
+    '</Styles>\n'+
+    '<Worksheet ss:Name="'+esc(title.slice(0,30))+'"><Table>\n'+
+    '<Row><Cell ss:StyleID="ti" ss:MergeAcross="'+(headers.length-1)+'"><Data ss:Type="String">'+esc(title)+'</Data></Cell></Row>\n'+
+    '<Row><Cell ss:StyleID="me" ss:MergeAcross="'+(headers.length-1)+'"><Data ss:Type="String">Exported: '+esc(ts)+' | By: '+esc(usr)+'</Data></Cell></Row>\n'+
+    '<Row></Row>\n'+
+    '<Row>'+headers.map(function(h){return cl(h,'hd');}).join('')+'</Row>\n'+
+    rows.map(function(r,i){return'<Row>'+r.map(function(v){return cl(v,i%2===1?'ev':'');}).join('')+'</Row>\n';}).join('')+
+    '</Table></Worksheet></Workbook>';
+  var a=document.createElement('a');
+  a.href='data:application/vnd.ms-excel;charset=utf-8,'+encodeURIComponent(xml);
+  a.download=_expFname(title,'xls');
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  toast('&#128196; Excel exported — '+rows.length+' rows','ok');
+}
+
+// ── PDF via print window (Blob fallback if popup blocked) ──
+function _expPDF(title,headers,rows,ts,usr){
+  var ths=headers.map(function(h){return'<th>'+h+'</th>';}).join('');
+  var trs=rows.map(function(r,i){
+    return'<tr class="'+(i%2===0?'ev':'')+'">'+r.map(function(v){return'<td>'+String(v==null?'':v)+'</td>';}).join('')+'</tr>';
+  }).join('');
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+title+'</title>'+
+    '<style>'+
+    '*{box-sizing:border-box;margin:0;padding:0}'+
+    'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#1e293b;padding:20px}'+
+    'h2{font-size:16px;color:#4F46E5;margin-bottom:2px}'+
+    '.meta{color:#64748b;font-size:9px;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #4F46E5}'+
+    'table{width:100%;border-collapse:collapse}'+
+    'thead th{background:#4F46E5;color:#fff;padding:6px 7px;text-align:left;font-size:9px;white-space:nowrap}'+
+    'td{padding:5px 7px;font-size:9px;border-bottom:1px solid #e2e8f0;vertical-align:top}'+
+    'tr.ev td{background:#f8fafc}'+
+    '.footer{margin-top:18px;font-size:8px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between}'+
+    '@page{margin:15mm}'+
+    '@media print{body{padding:0}}'+
+    '</style></head><body>'+
+    '<h2>'+title+'</h2>'+
+    '<div class="meta">Exported: '+ts+'&nbsp;&nbsp;|&nbsp;&nbsp;By: '+usr+'&nbsp;&nbsp;|&nbsp;&nbsp;'+rows.length+' records</div>'+
+    '<table><thead><tr>'+ths+'</tr></thead><tbody>'+trs+'</tbody></table>'+
+    '<div class="footer"><span>InstaPort TMS &mdash; Confidential</span><span>'+title+' &mdash; '+ts+'</span></div>'+
+    '<scr'+'ipt>window.onload=function(){window.print();};<\/scr'+'ipt>'+
+    '</body></html>';
+  var w=null;
+  try{w=window.open('','_blank','width=900,height=700');}catch(e){}
+  if(w&&!w.closed){
+    w.document.write(html);w.document.close();
+    toast('&#128444;&#65039; PDF print dialog opened','ok');
+  } else {
+    // Popup blocked — download as HTML file (user opens and prints)
+    var blob=new Blob([html],{type:'text/html;charset=utf-8'});
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    a.href=url;a.download=_expFname(title,'html');
+    document.body.appendChild(a);a.click();document.body.removeChild(a);
+    setTimeout(function(){try{URL.revokeObjectURL(url);}catch(e){}},8000);
+    toast('&#128444;&#65039; Popup blocked — HTML downloaded. Open it and press Ctrl+P to print/PDF.','warn');
+  }
+}
+
+// ── Per-page data generators (13 pages) ──────────
+function _getPageExportData(){
+  var p=S.page;
+  var trips=S.trips||[];
+
+  if(p==='trips'){
+    return{title:'All Trips',
+      headers:['Trip ID','Customer','Status','Condition','Truck','Driver','Origin','Destination','KM','Cost (EGP)','Date'],
+      rows:trips.map(function(t){return[t.id,t.customer,t.status,t.condition,t.truck,t.driver||'',t.origin||'',t.destination||'',t.km||'',t.cost||'',t.ts||''];})
+    };
+  }
+  if(p==='controlroom'){
+    var active=trips.filter(function(t){return['in_transit','loading','waiting','dispatched'].indexOf(t.status)>-1;});
+    return{title:'Control Room — Active Trips',
+      headers:['Trip ID','Customer','Status','Condition','Truck','Driver','Origin','Destination','Temp (°C)','Last Update'],
+      rows:(active.length?active:trips).map(function(t){return[t.id,t.customer,t.status,t.condition,t.truck,t.driver||'',t.origin||'',t.destination||'',t.currentTemp!==undefined?t.currentTemp:'—',t.ts||''];})
+    };
+  }
+  if(p==='quality'){
+    return{title:'Quality Control Report',
+      headers:['Trip ID','Customer','Condition','Trip Status','Quality Status','Temp Breaches','Truck','Driver','Date'],
+      rows:trips.map(function(t){return[t.id,t.customer,t.condition,t.status,t.qualityStatus||'OK',t.tempBreaches||0,t.truck,t.driver||'',t.ts||''];})
+    };
+  }
+  if(p==='security'){
+    var alog=S.auditLog||S.audit||[];
+    var secActs=['LOGIN','LOGOUT','ROLE','ACCESS','SEC','PASS','USER','PERM'];
+    var sec=alog.filter(function(e){return secActs.some(function(k){return(e.action||'').indexOf(k)>-1;});});
+    return{title:'Security Audit Log',
+      headers:['Timestamp','User','Role','Action','Detail','Trip ID'],
+      rows:(sec.length?sec:alog).map(function(e){return[e.ts||'',e.user||'',e.role||'',e.action||'',e.detail||'',e.tripId||''];})
+    };
+  }
+  if(p==='finance'){
+    var comp=trips.filter(function(t){return t.status==='completed';});
+    var totalRev=comp.reduce(function(s,t){return s+(+t.cost||0);},0);
+    return{title:'Finance Report — Revenue by Trip',
+      headers:['Trip ID','Customer','Condition','KM','Revenue (EGP)','Truck','Driver','Date'],
+      rows:comp.map(function(t){return[t.id,t.customer,t.condition,t.km||0,t.cost||0,t.truck,t.driver||'',t.ts||''];})
+    };
+  }
+  if(p==='validation'){
+    return{title:'Trip Validation Report',
+      headers:['Trip ID','Customer','Status','Condition','Validation Status','Documents','Truck','Date'],
+      rows:trips.map(function(t){return[t.id,t.customer,t.status,t.condition,t.validationStatus||'Pending',t.docs||'—',t.truck,t.ts||''];})
+    };
+  }
+  if(p==='billing'){
+    var invs=S.invoices||[];
+    return{title:'Invoices',
+      headers:['Invoice No','Customer','Period','Trips','Subtotal (EGP)','VAT (EGP)','Total (EGP)','Status','Due Date','Created','Created By'],
+      rows:invs.map(function(i){return[i.id,i.customer,i.period,(i.tripIds||[]).length,i.subtotal||0,i.tax||0,i.total||0,i.status,i.dueDate||'',i.createdAt||'',i.createdBy||''];})
+    };
+  }
+  if(p==='fuel'){
+    var fl=S.fuelLogs||[];
+    return{title:'Fuel Management Log',
+      headers:['Date','Truck','Driver','Fuel Type','Liters','Cost/L (EGP)','Total Cost (EGP)','Odometer (km)','Station','Receipt No','Status','Approved By'],
+      rows:fl.map(function(l){return[l.date||'',l.truck||'',l.driver||'',l.fuelType||'',l.liters||'',l.costPerLiter||'',l.totalCost||0,l.odometer||'',l.station||'',l.receiptNo||'',l.status||'',l.approvedBy||''];})
+    };
+  }
+  if(p==='esg'){
+    var ecomp=trips.filter(function(t){return t.status==='completed';});
+    return{title:'ESG Sustainability Report',
+      headers:['Trip ID','Customer','Condition','KM','CO₂ (kg)','CO₂/km','Truck','Date'],
+      rows:ecomp.map(function(t){var co2km=t.km&&t.co2?Math.round(t.co2/t.km*1000)/1000:0;return[t.id,t.customer,t.condition,t.km||0,t.co2||0,co2km,t.truck,t.ts||''];})
+    };
+  }
+  if(p==='fleet'||p==='admin_fleet'||p==='trucks'){
+    var tks=typeof TRUCKS!=='undefined'?TRUCKS:[];
+    return{title:'Fleet Register',
+      headers:['Plate','Type','Condition','Driver','Year','Status','Last Service','Next Service','Mileage (km)'],
+      rows:tks.map(function(t){return[t.plate||'',t.type||t.truckType||'',t.condition||'',t.driver||'',t.year||'',t.valid===false?'Inactive':'Active',t.lastService||'',t.nextService||'',t.mileage||t.km||''];})
+    };
+  }
+  if(p==='maintenance'){
+    var maint=S.maint||S.maintenance||[];
+    if(maint.length){
+      return{title:'Maintenance Log',
+        headers:['ID','Truck','Type','Date','Cost (EGP)','Description','Status','Technician'],
+        rows:maint.map(function(m){return[m.id||'',m.truck||m.plate||'',m.type||'',m.date||'',m.cost||0,m.desc||m.description||'',m.status||'',m.tech||m.technician||''];})
+      };
+    }
+    return{title:'Maintenance — Fleet Overview',
+      headers:['Plate','Type','Status','Last Service','Next Service','Mileage (km)'],
+      rows:(typeof TRUCKS!=='undefined'?TRUCKS:[]).map(function(t){return[t.plate||'',t.type||'',t.valid===false?'Inactive':'Active',t.lastService||'',t.nextService||'',t.mileage||''];})
+    };
+  }
+  if(p==='audit'){
+    var auditLog=S.auditLog||S.audit||[];
+    return{title:'Full Audit Trail',
+      headers:['Timestamp','User','Role','Action','Detail','Trip ID'],
+      rows:auditLog.map(function(e){return[e.ts||'',e.user||'',e.role||'',e.action||'',e.detail||'',e.tripId||''];})
+    };
+  }
+  if(p==='exceptions'){
+    var exs=S.exceptions||[];
+    return{title:'Exception Management Log',
+      headers:['ID','Trip ID','Type','Severity','Message','Customer','Truck','Status','Raised At','Resolved At'],
+      rows:exs.map(function(e){return[e.id||'',e.tripId||'',e.type||'',e.severity||'',e.message||'',e.customer||'',e.truck||'',e.status||'open',e.raisedAt||e.ts||'',e.resolvedAt||''];})
+    };
+  }
+  return null;
+}
+
+// ── Auto-inject CSV / XLS / PDF buttons into page headers ──
+// Wraps the existing ph() so every exportable page gets export controls
+// without touching individual render functions.
+var _EXP_PAGES={trips:1,controlroom:1,quality:1,security:1,finance:1,
+  validation:1,billing:1,fuel:1,esg:1,fleet:1,admin_fleet:1,trucks:1,
+  maintenance:1,audit:1,exceptions:1};
+
+(function(){
+  if(typeof ph!=='function')return;
+  var _ph0=ph;
+  ph=function(title,sub,btns){
+    var expRow=_EXP_PAGES[S&&S.page]
+      ?'<div style="display:flex;gap:4px;flex-shrink:0">'+
+        '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'csv\')" title="Export CSV" style="padding:5px 9px">&#128202; CSV</button>'+
+        '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'excel\')" title="Export Excel" style="padding:5px 9px">&#128196; XLS</button>'+
+        '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'pdf\')" title="Export PDF" style="padding:5px 9px">&#128444;&#65039; PDF</button>'+
+        '</div>':null;
+    if(!expRow)return _ph0(title,sub,btns);
+    var combined=btns
+      ?'<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">'+btns+expRow+'</div>'
+      :expRow;
+    return _ph0(title,sub,combined);
+  };
+})();
+
 </script>
 </body>
 </html>
