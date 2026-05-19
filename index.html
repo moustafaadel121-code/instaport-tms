@@ -3097,7 +3097,13 @@ let S={
     alertHighCost:3000,alertLowOdo:0},
   // ── ESG / Sustainability ──
   esgConfig:{co2PerTreeYear:21,co2PerCarKm:0.21,co2Target:10,
-    baselineCo2:5000,baselineYear:2023,renewableEnergyPct:0}
+    baselineCo2:5000,baselineYear:2023,renewableEnergyPct:0},
+  // Tier 9 — Preventive Maintenance
+  serviceSchedules: [],
+  vendors: [],
+  // Tier 14 — HR & Compliance
+  shifts: [],
+  driverProfiles: {}
 };
 let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicketId=null;
 // Auto-sync on array mutations
@@ -3117,15 +3123,16 @@ const PAGES={
     {id:'billing',icon:'📄',l:'Invoices'},{id:'fuel',icon:'⛽',l:'Fuel'},
     {id:'esg',icon:'🌿',l:'ESG Report'},
     {id:'admin_mgmt',icon:'⚙️',l:'Admin'},{id:'analytics',icon:'📈',l:'Analytics'},
-    {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'}
+    {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'},
+    {id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'},{id:'hr',icon:'👤',l:'HR & Compliance'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'forecast',icon:'📅',l:'New Shipment'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
   security:     [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'security',icon:'🔒',l:'Gate & Workflow'}],
   finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
-  maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'}],
+  maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'},{id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'}],
   validation:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'validation',icon:'✅',l:'Validation'}],
   driver:       [{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}]
 };
@@ -3169,6 +3176,8 @@ async function doLogin(){
       try{_loadFuelLogs();}catch(e){}
       try{_loadESGConfig();}catch(e){}
       try{_loadRolePages();}catch(e){}
+      try{_loadPMData();}catch(e){}
+      try{_loadHRData();}catch(e){}
     },2500);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
@@ -3234,7 +3243,10 @@ const ALL_PAGES_MASTER=[
   {id:'ai',          icon:'🤖',l:'AI Assistant'},
   {id:'my_trips',    icon:'🚛',l:'My Trips (Driver)'},
   {id:'nr_trip',     icon:'🔄',l:'Non-Revenue Trip'},
-  {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'}
+  {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'},
+  {id:'pm_schedule', icon:'📅', l:'PM Scheduler'},
+  {id:'vendors',     icon:'🏪', l:'Vendors'},
+  {id:'hr',          icon:'👤', l:'HR & Compliance'}
 ];
 
 // Returns the current role's allowed page list (admin-overridden or default)
@@ -3287,7 +3299,8 @@ function nav(page){
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
     nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     invite_mgmt:rInviteMgmt,exceptions:rExceptions,
-    billing:rBilling,fuel:rFuel,esg:rESG};
+    billing:rBilling,fuel:rFuel,esg:rESG,
+    pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR};
   (map[page]||rDash)();
 }
 
@@ -5808,7 +5821,12 @@ function _anRebuild(){
   var af=document.getElementById('an-from');var at=document.getElementById('an-to');
   if(af)_anFrom=af.value;if(at)_anTo=at.value;
   var trips=_anTrips();
-  _anRenderCust(trips);_anRenderFleet(trips);_anUpdateKpi(trips);
+  _anUpdateKpi(trips);
+  var tab=S._anTab||'overview';
+  if(tab==='overview')_anRenderOverview(trips);
+  else if(tab==='charts')_anRenderCharts(trips);
+  else if(tab==='sla')_anRenderSLA(trips);
+  else if(tab==='drivers')_anRenderDrivers(trips);
 }
 function _anUpdateKpi(trips){
   var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
@@ -6056,36 +6074,31 @@ function rAnalytics(){
       '&nbsp;<button class="btn btn-outline" onclick="nav(\'dashboard\')">← Dashboard</button></div>';
     return;
   }
-  c.innerHTML='<div class="page-head"><div><h2>&#128202; Analytics</h2></div>'+
+  if(!S._anTab)S._anTab='overview';
+  var tab=S._anTab;
+  c.innerHTML=ph('📈 Analytics & BI','Business Intelligence Dashboard',
     '<div style="display:flex;gap:8px">'+
-    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsCust()">&#128196; Export Customers</button>'+
-    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsFleet()">&#128196; Export Fleet</button>'+
-    '</div></div>'+
-    // KPI row (filled by _anUpdateKpi)
-    '<div class="kpi-row" id="an-kpi"></div>'+
-    // Period filter bar
-    '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;flex-wrap:wrap;gap:10px">'+
-    '<span style="font-size:12px;font-weight:700;color:var(--t2)">&#128197; Period:</span>'+
-    ['week','month','year','custom'].map(function(p){
-      return '<button class="btn btn-sm" id="anp-'+p+'" onclick="_anSetPeriod(\''+p+'\')" style="border-radius:20px;'+(p===_anPeriod?'background:#6C3FF5;color:#fff;border-color:#6C3FF5':'background:var(--bg);color:var(--t);border:1.5px solid var(--bd)')+'">'
-        +{week:'This Week',month:'This Month',year:'This Year',custom:'Custom'}[p]+'</button>';
-    }).join('')+
-    '<div id="an-custom" style="display:'+(_anPeriod==='custom'?'flex':'none')+';align-items:center;gap:6px">'+
-    '<input type="date" id="an-from" value="'+_anFrom+'" onchange="_anRebuild()" style="padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:var(--surf);color:var(--t)"/>'+
-    '<span style="color:var(--t2)">—</span>'+
-    '<input type="date" id="an-to" value="'+_anTo+'" onchange="_anRebuild()" style="padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:var(--surf);color:var(--t)"/>'+
-    '</div></div>'+
-    // Two-column layout
-    '<div class="g2">'+
-    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
-    '<div class="card-title">&#128200; Revenue by Customer</div>'+
-    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsCust()">&#128196; Export</button>'+
-    '</div><div id="an-cust-body"><div style="text-align:center;padding:30px;color:var(--t2)">Loading...</div></div></div>'+
-    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
-    '<div class="card-title">&#128666; Fleet Utilization</div>'+
-    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsFleet()">&#128196; Export</button>'+
-    '</div><div id="an-fleet-body"><div style="text-align:center;padding:30px;color:var(--t2)">Loading...</div></div></div>'+
-    '</div>';
+    '<button class="btn btn-outline btn-sm" onclick="_anExportReport()">📄 KPI Report</button>'+
+    '</div>')+
+  '<div class="tabs">'+
+  ['overview','charts','sla','drivers'].map(function(t){
+    var lbl={overview:'📊 Revenue',charts:'📉 Trends',sla:'⏱ SLA',drivers:'🚛 Drivers'}[t];
+    return '<div class="tab'+(tab===t?' on':'')+'" onclick="S._anTab=\''+t+'\';rAnalytics()">'+lbl+'</div>';
+  }).join('')+
+  '</div>'+
+  '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;flex-wrap:wrap;gap:10px">'+
+  '<span style="font-size:12px;font-weight:700;color:var(--t2)">📅 Period:</span>'+
+  ['week','month','year','custom'].map(function(p){
+    return '<button class="btn btn-sm" id="anp-'+p+'" onclick="_anSetPeriod(\''+p+'\')" style="border-radius:20px;'+(p===_anPeriod?'background:#6C3FF5;color:#fff;border-color:#6C3FF5':'background:var(--bg);color:var(--t);border:1.5px solid var(--bd)')+'">'
+      +{week:'This Week',month:'This Month',year:'This Year',custom:'Custom'}[p]+'</button>';
+  }).join('')+
+  '<div id="an-custom" style="display:'+(_anPeriod==='custom'?'flex':'none')+';align-items:center;gap:6px">'+
+  '<input type="date" id="an-from" value="'+_anFrom+'" onchange="_anRebuild()" style="padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:var(--surf);color:var(--t)"/>'+
+  '<span style="color:var(--t2)">—</span>'+
+  '<input type="date" id="an-to" value="'+_anTo+'" onchange="_anRebuild()" style="padding:5px 8px;border:1.5px solid var(--bd);border-radius:6px;font-size:12px;background:var(--surf);color:var(--t)"/>'+
+  '</div></div>'+
+  '<div class="kpi-row" id="an-kpi"></div>'+
+  '<div id="an-tab-body"></div>';
   _anRebuild();
 }
 function expAnalyticsCust(){
@@ -10277,8 +10290,11 @@ function rBilling(){
   var tab=S.billingTab||'invoices';
   var canCreate=can('finance_view')||can('all');
   c.innerHTML=ph('&#128196; Invoice &amp; Billing','',
-    '<div style="display:flex;gap:8px">'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     (canCreate?'<button class="btn btn-primary" onclick="openNewInvoice()">+ New Invoice</button>':'')+
+    (canCreate?'<button class="btn btn-outline btn-sm" onclick="autoGenerateInvoices()">⚡ Auto-Invoice</button>':'')+
+    (canCreate?'<button class="btn btn-outline btn-sm" onclick="exportVATBreakdown()">📊 VAT Breakdown</button>':'')+
+    (canCreate?'<button class="btn btn-outline btn-sm" onclick="exportProfitMargins()">💹 Profit Margins</button>':'')+
     '</div>')+
   '<div class="tabs">'+
   [{k:'invoices',l:'&#128203; Invoices'},{k:'config',l:'&#9881;&#65039; Billing Config'}].map(function(t){
@@ -11650,6 +11666,793 @@ function _doCO2Export(){
     ['Trip ID','Customer','Condition','KM','CO₂ (kg)','CO₂/km','Revenue (EGP)','Truck','Driver','Date'],
     rows);
   audit('EXPORT_CO2',title+' ('+rows.length+' trips)','');
+}
+
+// ══════════════════════════════════════════════════
+// ANALYTICS — TAB RENDERERS (Tier 11)
+// ══════════════════════════════════════════════════
+function _anRenderOverview(trips){
+  var el=document.getElementById('an-tab-body');if(!el)return;
+  el.innerHTML='<div class="g2">'+
+    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+    '<div class="card-title">💰 Revenue by Customer</div>'+
+    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsCust()">📄 Export</button></div>'+
+    '<div id="an-cust-body"></div></div>'+
+    '<div class="card"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+    '<div class="card-title">🚛 Fleet Utilization</div>'+
+    '<button class="btn btn-outline btn-sm" onclick="expAnalyticsFleet()">📄 Export</button></div>'+
+    '<div id="an-fleet-body"></div></div></div>';
+  _anRenderCust(trips);_anRenderFleet(trips);
+}
+
+function _anRenderCharts(trips){
+  var el=document.getElementById('an-tab-body');if(!el)return;
+  // Trips per day — last 30 days
+  var days30=[];var now=new Date();
+  for(var i=29;i>=0;i--){
+    var d=new Date(now);d.setDate(d.getDate()-i);
+    var ds=d.toISOString().slice(0,10);
+    var cnt=trips.filter(function(t){return (t.ts||'').slice(0,10)===ds||(t.ts||'').startsWith(ds);}).length;
+    days30.push({label:d.getDate()+'/'+(d.getMonth()+1),cnt:cnt,
+      rev:trips.filter(function(t){return(t.ts||'').startsWith(ds);}).reduce(function(s,t){return s+(+t.cost||0);},0)});
+  }
+  var maxCnt=Math.max.apply(null,days30.map(function(d){return d.cnt;}))||1;
+  var maxRev=Math.max.apply(null,days30.map(function(d){return d.rev;}))||1;
+  // Condition breakdown
+  var conditions=(S.tripConditions||[]).map(function(c){
+    var cnt=trips.filter(function(t){return t.condition&&t.condition.indexOf(c.id.split(' ')[0])>-1;}).length;
+    return{label:c.label.replace(/\s*\(.*\)/,''),cnt:cnt,pct:trips.length?Math.round(cnt/trips.length*100):0};
+  }).filter(function(x){return x.cnt>0;});
+  var condColors=['#6C3FF5','#10B981','#F97316','#06B6D4','#EF4444'];
+  el.innerHTML=
+  '<div class="card" style="margin-bottom:14px">'+
+  '<div class="card-title" style="margin-bottom:14px">📉 Trips per Day — Last 30 Days</div>'+
+  '<div style="display:flex;align-items:flex-end;gap:2px;height:140px;padding-bottom:18px;position:relative">'+
+  days30.map(function(d,i){
+    var h=maxCnt>0?Math.max(4,Math.round(d.cnt/maxCnt*120)):4;
+    var show=(i%5===0);
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative">'+
+      '<div title="'+d.label+': '+d.cnt+' trips" style="width:100%;height:'+h+'px;background:'+(d.cnt>0?'var(--c1)':'var(--bd)')+';border-radius:2px 2px 0 0;margin-bottom:2px;cursor:pointer;transition:opacity .15s" onmouseenter="this.style.opacity=\'.7\'" onmouseleave="this.style.opacity=\'1\'"></div>'+
+      (show?'<div style="font-size:8px;color:var(--t3);position:absolute;bottom:-16px;white-space:nowrap">'+d.label+'</div>':'')+
+      '</div>';
+  }).join('')+'</div>'+
+  '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3);margin-top:4px"><span>30 days ago</span><span>Today</span></div>'+
+  '</div>'+
+  '<div class="g2">'+
+  '<div class="card">'+
+  '<div class="card-title" style="margin-bottom:14px">📊 Revenue Trend (30 days)</div>'+
+  '<div style="display:flex;align-items:flex-end;gap:2px;height:120px;padding-bottom:18px">'+
+  days30.map(function(d,i){
+    var h=maxRev>0?Math.max(2,Math.round(d.rev/maxRev*100)):2;
+    var show=(i%5===0);
+    return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;position:relative">'+
+      '<div title="'+d.label+': EGP '+Math.round(d.rev).toLocaleString()+'" style="width:100%;height:'+h+'px;background:'+(d.rev>0?'var(--c3)':'var(--bd)')+';border-radius:2px 2px 0 0;margin-bottom:2px;cursor:pointer;transition:opacity .15s" onmouseenter="this.style.opacity=\'.7\'" onmouseleave="this.style.opacity=\'1\'"></div>'+
+      (show?'<div style="font-size:8px;color:var(--t3);position:absolute;bottom:-16px;white-space:nowrap">'+d.label+'</div>':'')+
+      '</div>';
+  }).join('')+'</div></div>'+
+  '<div class="card">'+
+  '<div class="card-title" style="margin-bottom:14px">🌡️ Condition Mix</div>'+
+  (conditions.length===0?'<div style="text-align:center;padding:30px;color:var(--t2)">No data</div>':
+  conditions.map(function(c,i){
+    return '<div style="margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">'+
+      '<span style="font-weight:600">'+c.label+'</span><span style="color:var(--c1);font-weight:700">'+c.cnt+' trips ('+c.pct+'%)</span></div>'+
+      '<div style="height:8px;background:var(--bd);border-radius:4px"><div style="height:100%;width:'+c.pct+'%;background:'+condColors[i%condColors.length]+';border-radius:4px;transition:width .5s"></div></div>'+
+      '</div>';
+  }).join(''))+'</div></div>';
+}
+
+function _anRenderSLA(trips){
+  var el=document.getElementById('an-tab-body');if(!el)return;
+  var comp=trips.filter(function(t){return t.status==='completed';});
+  var stats=CUSTOMERS.map(function(cu){
+    var ct=comp.filter(function(t){return t.customer===cu;});
+    var m=S.custModifiers[cu]||{};
+    var slaMax=m.slaMax||8;
+    var onTime=ct.filter(function(t){return !t.slaBreached&&(t.km?t.km/50<=slaMax:true);}).length;
+    var pct=ct.length>0?Math.round(onTime/ct.length*100):null;
+    var rev=ct.reduce(function(s,t){return s+(+t.cost||0);},0);
+    var co2=ct.reduce(function(s,t){return s+(+t.co2||0);},0);
+    return{name:cu,total:ct.length,onTime:onTime,pct:pct,rev:rev,co2:co2,slaMax:slaMax};
+  }).filter(function(x){return x.total>0;}).sort(function(a,b){return b.total-a.total;});
+  var avgSLA=stats.length?Math.round(stats.reduce(function(s,x){return s+(x.pct||0);},0)/stats.length):0;
+  el.innerHTML=
+  '<div class="kpi-row" style="margin-bottom:14px">'+
+    kpiBox('⏱','purple',avgSLA+'%','Avg SLA Rate',stats.length+' customers')+
+    kpiBox('✅','green',stats.filter(function(x){return (x.pct||0)>=95;}).length,'≥95% SLA','Excellent')+
+    kpiBox('⚠️','orange',stats.filter(function(x){return x.pct!==null&&x.pct<80;}).length,'<80% SLA','Needs attention')+
+    kpiBox('📦','cyan',comp.length,'Completed Trips','')+
+  '</div>'+
+  '<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'+
+  '<th>Customer</th><th>Trips</th><th>On-Time</th><th>SLA Rate</th><th>SLA Target</th><th>Revenue (EGP)</th><th>CO₂ (kg)</th></tr></thead><tbody>'+
+  stats.map(function(x){
+    var color=x.pct===null?'#94a3b8':x.pct>=95?'#10B981':x.pct>=80?'#F97316':'#EF4444';
+    return '<tr>'+
+      '<td style="font-weight:700">'+x.name+'</td>'+
+      '<td>'+x.total+'</td>'+
+      '<td>'+x.onTime+'</td>'+
+      '<td><div style="display:flex;align-items:center;gap:8px">'+
+        '<div style="flex:1;height:8px;background:var(--bd);border-radius:4px;min-width:60px">'+
+          '<div style="height:100%;width:'+(x.pct||0)+'%;background:'+color+';border-radius:4px"></div></div>'+
+        '<span style="font-weight:700;color:'+color+';min-width:36px">'+(x.pct!==null?x.pct+'%':'—')+'</span>'+
+      '</div></td>'+
+      '<td style="font-size:12px;color:var(--t2)">≤'+x.slaMax+'h</td>'+
+      '<td style="font-weight:700;color:var(--c3)">'+Math.round(x.rev).toLocaleString()+'</td>'+
+      '<td style="color:var(--t2)">'+x.co2.toFixed(0)+'</td></tr>';
+  }).join('')+
+  '</tbody></table></div>'+
+  '<div style="margin-top:12px;display:flex;gap:8px">'+
+  '<button class="btn btn-outline btn-sm" onclick="_expSLAReport()">📄 Export SLA Report</button></div>';
+}
+
+function _anRenderDrivers(trips){
+  var el=document.getElementById('an-tab-body');if(!el)return;
+  var drivers=USERS.filter(function(u){return u.role==='driver';});
+  var stats=drivers.map(function(d){
+    var dt=trips.filter(function(t){return t.driver===d.name;});
+    var comp=dt.filter(function(t){return t.status==='completed';});
+    var km=comp.reduce(function(s,t){return s+(+t.km||0);},0);
+    var rev=comp.reduce(function(s,t){return s+(+t.cost||0);},0);
+    var fl=(S.fuelLogs||[]).filter(function(l){return l.driver===d.name;});
+    var totalL=fl.reduce(function(s,l){return s+(+l.liters||0);},0);
+    var fuelCost=fl.reduce(function(s,l){return s+(+l.totalCost||0);},0);
+    var kmPerL=totalL>0?Math.round(km/totalL*10)/10:null;
+    var onTimeRate=dt.length>0?Math.round(comp.length/dt.length*100):null;
+    var score=0;
+    if(onTimeRate!==null)score+=onTimeRate*0.4;
+    if(dt.length>0)score+=Math.min(30,dt.length*3);
+    if(kmPerL!==null)score+=Math.min(30,kmPerL*3);
+    return{name:d.name,id:d.id,total:dt.length,comp:comp.length,km:km,
+      rev:rev,liters:totalL,fuelCost:fuelCost,kmPerL:kmPerL,
+      onTimeRate:onTimeRate,score:Math.round(Math.min(100,score))};
+  }).filter(function(x){return x.total>0;}).sort(function(a,b){return b.score-a.score;});
+  if(!stats.length){
+    el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--t2)">No driver trip data for this period</div>';return;
+  }
+  el.innerHTML=
+  '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:14px">'+
+  stats.map(function(d,i){
+    var scoreColor=d.score>=80?'#10B981':d.score>=60?'#F97316':'#EF4444';
+    var medal=['🥇','🥈','🥉'][i]||'';
+    return '<div class="card" style="border-top:3px solid '+scoreColor+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
+      '<div><div style="font-weight:700;font-size:15px">'+medal+' '+d.name+'</div>'+
+      '<div style="font-size:11px;color:var(--t2)">'+d.total+' trips assigned</div></div>'+
+      '<div style="text-align:center;background:'+scoreColor+'15;border-radius:50%;width:48px;height:48px;display:flex;align-items:center;justify-content:center;flex-direction:column">'+
+      '<div style="font-size:16px;font-weight:800;color:'+scoreColor+'">'+d.score+'</div>'+
+      '<div style="font-size:8px;color:var(--t3)">SCORE</div></div></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:12px">'+
+      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
+        '<div style="color:var(--t3);font-size:10px">Completed</div>'+
+        '<div style="font-weight:700;color:var(--c1)">'+d.comp+'/'+d.total+'</div></div>'+
+      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
+        '<div style="color:var(--t3);font-size:10px">On-Time Rate</div>'+
+        '<div style="font-weight:700;color:'+(d.onTimeRate===null?'var(--t3)':d.onTimeRate>=80?'#10B981':'#F97316')+'">'+
+        (d.onTimeRate!==null?d.onTimeRate+'%':'—')+'</div></div>'+
+      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
+        '<div style="color:var(--t3);font-size:10px">Total KM</div>'+
+        '<div style="font-weight:700">'+d.km.toLocaleString()+' km</div></div>'+
+      '<div style="background:var(--bg);border-radius:8px;padding:8px">'+
+        '<div style="color:var(--t3);font-size:10px">Fuel Efficiency</div>'+
+        '<div style="font-weight:700;color:var(--c3)">'+(d.kmPerL!==null?d.kmPerL+' km/L':'—')+'</div></div>'+
+      '</div>'+
+      (d.rev>0?'<div style="margin-top:8px;font-size:11px;color:var(--t2)">Revenue generated: <strong style="color:var(--c1)">EGP '+Math.round(d.rev).toLocaleString()+'</strong></div>':'')+
+      '</div>';
+  }).join('')+'</div>'+
+  '<div style="margin-top:12px;display:flex;gap:8px">'+
+  '<button class="btn btn-outline btn-sm" onclick="_expDriverReport()">📄 Export Driver Report</button></div>';
+}
+
+function _expSLAReport(){
+  var trips=_anTrips().filter(function(t){return t.status==='completed';});
+  var rows=CUSTOMERS.map(function(cu){
+    var ct=trips.filter(function(t){return t.customer===cu;});
+    if(!ct.length)return null;
+    var m=S.custModifiers[cu]||{};
+    var slaMax=m.slaMax||8;
+    var onTime=ct.filter(function(t){return !t.slaBreached;}).length;
+    var pct=Math.round(onTime/ct.length*100);
+    return[cu,ct.length,onTime,pct+'%',slaMax+'h',
+      ct.reduce(function(s,t){return s+(+t.cost||0);},0).toFixed(0)];
+  }).filter(Boolean);
+  uExportAll('csv','Customer SLA Report',['Customer','Trips','On-Time','SLA Rate','Target','Revenue (EGP)'],rows);
+}
+function _expDriverReport(){
+  var trips=_anTrips();
+  var drivers=USERS.filter(function(u){return u.role==='driver';});
+  var rows=drivers.map(function(d){
+    var dt=trips.filter(function(t){return t.driver===d.name;});
+    var comp=dt.filter(function(t){return t.status==='completed';});
+    var km=comp.reduce(function(s,t){return s+(+t.km||0);},0);
+    var fl=(S.fuelLogs||[]).filter(function(l){return l.driver===d.name;});
+    var totalL=fl.reduce(function(s,l){return s+(+l.liters||0);},0);
+    return[d.name,dt.length,comp.length,
+      dt.length?Math.round(comp.length/dt.length*100)+'%':'—',
+      km.toLocaleString()+' km',totalL?totalL+' L':'—',
+      totalL&&km?Math.round(km/totalL*10)/10+' km/L':'—'];
+  }).filter(function(r){return r[1]>0;});
+  uExportAll('csv','Driver Performance Report',
+    ['Driver','Total Trips','Completed','On-Time %','Total KM','Fuel Used','Fuel Efficiency'],rows);
+}
+function _anExportReport(){
+  var trips=_anTrips();
+  var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);
+  var km=trips.reduce(function(s,t){return s+(+t.km||0);},0);
+  var comp=trips.filter(function(t){return t.status==='completed';}).length;
+  var rows=[
+    ['Period',_anPeriod.toUpperCase()],
+    ['Total Trips',trips.length],
+    ['Completed',comp],
+    ['Total Revenue (EGP)',rev.toFixed(0)],
+    ['Total KM',km.toFixed(0)],
+    ['CO₂ (kg)',co2.toFixed(0)],
+    ['Active Trucks',TRUCKS.filter(function(t){return t.valid;}).length],
+    ['Fleet Size',TRUCKS.length],
+    ['Generated',new Date().toLocaleString('en-GB')]
+  ];
+  uExportAll('pdf','InstaPort KPI Report',['Metric','Value'],rows);
+}
+
+// ══════════════════════════════════════════════════
+// TIER 9 — PREVENTIVE MAINTENANCE SCHEDULER
+// ══════════════════════════════════════════════════
+function _loadPMData(){
+  try{var d=localStorage.getItem('ip_pmsch');if(d)S.serviceSchedules=JSON.parse(d);}catch(e){}
+  try{var v=localStorage.getItem('ip_vendors');if(v)S.vendors=JSON.parse(v);}catch(e){}
+}
+function _savePMSchedules(){try{localStorage.setItem('ip_pmsch',JSON.stringify(S.serviceSchedules||[]));}catch(e){}}
+function _saveVendors(){try{localStorage.setItem('ip_vendors',JSON.stringify(S.vendors||[]));}catch(e){}}
+
+function _runPMCheck(){
+  var today=new Date();
+  (S.serviceSchedules||[]).filter(function(s){return s.active!==false;}).forEach(function(sch){
+    var truck=TRUCKS.find(function(t){return t.plate===sch.plate;});
+    var due=false;var reason='';
+    if(sch.intervalDays&&sch.lastDate){
+      var last=new Date(sch.lastDate);
+      var nextDue=new Date(last.getTime()+sch.intervalDays*864e5);
+      var daysLeft=Math.ceil((nextDue-today)/864e5);
+      if(daysLeft<=0){due=true;reason='Overdue by '+Math.abs(daysLeft)+' day(s) ('+sch.intervalDays+'-day interval)';}
+    }
+    if(sch.intervalKm&&sch.lastKm!==undefined&&truck){
+      var curKm=truck.odometerKm||0;
+      var kmDone=curKm-sch.lastKm;
+      if(kmDone>=sch.intervalKm){due=true;reason='KM overdue: '+kmDone.toLocaleString()+' km since last service (interval: '+sch.intervalKm.toLocaleString()+' km)';}
+    }
+    if(due){
+      var alreadyOpen=(S.maintTickets||[]).some(function(tk){return tk.schId===sch.id&&tk.status==='open';});
+      if(!alreadyOpen){
+        var id='MK-'+Date.now()+'-'+Math.floor(Math.random()*999);
+        var ticket={id:id,truck:sch.plate,desc:'[AUTO-PM] '+sch.serviceType+' — '+reason,
+          parts:[],status:'open',ts:new Date().toLocaleString('en-GB'),
+          attachments:[],auto:true,schId:sch.id,pmType:sch.serviceType};
+        S.maintTickets.push(ticket);
+        S.notifs.push({msg:'PM Auto-Ticket: '+sch.plate+' — '+sch.serviceType,type:'alert',ts:new Date().toLocaleString('en-GB')});
+        audit('PM_AUTO_TICKET',sch.plate+' '+sch.serviceType,'');
+      }
+    }
+  });
+}
+
+function rPMSchedule(){
+  var c=document.getElementById('content');
+  _runPMCheck();
+  var sch=S.serviceSchedules||[];
+  var today=new Date();
+  function getDue(s){
+    var truck=TRUCKS.find(function(t){return t.plate===s.plate;});
+    var st='ok';var dL=null;var kL=null;
+    if(s.intervalDays&&s.lastDate){
+      var nextDue=new Date(new Date(s.lastDate).getTime()+s.intervalDays*864e5);
+      dL=Math.ceil((nextDue-today)/864e5);
+      if(dL<=0)st='overdue';else if(dL<=7)st='warning';
+    }
+    if(s.intervalKm&&s.lastKm!==undefined&&truck){
+      var curKm=truck.odometerKm||0;
+      kL=s.intervalKm-(curKm-s.lastKm);
+      if(kL<=0&&st!=='overdue')st='overdue';
+      else if(kL>0&&kL<=500&&st==='ok')st='warning';
+    }
+    return{st:st,dL:dL,kL:kL};
+  }
+  var overdue=sch.filter(function(s){return getDue(s).st==='overdue';}).length;
+  var warning=sch.filter(function(s){return getDue(s).st==='warning';}).length;
+  c.innerHTML=ph('📅 PM Scheduler','Preventive Maintenance Schedules',
+    (can('maintenance_create')||can('all')?'<button class="btn btn-primary" onclick="openAddPMSch()">+ New Schedule</button>':''))+
+  '<div class="kpi-row">'+
+    kpiBox('📅','purple',sch.length,'Schedules','')+
+    kpiBox('🔴','red',overdue,'Overdue','Auto-tickets raised')+
+    kpiBox('⚠️','orange',warning,'Due Soon','≤7 days / ≤500 km')+
+    kpiBox('🏪','cyan',(S.vendors||[]).length,'Vendors','<span onclick="nav(\'vendors\')" style="cursor:pointer;color:var(--c1)">View →</span>')+
+  '</div>'+
+  (overdue>0?'<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:10px;padding:12px 16px;margin-bottom:14px;color:#DC2626;font-size:13px">'+
+    '<strong>⚠️ '+overdue+' overdue schedule(s)</strong> — maintenance tickets auto-generated. <span onclick="nav(\'maintenance\')" style="cursor:pointer;text-decoration:underline">View tickets →</span></div>':'')+
+  (sch.length===0?'<div class="card" style="text-align:center;padding:56px;color:var(--t2)">'+
+    '<div style="font-size:48px">📅</div><div style="font-size:15px;font-weight:700;margin-top:12px">No PM schedules yet</div>'+
+    (can('maintenance_create')||can('all')?'<button class="btn btn-primary" style="margin-top:16px" onclick="openAddPMSch()">+ Add First Schedule</button>':'')+'</div>':
+  '<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'+
+  '<th>Truck</th><th>Service Type</th><th>KM Interval</th><th>Day Interval</th><th>Last KM</th><th>Last Date</th><th>Next Due</th><th>Status</th><th>Vendor</th><th>Actions</th>'+
+  '</tr></thead><tbody>'+
+  sch.map(function(s){
+    var d=getDue(s);
+    var stTag={ok:'<span class="tag tag-ok">✅ OK</span>',warning:'<span class="tag tag-pend">⚠️ Soon</span>',overdue:'<span class="tag tag-hold">🔴 Overdue</span>'}[d.st];
+    var stColor={ok:'#10B981',warning:'#F97316',overdue:'#EF4444'}[d.st];
+    var nextInfo=(d.dL!==null?d.dL+'d ':'')+((d.dL!==null&&d.kL!==null)?'/ ':'')+( d.kL!==null?d.kL+'km':'');
+    var vend=(S.vendors||[]).find(function(v){return v.id===s.vendorId;});
+    return '<tr>'+
+      '<td style="font-weight:700">'+s.plate+'</td>'+
+      '<td>'+s.serviceType+'</td>'+
+      '<td>'+(s.intervalKm?s.intervalKm.toLocaleString()+' km':'—')+'</td>'+
+      '<td>'+(s.intervalDays?s.intervalDays+' days':'—')+'</td>'+
+      '<td>'+(s.lastKm?s.lastKm.toLocaleString()+' km':'—')+'</td>'+
+      '<td>'+(s.lastDate||'—')+'</td>'+
+      '<td style="font-weight:700;color:'+stColor+'">'+( nextInfo.trim()||'—')+'</td>'+
+      '<td>'+stTag+'</td>'+
+      '<td style="font-size:12px">'+(vend?vend.name:'—')+'</td>'+
+      '<td><div style="display:flex;gap:4px">'+
+        '<button class="btn btn-outline btn-sm" onclick="openAddPMSch(\''+s.id+'\')">✎</button>'+
+        '<button class="btn btn-success btn-sm" onclick="markPMDone(\''+s.id+'\')">✓ Done</button>'+
+        (can('all')?'<button class="btn btn-danger btn-sm" onclick="delPMSch(\''+s.id+'\')">✕</button>':'')+
+      '</div></td></tr>';
+  }).join('')+'</tbody></table></div>');
+}
+
+function openAddPMSch(editId){
+  var e=editId?(S.serviceSchedules||[]).find(function(s){return s.id===editId;}):null;
+  var svcTypes=['Oil Change','Filter Change','Cooling System Service','Brake Inspection','Tire Rotation','Full Service','Calibration Check','Battery Check','AC Service','Transmission Service'];
+  var truckOpts=TRUCKS.map(function(t){return'<option value="'+t.plate+'"'+(e&&e.plate===t.plate?' selected':'')+'>'+t.plate+' ('+t.type+')</option>';}).join('');
+  var vendOpts='<option value="">No vendor</option>'+(S.vendors||[]).map(function(v){return'<option value="'+v.id+'"'+(e&&e.vendorId===v.id?' selected':'')+'>'+v.name+'</option>';}).join('');
+  openM('<div class="m-title">📅 '+(editId?'Edit':'New')+' PM Schedule</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg" style="grid-column:1/-1"><label>Truck *</label><select id="pm-truck">'+truckOpts+'</select></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Service Type *</label><select id="pm-stype"><option value="">Select...</option>'+
+      svcTypes.map(function(t){return'<option value="'+t+'"'+(e&&e.serviceType===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div class="fg"><label>KM Interval</label><input type="number" id="pm-km" placeholder="e.g. 10000" min="0" value="'+(e&&e.intervalKm||'')+'"/></div>'+
+    '<div class="fg"><label>Day Interval</label><input type="number" id="pm-days" placeholder="e.g. 90" min="0" value="'+(e&&e.intervalDays||'')+'"/></div>'+
+    '<div class="fg"><label>Last Service KM</label><input type="number" id="pm-lkm" placeholder="0" min="0" value="'+(e&&e.lastKm||'')+'"/></div>'+
+    '<div class="fg"><label>Last Service Date</label><input type="date" id="pm-ldate" value="'+(e&&e.lastDate||'')+'"/></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Vendor / Workshop</label><select id="pm-vend">'+vendOpts+'</select></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Notes</label><input id="pm-notes" placeholder="Additional notes..." value="'+(e&&e.notes?e.notes.replace(/"/g,'&quot;'):'')+'"/></div>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="savePMSch('+(editId?'\''+editId+'\'':'null')+')">💾 Save</button></div>');
+}
+function savePMSch(editId){
+  var plate=(document.getElementById('pm-truck')||{}).value;
+  var stype=(document.getElementById('pm-stype')||{}).value;
+  if(!plate||!stype){toast('Select truck and service type','err');return;}
+  if(!S.serviceSchedules)S.serviceSchedules=[];
+  var obj={id:editId||('PM-'+Date.now()),plate:plate,serviceType:stype,
+    intervalKm:+((document.getElementById('pm-km')||{}).value)||0,
+    intervalDays:+((document.getElementById('pm-days')||{}).value)||0,
+    lastKm:+((document.getElementById('pm-lkm')||{}).value)||0,
+    lastDate:(document.getElementById('pm-ldate')||{}).value||'',
+    vendorId:(document.getElementById('pm-vend')||{}).value||'',
+    notes:(document.getElementById('pm-notes')||{}).value||'',active:true};
+  if(editId){var idx=S.serviceSchedules.findIndex(function(s){return s.id===editId;});if(idx>-1)S.serviceSchedules[idx]=obj;}
+  else S.serviceSchedules.push(obj);
+  _savePMSchedules();audit('PM_SCH_SAVE',plate+' '+stype,'');closeM();toast('Schedule saved ✅','ok');rPMSchedule();
+}
+function markPMDone(id){
+  var sch=(S.serviceSchedules||[]).find(function(s){return s.id===id;});if(!sch)return;
+  sch.lastDate=new Date().toISOString().slice(0,10);
+  var truck=TRUCKS.find(function(t){return t.plate===sch.plate;});
+  if(truck&&truck.odometerKm)sch.lastKm=truck.odometerKm;
+  (S.maintTickets||[]).forEach(function(tk){if(tk.schId===id&&tk.status==='open')tk.status='done';});
+  _savePMSchedules();audit('PM_DONE',sch.plate+' '+sch.serviceType,'');
+  toast('Service marked done — schedule updated ✅','ok');rPMSchedule();
+}
+function delPMSch(id){
+  if(!confirm('Delete this PM schedule?'))return;
+  S.serviceSchedules=(S.serviceSchedules||[]).filter(function(s){return s.id!==id;});
+  _savePMSchedules();toast('Deleted','ok');rPMSchedule();
+}
+
+// ── VENDOR MANAGEMENT ──────────────────────────────
+function rVendors(){
+  var c=document.getElementById('content');
+  var vend=S.vendors||[];
+  c.innerHTML=ph('🏪 Vendors & Workshops','Service provider directory',
+    (can('all')||can('maintenance_create')?'<button class="btn btn-primary" onclick="openAddVendor()">+ Add Vendor</button>':''))+
+  '<div class="kpi-row">'+
+    kpiBox('🏪','purple',vend.length,'Total Vendors','')+
+    kpiBox('🔧','orange',vend.filter(function(v){return v.type==='Workshop';}).length,'Workshops','')+
+    kpiBox('🛒','cyan',vend.filter(function(v){return v.type==='Supplier';}).length,'Suppliers','')+
+    kpiBox('📋','green',vend.filter(function(v){return v.type==='Inspector';}).length,'Inspectors','')+
+  '</div>'+
+  (vend.length===0?'<div class="card" style="text-align:center;padding:56px;color:var(--t2)">'+
+    '<div style="font-size:48px">🏪</div><div style="font-size:15px;font-weight:700;margin-top:12px">No vendors yet</div>'+
+    (can('all')||can('maintenance_create')?'<button class="btn btn-primary" style="margin-top:16px" onclick="openAddVendor()">+ Add Vendor</button>':'')+'</div>':
+  '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px">'+
+  vend.map(function(v){
+    var tc={Workshop:'var(--c2)',Supplier:'var(--c4)',Inspector:'var(--c3)',Other:'var(--c1)'}[v.type]||'var(--c1)';
+    return '<div class="card" style="border-top:3px solid '+tc+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
+      '<div><div style="font-weight:700;font-size:15px">'+v.name+'</div>'+
+      '<span style="font-size:11px;background:'+tc+'20;color:'+tc+';border-radius:8px;padding:2px 8px;font-weight:700">'+v.type+'</span></div>'+
+      (can('all')||can('maintenance_create')?'<div style="display:flex;gap:4px">'+
+        '<button class="btn btn-outline btn-sm" onclick="openAddVendor(\''+v.id+'\')">✎</button>'+
+        '<button class="btn btn-danger btn-sm" onclick="delVendor(\''+v.id+'\')">✕</button></div>':'')+
+      '</div>'+
+      (v.speciality?'<div style="font-size:12px;color:var(--t2);margin-bottom:4px">🔧 '+v.speciality+'</div>':'')+
+      (v.phone?'<div style="font-size:12px">📞 '+v.phone+'</div>':'')+
+      (v.contactName?'<div style="font-size:12px">👤 '+v.contactName+'</div>':'')+
+      (v.address?'<div style="font-size:12px;color:var(--t2);margin-top:4px">📍 '+v.address+'</div>':'')+
+      (v.email?'<div style="font-size:12px;margin-top:4px">✉️ '+v.email+'</div>':'')+
+      '</div>';
+  }).join('')+'</div>');
+}
+function openAddVendor(editId){
+  var e=editId?(S.vendors||[]).find(function(v){return v.id===editId;}):null;
+  openM('<div class="m-title">🏪 '+(editId?'Edit':'New')+' Vendor</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg" style="grid-column:1/-1"><label>Name *</label><input id="vn-name" value="'+(e?e.name.replace(/"/g,'&quot;'):'')+'"/></div>'+
+    '<div class="fg"><label>Type</label><select id="vn-type">'+
+    ['Workshop','Supplier','Inspector','Other'].map(function(t){return'<option'+(e&&e.type===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div class="fg"><label>Speciality</label><input id="vn-spec" placeholder="e.g. Cooling systems" value="'+(e&&e.speciality?e.speciality:'')+'"/></div>'+
+    '<div class="fg"><label>Contact Person</label><input id="vn-con" value="'+(e&&e.contactName?e.contactName:'')+'"/></div>'+
+    '<div class="fg"><label>Phone</label><input id="vn-phone" value="'+(e&&e.phone?e.phone:'')+'"/></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Address</label><input id="vn-addr" value="'+(e&&e.address?e.address:'')+'"/></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Email</label><input type="email" id="vn-email" value="'+(e&&e.email?e.email:'')+'"/></div>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveVendor('+(editId?'\''+editId+'\'':'null')+')">💾 Save</button></div>');
+}
+function saveVendor(editId){
+  var name=(document.getElementById('vn-name')||{}).value;
+  if(!name){toast('Enter vendor name','err');return;}
+  if(!S.vendors)S.vendors=[];
+  var obj={id:editId||('VN-'+Date.now()),name:name,
+    type:(document.getElementById('vn-type')||{}).value||'Workshop',
+    speciality:(document.getElementById('vn-spec')||{}).value||'',
+    contactName:(document.getElementById('vn-con')||{}).value||'',
+    phone:(document.getElementById('vn-phone')||{}).value||'',
+    address:(document.getElementById('vn-addr')||{}).value||'',
+    email:(document.getElementById('vn-email')||{}).value||''};
+  if(editId){var idx=S.vendors.findIndex(function(v){return v.id===editId;});if(idx>-1)S.vendors[idx]=obj;}
+  else S.vendors.push(obj);
+  _saveVendors();closeM();toast('Vendor saved ✅','ok');rVendors();
+}
+function delVendor(id){
+  if(!confirm('Delete this vendor?'))return;
+  S.vendors=(S.vendors||[]).filter(function(v){return v.id!==id;});
+  _saveVendors();toast('Deleted','ok');rVendors();
+}
+
+// ══════════════════════════════════════════════════
+// TIER 13 — FINANCE AUTOMATION
+// ══════════════════════════════════════════════════
+// Auto-invoice all uninvoiced completed trips
+function autoGenerateInvoices(){
+  if(!can('all')&&!can('finance_view')){toast('Finance permission required','err');return;}
+  var invoiced=new Set();
+  (S.invoices||[]).forEach(function(inv){(inv.tripIds||[]).forEach(function(id){invoiced.add(id);});});
+  var uninvoiced=S.trips.filter(function(t){return t.status==='completed'&&!invoiced.has(t.id);});
+  if(!uninvoiced.length){toast('All completed trips are already invoiced ✅','ok');return;}
+  var byCust={};
+  uninvoiced.forEach(function(t){
+    if(!byCust[t.customer])byCust[t.customer]=[];
+    byCust[t.customer].push(t);
+  });
+  var created=0;var cfg=S.billingConfig||{};var tax=cfg.taxRate||14;
+  Object.keys(byCust).forEach(function(cu){
+    var trips=byCust[cu];
+    var sub=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+    var taxAmt=sub*tax/100;
+    var dueDate=new Date();dueDate.setDate(dueDate.getDate()+(cfg.paymentTermsDays||30));
+    var inv={id:(cfg.invoicePrefix||'INV')+'-'+Date.now()+'-'+created,
+      customer:cu,period:new Date().toLocaleDateString('en-GB',{month:'long',year:'numeric'}),
+      tripIds:trips.map(function(t){return t.id;}),
+      subtotal:sub.toFixed(2),tax:taxAmt.toFixed(2),
+      total:(sub+taxAmt).toFixed(2),status:'draft',
+      dueDate:dueDate.toISOString().slice(0,10),
+      createdAt:new Date().toLocaleString('en-GB'),createdBy:S.user.name};
+    if(!S.invoices)S.invoices=[];
+    S.invoices.unshift(inv);created++;
+  });
+  audit('AUTO_INVOICE',created+' invoices generated from '+uninvoiced.length+' trips','');
+  toast('✅ '+created+' invoice(s) auto-generated from '+uninvoiced.length+' trips','ok');
+  nav('billing');
+}
+
+// Profit margin per trip
+function _tripProfitMargin(trip){
+  var rev=+trip.cost||0;
+  var fuelCost=(S.fuelLogs||[]).filter(function(l){return l.relatedTripId===trip.id;})
+    .reduce(function(s,l){return s+(+l.totalCost||0);},0);
+  var partsCost=0;
+  (S.maintTickets||[]).filter(function(tk){return tk.tripId===trip.id;}).forEach(function(tk){
+    partsCost+=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
+  });
+  var overhead=rev*0.1; // 10% estimated overhead
+  var margin=rev-fuelCost-partsCost-overhead;
+  var pct=rev>0?Math.round(margin/rev*100):0;
+  return{rev:rev,fuel:fuelCost,parts:partsCost,overhead:overhead,margin:margin,pct:pct};
+}
+
+// VAT breakdown export
+function exportVATBreakdown(){
+  if(!can('all')&&!can('finance_view')){toast('Finance permission required','err');return;}
+  var cfg=S.billingConfig||{};var tax=cfg.taxRate||14;
+  var rows=CUSTOMERS.map(function(cu){
+    var cuInv=(S.invoices||[]).filter(function(i){return i.customer===cu&&i.status!=='cancelled';});
+    if(!cuInv.length)return null;
+    var sub=cuInv.reduce(function(s,i){return s+(+i.subtotal||0);},0);
+    var taxAmt=cuInv.reduce(function(s,i){return s+(+i.tax||0);},0);
+    var paid=cuInv.filter(function(i){return i.status==='paid';}).reduce(function(s,i){return s+(+i.total||0);},0);
+    return[cu,cuInv.length,sub.toFixed(2),taxAmt.toFixed(2),(sub+taxAmt).toFixed(2),paid.toFixed(2),(sub+taxAmt-paid).toFixed(2),tax+'%'];
+  }).filter(Boolean);
+  uExportAll('excel','VAT Breakdown by Customer',
+    ['Customer','Invoices','Subtotal (EGP)','VAT (EGP)','Total (EGP)','Paid (EGP)','Outstanding (EGP)','VAT Rate'],rows);
+}
+
+// Profit margin export
+function exportProfitMargins(){
+  if(!can('all')&&!can('finance_view')){toast('Finance permission required','err');return;}
+  var comp=S.trips.filter(function(t){return t.status==='completed';});
+  var rows=comp.map(function(t){
+    var pm=_tripProfitMargin(t);
+    return[t.id,t.customer,t.type,t.truck||'',t.km||0,
+      pm.rev.toFixed(0),pm.fuel.toFixed(0),pm.parts.toFixed(0),pm.overhead.toFixed(0),
+      pm.margin.toFixed(0),pm.pct+'%',t.ts||''];
+  });
+  uExportAll('excel','Trip Profit Margins',
+    ['Trip ID','Customer','Type','Truck','KM','Revenue','Fuel Cost','Parts Cost','Overhead (10%)','Net Margin','Margin %','Date'],rows);
+}
+
+// ══════════════════════════════════════════════════
+// TIER 14 — HR & COMPLIANCE
+// ══════════════════════════════════════════════════
+function _loadHRData(){
+  try{var s=localStorage.getItem('ip_shifts');if(s)S.shifts=JSON.parse(s);}catch(e){}
+  try{var d=localStorage.getItem('ip_driverprofiles');if(d)S.driverProfiles=JSON.parse(d);}catch(e){}
+}
+function _saveShifts(){try{localStorage.setItem('ip_shifts',JSON.stringify(S.shifts||[]));}catch(e){}}
+function _saveDriverProfiles(){try{localStorage.setItem('ip_driverprofiles',JSON.stringify(S.driverProfiles||{}));}catch(e){}}
+
+function rHR(){
+  var c=document.getElementById('content');
+  if(!S._hrTab)S._hrTab='drivers';
+  var tab=S._hrTab;
+  var today=new Date().toISOString().slice(0,10);
+  var drivers=USERS.filter(function(u){return u.role==='driver';});
+  var profiles=S.driverProfiles||{};
+  var shifts=S.shifts||[];
+
+  // License expiry alerts
+  var expiredLic=drivers.filter(function(d){
+    var p=profiles[d.id];return p&&p.licenseExpiry&&p.licenseExpiry<today;
+  }).length;
+  var soonLic=drivers.filter(function(d){
+    var p=profiles[d.id];if(!p||!p.licenseExpiry)return false;
+    var days=Math.ceil((new Date(p.licenseExpiry)-new Date())/864e5);
+    return days>=0&&days<=30;
+  }).length;
+  var todayShifts=shifts.filter(function(s){return s.date===today;}).length;
+
+  c.innerHTML=ph('👤 HR & Compliance','Driver records, shifts and licensing',
+    '<div style="display:flex;gap:8px">'+
+    (can('all')||can('dispatch')?'<button class="btn btn-primary" onclick="openAddShift()">+ Add Shift</button>':'')+
+    '</div>')+
+  '<div class="kpi-row">'+
+    kpiBox('👤','purple',drivers.length,'Drivers','')+
+    (expiredLic?kpiBox('🔴','red',expiredLic,'Expired Licenses','Action required'):''+kpiBox('✅','green',drivers.length-expiredLic-soonLic,'Valid Licenses',''))+
+    kpiBox('⚠️','orange',soonLic,'Expiring Soon','≤30 days')+
+    kpiBox('📅','cyan',todayShifts,'Shifts Today','')+
+  '</div>'+
+  '<div class="tabs">'+
+  ['drivers','shifts'].map(function(t){
+    var lbl={drivers:'👤 Driver Compliance',shifts:'📅 Shift Schedule'}[t];
+    return '<div class="tab'+(tab===t?' on':'')+'" onclick="S._hrTab=\''+t+'\';rHR()">'+lbl+'</div>';
+  }).join('')+'</div>'+
+  (tab==='drivers'?_hrRenderDrivers(drivers,profiles,today):_hrRenderShifts(shifts,today));
+}
+
+function _hrRenderDrivers(drivers,profiles,today){
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px">'+
+  drivers.map(function(d){
+    var p=profiles[d.id]||{};
+    var licExp=p.licenseExpiry;
+    var licDays=licExp?Math.ceil((new Date(licExp)-new Date())/864e5):null;
+    var licStatus=licDays===null?'no-data':licDays<0?'expired':licDays<=30?'soon':'ok';
+    var licColor={ok:'#10B981',soon:'#F97316',expired:'#EF4444','no-data':'#94a3b8'}[licStatus];
+    var dTrips=S.trips.filter(function(t){return t.driver===d.name;}).length;
+    var dComp=S.trips.filter(function(t){return t.driver===d.name&&t.status==='completed';}).length;
+    return '<div class="card">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
+      '<div><div style="font-weight:700;font-size:15px">'+d.name+'</div>'+
+      '<div style="font-size:11px;color:var(--t2)">ID: '+d.id+'</div></div>'+
+      '<button class="btn btn-outline btn-sm" onclick="openEditDriverProfile(\''+d.id+'\')">✎ Profile</button></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px;margin-bottom:8px">'+
+      '<div style="background:var(--bg);border-radius:6px;padding:6px">'+
+        '<div style="color:var(--t3);font-size:10px">License No.</div>'+
+        '<div style="font-weight:600">'+(p.licenseNo||'—')+'</div></div>'+
+      '<div style="background:var(--bg);border-radius:6px;padding:6px">'+
+        '<div style="color:var(--t3);font-size:10px">License Type</div>'+
+        '<div style="font-weight:600">'+(p.licenseType||'—')+'</div></div>'+
+      '<div style="background:var(--bg);border-radius:6px;padding:6px;grid-column:1/-1">'+
+        '<div style="color:var(--t3);font-size:10px">License Expiry</div>'+
+        '<div style="font-weight:700;color:'+licColor+'">'+
+          (licExp||'Not set')+
+          (licDays!==null?' ('+( licDays<0?'EXPIRED '+Math.abs(licDays)+'d ago':licDays+'d left'):'')+')'+
+        '</div></div>'+
+      '<div style="background:var(--bg);border-radius:6px;padding:6px">'+
+        '<div style="color:var(--t3);font-size:10px">Trips</div>'+
+        '<div style="font-weight:600">'+dTrips+' ('+dComp+' done)</div></div>'+
+      '<div style="background:var(--bg);border-radius:6px;padding:6px">'+
+        '<div style="color:var(--t3);font-size:10px">Blood Type</div>'+
+        '<div style="font-weight:600">'+(p.bloodType||'—')+'</div></div>'+
+      '</div>'+
+      (p.emergencyContact?'<div style="font-size:11px;color:var(--t2)">🚨 Emergency: '+p.emergencyContact+'</div>':'')+
+      '</div>';
+  }).join('')+'</div>'+
+  '<div style="margin-top:12px;display:flex;gap:8px">'+
+  '<button class="btn btn-outline btn-sm" onclick="exportDriverCompliance()">📄 Export Compliance Report</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="exportComplianceCert()">📜 Cold Chain Certificate</button></div>';
+}
+
+function _hrRenderShifts(shifts,today){
+  var S7=[];for(var i=0;i<7;i++){var d=new Date();d.setDate(d.getDate()+i);S7.push(d.toISOString().slice(0,10));}
+  return '<div class="card" style="margin-bottom:14px">'+
+  '<div class="card-title" style="margin-bottom:12px">📅 Upcoming 7 Days</div>'+
+  '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:8px">'+
+  S7.map(function(day){
+    var ds=shifts.filter(function(s){return s.date===day;});
+    var isToday=day===today;
+    var dn=new Date(day);
+    var label=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][dn.getDay()];
+    return '<div style="background:'+(isToday?'var(--c1)':'var(--bg)')+';border-radius:8px;padding:8px;text-align:center;border:1px solid '+(isToday?'var(--c1)':'var(--bd)')+'">'+
+      '<div style="font-size:10px;font-weight:700;color:'+(isToday?'#fff':'var(--t3)')+'">'+label+'</div>'+
+      '<div style="font-size:12px;font-weight:700;color:'+(isToday?'#fff':'var(--t)')+'">'+dn.getDate()+'/'+( dn.getMonth()+1)+'</div>'+
+      '<div style="margin-top:4px">'+
+        (ds.length?ds.map(function(s){return '<div style="font-size:10px;background:rgba(255,255,255,.8);border-radius:4px;padding:2px 4px;margin-top:2px;color:#0F0E2E">'+s.driverName.split(' ')[0]+'</div>';}).join(''):
+        '<div style="font-size:10px;color:'+(isToday?'rgba(255,255,255,.6)':'var(--t3)')+'">No shifts</div>')+
+      '</div></div>';
+  }).join('')+'</div></div>'+
+  '<div class="card" style="padding:0;overflow:hidden">'+
+  (shifts.length===0?'<div style="text-align:center;padding:40px;color:var(--t2)">No shifts scheduled</div>':
+  '<table class="tbl"><thead><tr><th>Date</th><th>Driver</th><th>Truck</th><th>Start</th><th>End</th><th>Status</th><th>Notes</th><th>Actions</th></tr></thead><tbody>'+
+  shifts.slice().sort(function(a,b){return a.date.localeCompare(b.date);}).slice(0,50).map(function(sh){
+    var st={scheduled:'<span class="tag tag-pend">📅 Scheduled</span>',active:'<span class="tag tag-ok">🟢 Active</span>',done:'<span class="tag tag-blue">✅ Done</span>'}[sh.status||'scheduled']||'';
+    return '<tr>'+
+      '<td style="font-weight:700">'+(sh.date===today?'<span style="color:var(--c1);font-weight:800">TODAY</span> ':'')+sh.date+'</td>'+
+      '<td>'+sh.driverName+'</td>'+
+      '<td style="font-size:12px">'+(sh.truck||'—')+'</td>'+
+      '<td>'+(sh.startTime||'—')+'</td>'+
+      '<td>'+(sh.endTime||'—')+'</td>'+
+      '<td>'+st+'</td>'+
+      '<td style="font-size:12px;color:var(--t2)">'+(sh.notes||'—')+'</td>'+
+      '<td><div style="display:flex;gap:4px">'+
+        (can('all')||can('dispatch')?'<button class="btn btn-danger btn-sm" onclick="deleteShift(\''+sh.id+'\')">✕</button>':'')+
+      '</div></td></tr>';
+  }).join('')+'</tbody></table>')+
+  '</div>';
+}
+
+function openAddShift(){
+  var drivers=USERS.filter(function(u){return u.role==='driver';});
+  var today=new Date().toISOString().slice(0,10);
+  openM('<div class="m-title">📅 Schedule Shift</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg"><label>Driver *</label><select id="sh-drv">'+
+      drivers.map(function(d){return'<option value="'+d.name+'">'+d.name+'</option>';}).join('')+'</select></div>'+
+    '<div class="fg"><label>Truck</label><select id="sh-truck"><option value="">Unassigned</option>'+
+      TRUCKS.filter(function(t){return t.valid;}).map(function(t){return'<option value="'+t.plate+'">'+t.plate+'</option>';}).join('')+'</select></div>'+
+    '<div class="fg"><label>Date *</label><input type="date" id="sh-date" value="'+today+'"/></div>'+
+    '<div class="fg"><label>Status</label><select id="sh-status"><option value="scheduled">📅 Scheduled</option><option value="active">🟢 Active</option><option value="done">✅ Done</option></select></div>'+
+    '<div class="fg"><label>Start Time</label><input type="time" id="sh-start" value="08:00"/></div>'+
+    '<div class="fg"><label>End Time</label><input type="time" id="sh-end" value="17:00"/></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Notes</label><input id="sh-notes" placeholder="Optional notes..."/></div>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveShift()">💾 Save Shift</button></div>');
+}
+function saveShift(){
+  var drvName=(document.getElementById('sh-drv')||{}).value;
+  var date=(document.getElementById('sh-date')||{}).value;
+  if(!drvName||!date){toast('Driver and date required','err');return;}
+  if(!S.shifts)S.shifts=[];
+  S.shifts.push({id:'SH-'+Date.now(),driverName:drvName,
+    truck:(document.getElementById('sh-truck')||{}).value||'',
+    date:date,startTime:(document.getElementById('sh-start')||{}).value||'',
+    endTime:(document.getElementById('sh-end')||{}).value||'',
+    status:(document.getElementById('sh-status')||{}).value||'scheduled',
+    notes:(document.getElementById('sh-notes')||{}).value||''});
+  _saveShifts();closeM();toast('Shift scheduled ✅','ok');rHR();
+}
+function deleteShift(id){
+  S.shifts=(S.shifts||[]).filter(function(s){return s.id!==id;});
+  _saveShifts();toast('Shift removed','ok');rHR();
+}
+
+function openEditDriverProfile(uid){
+  var p=(S.driverProfiles||{})[uid]||{};
+  var d=USERS.find(function(u){return u.id===uid;});
+  openM('<div class="m-title">👤 Driver Profile — '+(d?d.name:'')+'</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">'+
+    '<div class="fg"><label>License Number</label><input id="dp-lno" value="'+(p.licenseNo||'')+'"/></div>'+
+    '<div class="fg"><label>License Type</label><select id="dp-ltype">'+
+      ['A','B','C','D','E','BE','CE'].map(function(t){return'<option value="'+t+'"'+(p.licenseType===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div class="fg"><label>License Expiry</label><input type="date" id="dp-lexp" value="'+(p.licenseExpiry||'')+'"/></div>'+
+    '<div class="fg"><label>Blood Type</label><select id="dp-blood">'+
+      ['A+','A-','B+','B-','AB+','AB-','O+','O-'].map(function(t){return'<option'+(p.bloodType===t?' selected':'')+'>'+t+'</option>';}).join('')+'</select></div>'+
+    '<div class="fg" style="grid-column:1/-1"><label>Emergency Contact</label><input id="dp-emg" value="'+(p.emergencyContact||'')+'" placeholder="Name — Phone"/></div>'+
+    '<div class="fg"><label>Join Date</label><input type="date" id="dp-join" value="'+(p.joinDate||'')+'"/></div>'+
+    '<div class="fg"><label>Vehicle Class</label><input id="dp-vclass" value="'+(p.vehicleClass||'')+'" placeholder="e.g. Refrigerated Truck"/></div>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveDriverProfile(\''+uid+'\')">💾 Save</button></div>');
+}
+function saveDriverProfile(uid){
+  if(!S.driverProfiles)S.driverProfiles={};
+  S.driverProfiles[uid]={
+    licenseNo:(document.getElementById('dp-lno')||{}).value||'',
+    licenseType:(document.getElementById('dp-ltype')||{}).value||'',
+    licenseExpiry:(document.getElementById('dp-lexp')||{}).value||'',
+    bloodType:(document.getElementById('dp-blood')||{}).value||'',
+    emergencyContact:(document.getElementById('dp-emg')||{}).value||'',
+    joinDate:(document.getElementById('dp-join')||{}).value||'',
+    vehicleClass:(document.getElementById('dp-vclass')||{}).value||''
+  };
+  _saveDriverProfiles();closeM();toast('Driver profile saved ✅','ok');rHR();
+}
+
+function exportDriverCompliance(){
+  var drivers=USERS.filter(function(u){return u.role==='driver';});
+  var today=new Date().toISOString().slice(0,10);
+  var rows=drivers.map(function(d){
+    var p=(S.driverProfiles||{})[d.id]||{};
+    var licDays=p.licenseExpiry?Math.ceil((new Date(p.licenseExpiry)-new Date())/864e5):null;
+    var status=licDays===null?'No Data':licDays<0?'EXPIRED':licDays<=30?'Expiring Soon':'Valid';
+    var trips=S.trips.filter(function(t){return t.driver===d.name;}).length;
+    return[d.name,d.id,p.licenseNo||'—',p.licenseType||'—',p.licenseExpiry||'—',status,p.bloodType||'—',trips,p.emergencyContact||'—'];
+  });
+  uExportAll('excel','Driver Compliance Report',
+    ['Name','ID','License No','License Type','Expiry','Status','Blood Type','Trips','Emergency Contact'],rows);
+}
+
+function exportComplianceCert(){
+  var today=new Date().toLocaleDateString('en-GB');
+  var comp=S.trips.filter(function(t){return t.status==='completed'&&(t.condition||'').indexOf('Cold')>-1;});
+  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cold Chain Compliance Certificate</title>'+
+    '<style>body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px;max-width:800px;margin:0 auto}'+
+    '.header{text-align:center;border-bottom:3px solid #4F46E5;padding-bottom:16px;margin-bottom:20px}'+
+    '.logo{font-size:24px;font-weight:900;color:#4F46E5}'+
+    '.cert-title{font-size:18px;font-weight:700;margin:10px 0 4px}'+
+    '.cert-sub{font-size:12px;color:#64748b}'+
+    '.section{margin-bottom:16px}'+
+    '.section-title{font-size:13px;font-weight:700;color:#4F46E5;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:8px}'+
+    'table{width:100%;border-collapse:collapse;font-size:10px}'+
+    'th{background:#4F46E5;color:#fff;padding:5px 8px;text-align:left}'+
+    'td{padding:4px 8px;border-bottom:1px solid #e2e8f0}'+
+    'tr:nth-child(even)td{background:#f8fafc}'+
+    '.stamp{margin-top:30px;border:2px solid #10B981;border-radius:12px;padding:14px;text-align:center;color:#10B981;font-weight:700}'+
+    '@page{margin:15mm}@media print{body{padding:0}}</style></head><body>'+
+    '<div class="header"><div class="logo">InstaPort TMS</div>'+
+    '<div class="cert-title">Cold Chain Compliance Certificate</div>'+
+    '<div class="cert-sub">Issued: '+today+' &nbsp;|&nbsp; Generated by: '+(S.user?S.user.name:'System')+'</div></div>'+
+    '<div class="section"><div class="section-title">Fleet Cold Chain Compliance</div>'+
+    '<table><thead><tr><th>Truck</th><th>Type</th><th>Cooling Unit</th><th>Cal. Expiry</th><th>Status</th></tr></thead><tbody>'+
+    TRUCKS.filter(function(t){return t.cooling&&t.cooling!=='-';}).map(function(t){
+      var exp=t.calExpiry?new Date(t.calExpiry):null;
+      var expired=exp&&exp<new Date();
+      return '<tr><td>'+t.plate+'</td><td>'+t.type+'</td><td>'+t.cooling+'</td>'+
+        '<td style="color:'+(expired?'#EF4444':'#10B981')+'">'+( t.calExpiry||'N/A')+'</td>'+
+        '<td>'+(expired?'⚠️ EXPIRED':'✅ Valid')+'</td></tr>';
+    }).join('')+'</tbody></table></div>'+
+    '<div class="section"><div class="section-title">Cold Chain Trip Summary ('+comp.length+' trips)</div>'+
+    '<table><thead><tr><th>Trip ID</th><th>Customer</th><th>Condition</th><th>Truck</th><th>Driver</th><th>Date</th></tr></thead><tbody>'+
+    comp.slice(0,30).map(function(t){
+      return '<tr><td>'+t.id+'</td><td>'+t.customer+'</td><td>'+t.condition+'</td>'+
+        '<td>'+t.truck+'</td><td>'+(t.driver||'—')+'</td><td>'+t.ts+'</td></tr>';
+    }).join('')+'</tbody></table></div>'+
+    '<div class="stamp">✅ This document certifies that cold chain operations have been conducted in compliance with InstaPort TMS temperature monitoring and fleet validation protocols.</div>'+
+    '<scr'+'ipt>window.onload=function(){window.print()};<\/scr'+'ipt></body></html>';
+  var w=null;try{w=window.open('','_blank','width=900,height=700');}catch(e){}
+  if(w&&!w.closed){w.document.write(html);w.document.close();}
+  else{var b=new Blob([html],{type:'text/html'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='ColdChainCert_'+new Date().toISOString().slice(0,10)+'.html';a.click();}
+  toast('📜 Cold Chain Certificate generated','ok');
 }
 
 </script>
