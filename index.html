@@ -5576,59 +5576,86 @@ function _anRenderFleet(trips){
       +'</div>';
   }).join('');
 }
+// Direct export (no modal) — used from inside side panels to avoid z-index conflict
+function _spExport(fmt,title,headers,rows){
+  var ts=new Date().toLocaleString('en-GB');
+  var user=(S.user&&S.user.name)||'';var role=S.role||'';
+  var fname='InstaPort_'+title.replace(/[\s\/—]+/g,'_')+'_'+new Date().toISOString().slice(0,10);
+  if(fmt==='csv'){
+    var meta=['# InstaPort TMS — '+title,'# Generated: '+ts,'# User: '+user+' ('+role+')','# Records: '+rows.length,''];
+    var body=[headers.join(',')].concat(rows.map(function(r){return r.map(function(v){return '"'+(v+'').replace(/"/g,'""')+'"';}).join(',');}));
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob([meta.join('\n')+body.join('\n')],{type:'text/csv;charset=utf-8;'}));
+    a.download=fname+'.csv';a.click();toast('CSV downloaded!','ok');
+  } else if(fmt==='excel'){
+    var lines=[['InstaPort TMS — '+title],['Generated:',ts,'User:',user,'Role:',role],['Records:',rows.length],[],headers];
+    rows.forEach(function(r){lines.push(r);});
+    var tsv=lines.map(function(r){return r.map(function(v){return '"'+(v+'').replace(/"/g,'""')+'"';}).join('\t');}).join('\n');
+    var a2=document.createElement('a');
+    a2.href=URL.createObjectURL(new Blob([tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
+    a2.download=fname+'.xls';a2.click();toast('Excel downloaded!','ok');
+  } else if(fmt==='pdf'){
+    var w=window.open('','_blank','width=1050,height=780');if(!w){toast('Allow popups for PDF','err');return;}
+    var trs=rows.map(function(r,i){return '<tr'+(i%2?' style="background:#fafafa"':'')+'>'
+      +r.map(function(v){return '<td>'+String(v).replace(/</g,'&lt;')+'</td>';}).join('')+'</tr>';}).join('');
+    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+title+'</title>'
+      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10.5px;padding:24px;color:#111}'
+      +'.logo{color:#6C3FF5;font-size:17px;font-weight:900;margin-bottom:3px}'
+      +'.meta{color:#555;font-size:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #6C3FF5}'
+      +'table{width:100%;border-collapse:collapse}th{background:#1E1453;color:#fff;padding:7px 8px;text-align:left;font-size:10px}'
+      +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:10px}'
+      +'.foot{margin-top:14px;font-size:9px;color:#999;border-top:1px solid #e5e7eb;padding-top:8px}'
+      +'@media print{.noprint{display:none}}</style></head><body>'
+      +'<div class="logo">&#128230; InstaPort TMS</div>'
+      +'<div class="meta"><strong>'+title+'</strong> &nbsp;|&nbsp; '+ts+' &nbsp;|&nbsp; '+user+' ('+role+') &nbsp;|&nbsp; '+rows.length+' records</div>'
+      +'<table><thead><tr>'+headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'
+      +'<tbody>'+trs+'</tbody></table>'
+      +'<div class="foot">InstaPort TMS &bull; '+ts+' &bull; '+user+'</div>'
+      +'<br><button class="noprint" onclick="window.print()" style="margin-top:8px;padding:8px 22px;background:#6C3FF5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">&#128424; Print / Save PDF</button>'
+      +'</body></html>');
+    w.document.close();toast('PDF ready — click Print','ok');
+  }
+}
+function _spExpBtns(fn,title){
+  // Returns 3 inline export buttons (CSV / Excel / PDF) using the given data function
+  return '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'
+    +'<button class="btn btn-outline btn-sm" onclick="'+fn+'(\'csv\')" style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px">&#128196; CSV</button>'
+    +'<button class="btn btn-success btn-sm" onclick="'+fn+'(\'excel\')" style="font-size:11px;display:flex;align-items:center;justify-content:center;gap:4px">&#128202; Excel</button>'
+    +'<button class="btn btn-outline btn-sm" onclick="'+fn+'(\'pdf\')" style="font-size:11px;color:#EF4444;border-color:#EF4444;display:flex;align-items:center;justify-content:center;gap:4px">&#128424; PDF</button>'
+    +'</div>';
+}
 function drillCustomer(cu){
   var trips=_anTrips().filter(function(t){return t.customer===cu;}).sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
   var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
   var km=trips.reduce(function(s,t){return s+(+t.km||0);},0);
+  var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);
+  // Store for export callbacks
+  window._drillCu=cu;
   openSP('&#128202; '+cu+' — Trip Detail',
-    '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'
     +'<div class="ib"><div class="ib-l">Trips</div><div class="ib-v">'+trips.length+'</div></div>'
     +'<div class="ib"><div class="ib-l">Revenue</div><div class="ib-v" style="color:#6C3FF5">EGP '+Math.round(rev).toLocaleString()+'</div></div>'
     +'<div class="ib"><div class="ib-l">Total KM</div><div class="ib-v">'+Math.round(km).toLocaleString()+' km</div></div>'
+    +'<div class="ib"><div class="ib-l">CO₂ (kg)</div><div class="ib-v">'+co2.toFixed(0)+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Trucks Used</div><div class="ib-v">'+[...new Set(trips.map(function(t){return t.truck;}).filter(Boolean))].length+'</div></div>'
     +'</div>'
-    +'<button class="btn btn-outline btn-sm" style="margin-bottom:12px;width:100%" onclick="expCustDetail(\''+cu.replace(/'/g,"\\'")+'\')" >&#128196; Export This Customer</button>'
-    +'<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Date/Time</th><th>Trip ID</th><th>Type</th><th>Truck</th><th>KM</th><th>Cost</th><th>Status</th></tr></thead><tbody>'
+    // 3 direct export buttons — no modal needed
+    +_spExpBtns('expCustFmt','Customer — '+cu)
+    +'<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Date/Time</th><th>Trip ID</th><th>Type</th><th>Truck No.</th><th>KM</th><th>Cost (EGP)</th><th>Status</th></tr></thead><tbody>'
     +trips.map(function(t){return '<tr style="cursor:pointer" onclick="closeSP();openTripSP(\''+t.id+'\')">'
       +'<td style="font-size:11px;white-space:nowrap">'+t.ts+'</td>'
       +'<td style="font-weight:700;color:#6C3FF5">'+t.id+'</td>'
       +'<td><span class="tag tag-info">'+t.type+'</span></td>'
-      +'<td style="font-weight:600">'+( t.truck||'—')+'</td>'
-      +'<td>'+( t.km||'—')+' km</td>'
+      +'<td style="font-weight:600">'+(t.truck||'—')+'</td>'
+      +'<td>'+(t.km||'—')+' km</td>'
       +'<td style="color:#059669;font-weight:600">'+(t.cost?'EGP '+t.cost:'—')+'</td>'
       +'<td>'+stB(t.status)+'</td>'
       +'</tr>';}).join('')
     +'</tbody></table></div>'
   );
 }
-function drillFleetType(tp){
-  var trips=_anTrips();
-  var trucks=TRUCKS.filter(function(t){return t.type===tp;});
-  openSP('&#128666; '+tp+' — Fleet Detail',
-    '<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'
-    +'<div class="ib"><div class="ib-l">Trucks</div><div class="ib-v">'+trucks.length+'</div></div>'
-    +'<div class="ib"><div class="ib-l">Released</div><div class="ib-v" style="color:#10B981">'+trucks.filter(function(t){return t.valid;}).length+'</div></div>'
-    +'<div class="ib"><div class="ib-l">On Hold</div><div class="ib-v" style="color:#EF4444">'+trucks.filter(function(t){return !t.valid;}).length+'</div></div>'
-    +'</div>'
-    +'<button class="btn btn-outline btn-sm" style="margin-bottom:12px;width:100%" onclick="expFleetTypeDetail(\''+tp.replace(/'/g,"\\'")+'\')" >&#128196; Export This Type</button>'
-    +'<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Plate</th><th>Status</th><th>Odometer</th><th>Trips</th><th>Customers</th><th>Last Date</th></tr></thead><tbody>'
-    +trucks.map(function(tk){
-      var tkTrips=trips.filter(function(t){return t.truck===tk.plate;});
-      var cuSet=[...new Set(tkTrips.map(function(t){return t.customer;}).filter(Boolean))];
-      var lastTrip=tkTrips.sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
-      var ma=_truckMaintAlert(tk);
-      return '<tr onclick="openFleetTruckTrips(\''+tk.plate.replace(/'/g,"\\'")+'\')" style="cursor:pointer">'
-        +'<td style="font-weight:700">'+tk.plate+'</td>'
-        +'<td>'+(tk.valid?'<span class="tag tag-ok">Released</span>':'<span class="tag tag-hold">Hold</span>')+'</td>'
-        +'<td style="font-size:12px">'+(ma?'<span style="color:'+(ma.level==='overdue'?'#EF4444':'#F97316')+'">'+Math.round(tk.odometerKm||0).toLocaleString()+' km</span>':Math.round(tk.odometerKm||0).toLocaleString()+' km')+'</td>'
-        +'<td style="font-weight:700;color:#6C3FF5">'+tkTrips.length+'</td>'
-        +'<td style="font-size:11px;color:var(--t2)">'+cuSet.slice(0,3).join(', ')+(cuSet.length>3?' +more':'')+'</td>'
-        +'<td style="font-size:11px;color:var(--t3)">'+(lastTrip.length?lastTrip[0].ts:'—')+'</td>'
-        +'</tr>';
-    }).join('')
-    +'</tbody></table></div>'
-  );
-}
-function expCustDetail(cu){
+function expCustFmt(fmt){
+  var cu=window._drillCu||'';
   var trips=_anTrips().filter(function(t){return t.customer===cu;}).sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
   var canFin=can('finance_view')||can('all');
   var headers=['Date/Time','Trip ID','Type','Direction','Condition','Truck No.','Driver','KM'];
@@ -5640,9 +5667,81 @@ function expCustDetail(cu){
     r.push(t.co2||0,t.status);
     return r;
   });
-  uExport('Customer Report — '+cu,headers,rows);
+  _spExport(fmt,'Customer — '+cu,headers,rows);
+}
+function drillFleetType(tp){
+  var trips=_anTrips();
+  var trucks=TRUCKS.filter(function(t){return t.type===tp;});
+  var tpTrips=trips.filter(function(t){return trucks.some(function(tk){return tk.plate===t.truck;});});
+  var cuSet=[...new Set(tpTrips.map(function(t){return t.customer;}).filter(Boolean))];
+  var rev=tpTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  // Store for export callbacks
+  window._drillTp=tp;
+  openSP('&#128666; '+tp+' — Fleet Detail',
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'
+    +'<div class="ib"><div class="ib-l">Trucks</div><div class="ib-v">'+trucks.length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Released</div><div class="ib-v" style="color:#10B981">'+trucks.filter(function(t){return t.valid;}).length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">On Hold</div><div class="ib-v" style="color:#EF4444">'+trucks.filter(function(t){return !t.valid;}).length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Trips</div><div class="ib-v">'+tpTrips.length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Customers</div><div class="ib-v">'+cuSet.length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Revenue</div><div class="ib-v" style="color:#6C3FF5">EGP '+Math.round(rev/1000)+'K</div></div>'
+    +'</div>'
+    // 3 direct export buttons
+    +_spExpBtns('expFleetTypeFmt','Fleet Type — '+tp)
+    +'<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Date/Time</th><th>Trip ID</th><th>Truck No.</th><th>Customer</th><th>Type</th><th>KM</th><th>Cost (EGP)</th><th>Status</th></tr></thead><tbody>'
+    +trucks.map(function(tk){
+      var tkTrips=tpTrips.filter(function(t){return t.truck===tk.plate;}).sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
+      var ma=_truckMaintAlert(tk);
+      if(!tkTrips.length){
+        return '<tr><td style="font-weight:700">'+tk.plate+'</td>'
+          +'<td colspan="7" style="color:var(--t3);font-size:11px">No trips in this period &bull; '
+          +(tk.valid?'Released':'On Hold')
+          +' &bull; Odo: '+Math.round(tk.odometerKm||0).toLocaleString()+' km'
+          +(ma?' &bull; <span style="color:'+(ma.level==='overdue'?'#EF4444':'#F97316')+'">'+ma.msg+'</span>':'')
+          +'</td></tr>';
+      }
+      return tkTrips.map(function(t,i){
+        return '<tr style="cursor:pointer" onclick="closeSP();openTripSP(\''+t.id+'\')">'
+          +(i===0?'<td rowspan="'+tkTrips.length+'" style="font-weight:800;color:var(--t);border-right:2px solid var(--bd);vertical-align:top;padding-top:10px">'
+            +tk.plate
+            +(ma?'<div style="font-size:9px;color:'+(ma.level==='overdue'?'#EF4444':'#F97316')+'">'+ma.msg+'</div>':'')
+            +'</td>':'')
+          +'<td style="font-size:11px;white-space:nowrap">'+t.ts+'</td>'
+          +'<td style="font-weight:700;color:#6C3FF5">'+t.id+'</td>'
+          +'<td style="font-weight:600">'+t.customer+'</td>'
+          +'<td><span class="tag tag-info">'+t.type+'</span></td>'
+          +'<td>'+(t.km||'—')+' km</td>'
+          +'<td style="color:#059669;font-weight:600">'+(t.cost?'EGP '+t.cost:'—')+'</td>'
+          +'<td>'+stB(t.status)+'</td>'
+          +'</tr>';
+      }).join('');
+    }).join('')
+    +'</tbody></table></div>'
+  );
+}
+function expFleetTypeFmt(fmt){
+  var tp=window._drillTp||'';
+  var trips=_anTrips();
+  var trucks=TRUCKS.filter(function(t){return t.type===tp;});
+  var headers=['Date/Time','Trip ID','Truck No.','Truck Status','Customer','Trip Type','KM','Cost (EGP)','CO2 (kg)','Trip Status'];
+  var rows=[];
+  trucks.forEach(function(tk){
+    var tkTrips=trips.filter(function(t){return t.truck===tk.plate;}).sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
+    if(tkTrips.length){
+      tkTrips.forEach(function(t){rows.push([t.ts||'',t.id,tk.plate,tk.valid?'Released':'Hold',t.customer||'',t.type,t.km||0,t.cost||0,t.co2||0,t.status]);});
+    } else {
+      rows.push(['—','—',tk.plate,tk.valid?'Released':'Hold','—','—',0,0,0,'No trips in period']);
+    }
+  });
+  _spExport(fmt,'Fleet Type — '+tp,headers,rows);
+}
+function expCustDetail(cu){
+  // Legacy — redirect to new direct export
+  window._drillCu=cu;expCustFmt('csv');
 }
 function expFleetTypeDetail(tp){
+  window._drillTp=tp;expFleetTypeFmt('csv');
+  // Keep for backwards compat — but also build rows so uExport still works if called
   var trips=_anTrips();
   var trucks=TRUCKS.filter(function(t){return t.type===tp;});
   var headers=['Date/Time','Trip ID','Truck No.','Customer','Type','KM','Cost (EGP)','Status'];
