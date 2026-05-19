@@ -3082,7 +3082,10 @@ let S={
     co2Rate:0.258,
     waitingRate:120,
     stopFee:50
-  }
+  },
+  exRules:[],    // Admin-configured exception rules (loaded from localStorage)
+  exceptions:[], // Active / historical exceptions raised by the engine
+  _exFilter:'open'
 };
 let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicketId=null;
 // Auto-sync on array mutations
@@ -3100,9 +3103,9 @@ const PAGES={
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
     {id:'validation',icon:'✅',l:'Validation'},{id:'ai',icon:'🤖',l:'AI'},
     {id:'admin_mgmt',icon:'⚙️',l:'Admin'},{id:'analytics',icon:'📈',l:'Analytics'},
-    {id:'audit',icon:'📜',l:'Audit Trail'}
+    {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'forecast',icon:'📅',l:'New Shipment'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -3146,6 +3149,7 @@ async function doLogin(){
     nav(_startPage);
     initApp().then(function(){nav(_startPage);}).catch(function(){});
     startTemp();
+    setTimeout(function(){try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}},2500);
     if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
@@ -3201,7 +3205,7 @@ function nav(page){
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
     nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
-    invite_mgmt:rInviteMgmt};
+    invite_mgmt:rInviteMgmt,exceptions:rExceptions};
   (map[page]||rDash)();
 }
 
@@ -5945,9 +5949,10 @@ function rAdmin(){
   '<div class="tab'+(tab==='assignments'?' on':'')+'" onclick="S.adminTab=\'assignments\';rAdmin()">&#128101; AM Assign</div>'+
   '<div class="tab'+(tab==='sysconfig'?' on':'')+'" onclick="S.adminTab=\'sysconfig\';rAdmin()">&#9881; System</div>'+
   '<div class="tab'+(tab==='import'?' on':'')+'" onclick="S.adminTab=\'import\';rAdmin()">&#128229; Import CSV</div>'+
+  '<div class="tab'+(tab==='exceptions'?' on':'')+'" onclick="S.adminTab=\'exceptions\';rAdmin()">&#9888;&#65039; Exceptions</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions};
   (fn[tab]||rAdminUsers)();
 }
 
@@ -8646,8 +8651,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',invite_mgmt:'Invite Codes'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',invite_mgmt:'&#128273;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',invite_mgmt:'Invite Codes',exceptions:'Exceptions'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',invite_mgmt:'&#128273;',exceptions:'&#9888;&#65039;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -8656,8 +8661,10 @@ buildSB = function() {
     var lbl = ar ? (AR_NAV[p.id] || PGL[p.id] || p.id) : (PGL[p.id] || p.id);
     var ic = ICO[p.id] || '&#128196;';
     var isActive = S.page === p.id;
+    var exOpen=(S.exceptions||[]).filter(function(e){return e.status==='open';}).length;
     var badge = p.id === 'dispatch' && pnd > 0 ?
-      '<span class="sbi-badge">' + pnd + '</span>' : '';
+      '<span class="sbi-badge">' + pnd + '</span>' :
+      (p.id === 'exceptions' && exOpen > 0 ? '<span class="sbi-badge" style="background:#EF4444">' + exOpen + '</span>' : '');
     return '<div class="sbi' + (isActive ? ' active' : '') + '" onclick="nav(\'' + p.id + '\')">' +
       '<div class="sbi-icon">' + ic + '</div>' +
       '<span class="sbi-label">' + lbl + '</span>' +
@@ -9220,6 +9227,593 @@ function exportRates() {
   } catch(e) {}
   try { _sbThemeInit(); } catch(e) {}
 })();
+
+// ══════════════════════════════════════════════════
+// EXCEPTION MANAGEMENT + AUTO-ESCALATION ENGINE
+// Rules: configurable by admin | Temp + Time breach
+// ══════════════════════════════════════════════════
+
+// ── Default Rules Seed ──
+var _EX_DEFAULT_RULES = [
+  {id:'ER-T01', name:'Ambient Temperature Breach',   type:'temperature',       condition:'Ambient',
+   tempMin:15, tempMax:25, graceMins:5, severity:'warning',
+   notify:['quality','manager'], active:true, customerOverrides:{}},
+  {id:'ER-T02', name:'Frozen Temperature Breach',    type:'temperature',       condition:'Frozen',
+   tempMin:-25, tempMax:-10, graceMins:3, severity:'critical',
+   notify:['quality','manager','dispatch'], active:true, customerOverrides:{}},
+  {id:'ER-T03', name:'Cold Chain Temperature Breach',type:'temperature',       condition:'Cold',
+   tempMin:2, tempMax:8, graceMins:5, severity:'warning',
+   notify:['quality','manager'], active:true, customerOverrides:{}},
+  {id:'ER-TM01',name:'Transit Time Exceeded',        type:'transit_time',      condition:'all',
+   thresholdHours:4, graceMins:0, severity:'warning',
+   notify:['dispatch','manager'], active:true, customerOverrides:{}},
+  {id:'ER-PD01',name:'Approval Queue Timeout',       type:'pending_timeout',   condition:'all',
+   thresholdHours:2, graceMins:0, severity:'warning',
+   notify:['dispatch','manager'], active:true, customerOverrides:{}},
+  {id:'ER-NM01',name:'No Status Update',             type:'no_movement',       condition:'all',
+   thresholdHours:4, graceMins:0, severity:'warning',
+   notify:['manager'], active:true, customerOverrides:{}}
+];
+
+// Grace tracking: key = ruleId+'|'+tripId → ms timestamp when breach first seen
+var _exBreachTimes = {};
+
+// ── Persistence ──
+function _exLoadRules(){
+  try{
+    var sr = localStorage.getItem('ip_exrules');
+    S.exRules = sr ? JSON.parse(sr) : JSON.parse(JSON.stringify(_EX_DEFAULT_RULES));
+    var se = localStorage.getItem('ip_exceptions');
+    if(se) S.exceptions = JSON.parse(se);
+  } catch(e){ S.exRules = JSON.parse(JSON.stringify(_EX_DEFAULT_RULES)); }
+}
+function _exSaveRules(){
+  try{ localStorage.setItem('ip_exrules', JSON.stringify(S.exRules)); } catch(e){}
+}
+function _exSaveExceptions(){
+  try{ localStorage.setItem('ip_exceptions', JSON.stringify((S.exceptions||[]).slice(0,300))); } catch(e){}
+}
+
+// ── Condition Matching ──
+function _exCondMatch(ruleCond, tripCond){
+  if(ruleCond === 'all') return true;
+  if(!tripCond) return false;
+  var tc = tripCond.toLowerCase();
+  if(ruleCond === 'Ambient') return tc.indexOf('ambient') > -1;
+  if(ruleCond === 'Frozen')  return tc.indexOf('frozen') > -1 || tc.indexOf('-18') > -1 || tc.indexOf('-25') > -1;
+  if(ruleCond === 'Cold')    return tc.indexOf('cold') > -1 || tc.indexOf('2-8') > -1 || tc.indexOf('chilled') > -1 || tc.indexOf('refrigerated') > -1 || tc.indexOf('controlled') > -1;
+  return tc.indexOf(ruleCond.toLowerCase()) > -1;
+}
+
+// ── Get effective temp range for a trip+customer ──
+function _exGetTempRange(rule, customer){
+  // 1. Per-customer override on the rule itself (set via admin modal)
+  var ov = rule.customerOverrides && rule.customerOverrides[customer];
+  if(ov && ov.tempMin !== undefined) return {min: ov.tempMin, max: ov.tempMax};
+  // 2. Customer SLA from custModifiers (pricing settings)
+  var cm = S.custModifiers && S.custModifiers[customer];
+  if(cm && cm.slaMin !== undefined && cm.slaMax !== undefined){
+    // Only use custModifier SLA if the condition type matches
+    if(rule.condition === 'Ambient' && cm.slaMin >= 10) return {min: cm.slaMin, max: cm.slaMax};
+    if(rule.condition === 'Cold'    && cm.slaMin < 10)  return {min: cm.slaMin, max: cm.slaMax};
+  }
+  // 3. Rule defaults
+  return {min: rule.tempMin, max: rule.tempMax};
+}
+
+// ── Get transit start time (ms) ──
+function _exGetTransitStart(trip){
+  if(trip.stageTimes && trip.stageTimes['in_transit']){
+    var d = new Date(trip.stageTimes['in_transit']); if(!isNaN(d.getTime())) return d.getTime();
+  }
+  var tl = trip.tl || [];
+  for(var i = 0; i < tl.length; i++){
+    var act = (tl[i].action || '').toLowerCase();
+    if(act.indexOf('gate opened') > -1 || act.indexOf('in_transit') > -1 || act.indexOf('transit') > -1){
+      var d2 = new Date(tl[i].ts); if(!isNaN(d2.getTime())) return d2.getTime();
+    }
+  }
+  if(trip.ts){ var d3 = new Date(trip.ts); if(!isNaN(d3.getTime())) return d3.getTime(); }
+  return Date.now() - 7200000; // fallback: assume started 2h ago
+}
+
+// ── Get trip created time (ms) ──
+function _exGetTripCreated(trip){
+  if(trip.ts){ var d = new Date(trip.ts); if(!isNaN(d.getTime())) return d.getTime(); }
+  return Date.now();
+}
+
+// ── Raise an exception (deduped — only one open per rule+trip) ──
+function _exRaiseAlert(rule, trip, value, msg){
+  if(!S.exceptions) S.exceptions = [];
+  var existing = S.exceptions.find(function(e){
+    return e.ruleId === rule.id && e.tripId === trip.id && e.status === 'open';
+  });
+  if(existing) return; // Already raised & open
+
+  var ex = {
+    id: 'EX-' + Date.now(),
+    ruleId:     rule.id,
+    ruleName:   rule.name,
+    tripId:     trip.id,
+    customer:   trip.customer || '',
+    condition:  trip.condition || '',
+    truck:      trip.truck || '',
+    severity:   rule.severity,
+    type:       rule.type,
+    value:      value,
+    msg:        msg,
+    status:     'open',
+    raisedAt:   new Date().toLocaleString('en-GB'),
+    raisedTs:   Date.now(),
+    ackBy: null, ackAt: null, resolvedBy: null, resolvedAt: null, notes: ''
+  };
+  S.exceptions.unshift(ex);
+  _exSaveExceptions();
+
+  var icon = rule.severity === 'critical' ? '&#128308;' : '&#128993;';
+  notif(icon + ' Exception: ' + rule.name + ' — ' + trip.id + (value ? ' (' + value + ')' : ''), 'alert');
+  _exUpdateBadge();
+  audit('EXCEPTION_RAISED', rule.name + ' on ' + trip.id + (value ? ' val:' + value : ''), '');
+}
+
+// ── Update sidebar badge count ──
+function _exUpdateBadge(){
+  var open = (S.exceptions || []).filter(function(e){ return e.status === 'open'; }).length;
+  document.querySelectorAll('.sbi').forEach(function(el){
+    var lbl = el.querySelector('.sbi-label');
+    if(lbl && (lbl.textContent === 'Exceptions' || lbl.textContent === 'استثناءات')){
+      var b = el.querySelector('.sbi-badge');
+      if(open > 0){
+        if(!b){ b = document.createElement('span'); b.className = 'sbi-badge'; b.style.background = '#EF4444'; el.appendChild(b); }
+        b.textContent = open;
+      } else if(b){ b.remove(); }
+    }
+  });
+}
+
+// ── Main Check Engine (runs every 60s) ──
+function _runExceptionCheck(){
+  if(!S.user || !S.exRules || !S.exRules.length) return;
+  var now = Date.now();
+  var rules   = S.exRules.filter(function(r){ return r.active; });
+  var inTr    = (S.trips || []).filter(function(t){ return t.status === 'in_transit'; });
+  var pending = (S.trips || []).filter(function(t){
+    return ['awaiting_truck','awaiting_quality','awaiting_ctrl','awaiting_security'].indexOf(t.status) > -1;
+  });
+
+  rules.forEach(function(rule){
+
+    // ── Temperature breach ──
+    if(rule.type === 'temperature'){
+      inTr.forEach(function(trip){
+        if(!_exCondMatch(rule.condition, trip.condition)) return;
+        var temp = _tb; // global simulated sensor
+        if(temp === null || temp === undefined) return;
+        var range = _exGetTempRange(rule, trip.customer);
+        var inBreach = (temp < range.min || temp > range.max);
+        var bKey = rule.id + '|' + trip.id;
+        if(inBreach){
+          if(!_exBreachTimes[bKey]) _exBreachTimes[bKey] = now;
+          var elapsedMin = (now - _exBreachTimes[bKey]) / 60000;
+          if(elapsedMin >= rule.graceMins){
+            _exRaiseAlert(rule, trip,
+              temp.toFixed(1) + '°C',
+              'Temp ' + temp.toFixed(1) + '°C outside range [' + range.min + ',' + range.max + ']°C grace ' + rule.graceMins + 'min');
+          }
+        } else {
+          // Back in range — clear grace timer + auto-resolve open exception
+          delete _exBreachTimes[bKey];
+          (S.exceptions || []).forEach(function(e){
+            if(e.ruleId === rule.id && e.tripId === trip.id && e.status === 'open'){
+              e.status = 'auto_resolved';
+              e.resolvedAt = new Date().toLocaleString('en-GB');
+              e.resolvedBy = 'System';
+              e.notes = 'Temperature returned to normal (' + temp.toFixed(1) + '°C).';
+            }
+          });
+        }
+      });
+    }
+
+    // ── Transit time exceeded ──
+    if(rule.type === 'transit_time'){
+      inTr.forEach(function(trip){
+        var startMs = _exGetTransitStart(trip);
+        var hrs = (now - startMs) / 3600000;
+        var thresh = rule.thresholdHours;
+        var ov = rule.customerOverrides && rule.customerOverrides[trip.customer];
+        if(ov && ov.thresholdHours) thresh = ov.thresholdHours;
+        if(hrs >= thresh){
+          _exRaiseAlert(rule, trip, hrs.toFixed(1) + 'h',
+            'In transit ' + hrs.toFixed(1) + 'h (limit ' + thresh + 'h)');
+        }
+      });
+    }
+
+    // ── Approval queue timeout ──
+    if(rule.type === 'pending_timeout'){
+      pending.forEach(function(trip){
+        var createdMs = _exGetTripCreated(trip);
+        var hrs = (now - createdMs) / 3600000;
+        var thresh = rule.thresholdHours;
+        var ov = rule.customerOverrides && rule.customerOverrides[trip.customer];
+        if(ov && ov.thresholdHours) thresh = ov.thresholdHours;
+        if(hrs >= thresh){
+          _exRaiseAlert(rule, trip, hrs.toFixed(1) + 'h',
+            'Awaiting approval ' + hrs.toFixed(1) + 'h (limit ' + thresh + 'h)');
+        }
+      });
+    }
+
+    // ── No status update / no movement ──
+    if(rule.type === 'no_movement'){
+      inTr.forEach(function(trip){
+        var tl = trip.tl || [];
+        var lastTs = tl.length > 0
+          ? (new Date(tl[tl.length - 1].ts).getTime() || _exGetTransitStart(trip))
+          : _exGetTransitStart(trip);
+        var hrs = (now - lastTs) / 3600000;
+        var thresh = rule.thresholdHours;
+        if(hrs >= thresh){
+          _exRaiseAlert(rule, trip, hrs.toFixed(1) + 'h',
+            'No status update for ' + hrs.toFixed(1) + 'h (limit ' + thresh + 'h)');
+        }
+      });
+    }
+  });
+
+  _exUpdateBadge();
+  _exSaveExceptions();
+}
+
+// ── Exception Lifecycle: Acknowledge ──
+function ackException(exId){
+  var ex = (S.exceptions || []).find(function(e){ return e.id === exId; });
+  if(!ex) return;
+  ex.status  = 'acknowledged';
+  ex.ackBy   = S.user ? S.user.name : 'Unknown';
+  ex.ackAt   = new Date().toLocaleString('en-GB');
+  _exSaveExceptions();
+  _exUpdateBadge();
+  audit('EXCEPTION_ACK', ex.ruleName + ' on ' + ex.tripId, '');
+  toast('Exception acknowledged', 'ok');
+  rExceptions();
+}
+
+// ── Exception Lifecycle: Resolve ──
+function resolveException(exId){
+  openM('<div class="m-title">&#10003; Resolve Exception</div>' +
+    '<div class="fg"><label>Resolution Notes *</label>' +
+    '<textarea id="ex-res-notes" placeholder="Describe corrective action taken..." style="min-height:80px"></textarea></div>' +
+    '<div class="m-foot">' +
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>' +
+    '<button class="btn btn-primary" onclick="_confirmResolveEx(\'' + exId + '\')">&#10003; Resolve</button></div>');
+}
+function _confirmResolveEx(exId){
+  var notes = (document.getElementById('ex-res-notes') || {}).value || '';
+  if(!notes){ toast('Enter resolution notes', 'err'); return; }
+  var ex = (S.exceptions || []).find(function(e){ return e.id === exId; });
+  if(!ex) return;
+  ex.status     = 'resolved';
+  ex.resolvedBy = S.user ? S.user.name : 'Unknown';
+  ex.resolvedAt = new Date().toLocaleString('en-GB');
+  ex.notes      = notes;
+  closeM();
+  _exSaveExceptions();
+  _exUpdateBadge();
+  audit('EXCEPTION_RESOLVE', ex.ruleName + ' — ' + notes, '');
+  toast('Exception resolved', 'ok');
+  rExceptions();
+}
+
+// ══════════════════════════════════════════════════
+// EXCEPTIONS MONITOR PAGE  (nav 'exceptions')
+// ══════════════════════════════════════════════════
+function rExceptions(){
+  S.page = 'exceptions';
+  var c = document.getElementById('content'); if(!c) return;
+  _exLoadRules();
+  var all    = S.exceptions || [];
+  var filter = S._exFilter  || 'open';
+
+  var shown = all.filter(function(e){
+    if(filter === 'open')     return e.status === 'open';
+    if(filter === 'ack')      return e.status === 'acknowledged';
+    if(filter === 'resolved') return e.status === 'resolved' || e.status === 'auto_resolved';
+    return true;
+  });
+
+  var openCnt = all.filter(function(e){ return e.status === 'open'; }).length;
+  var ackCnt  = all.filter(function(e){ return e.status === 'acknowledged'; }).length;
+  var resCnt  = all.filter(function(e){ return e.status === 'resolved' || e.status === 'auto_resolved'; }).length;
+
+  var sevColor = {critical:'#EF4444', warning:'#F97316', info:'#06B6D4'};
+  var sevBg    = {critical:'rgba(239,68,68,.12)', warning:'rgba(249,115,22,.12)', info:'rgba(6,182,212,.12)'};
+  var stLabel  = {open:'Open', acknowledged:'Acknowledged', resolved:'Resolved', auto_resolved:'Auto-Resolved'};
+  var stColor  = {open:'#EF4444', acknowledged:'#F97316', resolved:'#10B981', auto_resolved:'#10B981'};
+
+  c.innerHTML =
+    ph('&#9888;&#65039; Exception Monitor',
+       'Live breach detection &amp; auto-escalation',
+       '<div style="display:flex;gap:8px">' +
+       (can('all') || S.role === 'admin'
+         ? '<button class="btn btn-primary" onclick="S.adminTab=\'exceptions\';nav(\'admin_mgmt\')">&#9881; Configure Rules</button>' : '') +
+       '<button class="btn btn-outline" onclick="_runExceptionCheck();toast(\'Check complete\',\'ok\')">&#8635; Run Check</button>' +
+       '</div>') +
+
+    // KPI cards — click to filter
+    '<div class="kpi-row">' +
+    '<div class="kpi-card" onclick="S._exFilter=\'open\';rExceptions()" style="cursor:pointer">' +
+      '<div class="kpi-icon-wrap" style="background:rgba(239,68,68,.12);color:#EF4444">&#128308;</div>' +
+      '<div class="kpi-body"><div class="kpi-label">Open</div><div class="kpi-val">' + openCnt + '</div></div></div>' +
+    '<div class="kpi-card" onclick="S._exFilter=\'ack\';rExceptions()" style="cursor:pointer">' +
+      '<div class="kpi-icon-wrap" style="background:rgba(249,115,22,.12);color:#F97316">&#128993;</div>' +
+      '<div class="kpi-body"><div class="kpi-label">Acknowledged</div><div class="kpi-val">' + ackCnt + '</div></div></div>' +
+    '<div class="kpi-card" onclick="S._exFilter=\'resolved\';rExceptions()" style="cursor:pointer">' +
+      '<div class="kpi-icon-wrap" style="background:rgba(16,185,129,.12);color:#10B981">&#10003;</div>' +
+      '<div class="kpi-body"><div class="kpi-label">Resolved</div><div class="kpi-val">' + resCnt + '</div></div></div>' +
+    '<div class="kpi-card" onclick="S._exFilter=\'all\';rExceptions()" style="cursor:pointer">' +
+      '<div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:var(--c1)">&#128230;</div>' +
+      '<div class="kpi-body"><div class="kpi-label">Total</div><div class="kpi-val">' + all.length + '</div></div></div>' +
+    '</div>' +
+
+    // Filter tabs
+    '<div class="tabs" style="margin-bottom:16px">' +
+    ['open','ack','resolved','all'].map(function(f){
+      var lbl = {open:'&#128308; Open', ack:'&#128993; Acknowledged', resolved:'&#10003; Resolved', all:'All'}[f];
+      return '<div class="tab' + (filter === f ? ' on' : '') + '" onclick="S._exFilter=\'' + f + '\';rExceptions()">' + lbl + '</div>';
+    }).join('') +
+    '</div>' +
+
+    (shown.length === 0
+      ? '<div class="card" style="text-align:center;padding:56px 24px;color:var(--t2)">' +
+        '<div style="font-size:52px">&#9989;</div>' +
+        '<div style="margin-top:14px;font-size:15px;font-weight:700">No exceptions in this view</div>' +
+        '<div style="font-size:13px;color:var(--t3);margin-top:6px">All monitored trips are running within configured thresholds</div>' +
+        '</div>'
+      : '<div class="card" style="padding:0;overflow:hidden">' +
+        '<table class="tbl"><thead><tr>' +
+        '<th>ID</th><th>Rule</th><th>Trip</th><th>Customer</th><th>Truck</th>' +
+        '<th>Severity</th><th>Breach Value</th><th>Raised</th><th>Status</th><th>Actions</th>' +
+        '</tr></thead><tbody>' +
+        shown.map(function(e){
+          var sc  = sevColor[e.severity] || '#64748B';
+          var sbg = sevBg[e.severity]   || 'rgba(100,116,139,.1)';
+          return '<tr>' +
+            '<td style="font-size:11px;color:var(--t2);font-weight:600">' + e.id + '</td>' +
+            '<td style="font-weight:700;font-size:13px">' + e.ruleName + '</td>' +
+            '<td><a href="#" onclick="openTripSP(\'' + e.tripId + '\');return false" style="color:var(--c1);font-weight:700">' + e.tripId + '</a></td>' +
+            '<td>' + (e.customer || '—') + '</td>' +
+            '<td style="font-size:12px">' + (e.truck || '—') + '</td>' +
+            '<td><span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:' + sbg + ';color:' + sc + '">' + (e.severity || '').toUpperCase() + '</span></td>' +
+            '<td style="font-size:12px;font-weight:700;color:var(--c1)">' + (e.value || '—') + '</td>' +
+            '<td style="font-size:11px;color:var(--t2)">' + (e.raisedAt || '—') + '</td>' +
+            '<td><span style="color:' + (stColor[e.status] || '#64748B') + ';font-weight:700;font-size:12px">' + (stLabel[e.status] || e.status) + '</span>' +
+              (e.status === 'acknowledged' ? '<div style="font-size:10px;color:var(--t3)">' + (e.ackBy || '') + '</div>' : '') +
+              (e.status === 'resolved' || e.status === 'auto_resolved' ? '<div style="font-size:10px;color:var(--t3)">' + (e.resolvedBy || 'System') + '</div>' : '') +
+            '</td>' +
+            '<td><div style="display:flex;gap:4px">' +
+              (e.status === 'open' ? '<button class="btn btn-sm btn-outline" onclick="ackException(\'' + e.id + '\')">&#10003; Ack</button>' : '') +
+              (e.status !== 'resolved' && e.status !== 'auto_resolved'
+                ? '<button class="btn btn-sm btn-success" onclick="resolveException(\'' + e.id + '\')">Resolve</button>' : '') +
+              '<button class="btn btn-sm btn-outline" onclick="openTripSP(\'' + e.tripId + '\')">&#8250;</button>' +
+            '</div></td>' +
+            '</tr>';
+        }).join('') +
+        '</tbody></table></div>');
+}
+
+// ══════════════════════════════════════════════════
+// ADMIN: EXCEPTION RULES CONFIGURATION
+// ══════════════════════════════════════════════════
+function rAdminExceptions(){
+  var el = document.getElementById('admin-content'); if(!el) return;
+  _exLoadRules();
+  var rules = S.exRules || [];
+  var typeLabels = {temperature:'&#127777;&#65039; Temperature', transit_time:'&#9201; Transit Time', pending_timeout:'&#8987; Pending Timeout', no_movement:'&#128205; No Movement'};
+  var condColors = {Ambient:'#F97316', Frozen:'#06B6D4', Cold:'#3B82F6', all:'#64748B'};
+  var openExc    = (S.exceptions || []).filter(function(e){ return e.status === 'open'; }).length;
+
+  el.innerHTML =
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">' +
+    '<div><div style="font-size:16px;font-weight:800">&#9888;&#65039; Exception Rules</div>' +
+    '<div style="font-size:12px;color:var(--t2);margin-top:3px">Configure auto-escalation thresholds for temperature, transit time, and approvals</div></div>' +
+    '<div style="display:flex;gap:8px">' +
+    '<button class="btn btn-outline" onclick="nav(\'exceptions\')">&#128202; View Live Exceptions</button>' +
+    '<button class="btn btn-primary" onclick="openExRuleModal(null)">+ Add Rule</button></div></div>' +
+
+    // Summary row
+    '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px">' +
+    [
+      {l:'Active Rules',   v:rules.filter(function(r){return r.active;}).length,   c:'var(--c1)',    bg:'rgba(108,63,245,.1)'},
+      {l:'Temp Rules',     v:rules.filter(function(r){return r.type==='temperature';}).length, c:'#06B6D4', bg:'rgba(6,182,212,.1)'},
+      {l:'Time Rules',     v:rules.filter(function(r){return r.type!=='temperature';}).length, c:'#F97316', bg:'rgba(249,115,22,.1)'},
+      {l:'Open Exceptions',v:openExc, c:'#EF4444', bg:'rgba(239,68,68,.1)'}
+    ].map(function(x){
+      return '<div class="card" style="text-align:center;padding:16px 12px">' +
+        '<div style="font-size:26px;font-weight:900;color:' + x.c + '">' + x.v + '</div>' +
+        '<div style="font-size:11px;color:var(--t2);margin-top:3px">' + x.l + '</div></div>';
+    }).join('') +
+    '</div>' +
+
+    // Rules table
+    '<div class="card" style="padding:0;overflow:hidden;margin-bottom:20px">' +
+    '<table class="tbl"><thead><tr>' +
+    '<th>Rule Name</th><th>Type</th><th>Condition</th><th>Threshold</th><th>Grace</th><th>Severity</th><th>Notify</th><th>Active</th><th>Actions</th>' +
+    '</tr></thead><tbody>' +
+    rules.map(function(r){
+      var condCol = condColors[r.condition] || '#64748B';
+      var threshStr = r.type === 'temperature'
+        ? r.tempMin + '°C — ' + r.tempMax + '°C'
+        : (r.thresholdHours || '—') + ' hrs';
+      return '<tr>' +
+        '<td style="font-weight:700">' + r.name + '</td>' +
+        '<td style="font-size:12px">' + (typeLabels[r.type] || r.type) + '</td>' +
+        '<td><span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;background:' + condCol + '22;color:' + condCol + '">' + r.condition + '</span></td>' +
+        '<td style="font-weight:700;color:var(--c1)">' + threshStr + '</td>' +
+        '<td style="font-size:12px">' + r.graceMins + ' min</td>' +
+        '<td><span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;' +
+          'background:' + (r.severity === 'critical' ? 'rgba(239,68,68,.12)' : 'rgba(249,115,22,.12)') + ';' +
+          'color:' + (r.severity === 'critical' ? '#EF4444' : '#F97316') + '">' + r.severity.toUpperCase() + '</span></td>' +
+        '<td style="font-size:11px;color:var(--t2)">' + (r.notify || []).join(', ') + '</td>' +
+        '<td>' +
+          '<label style="display:flex;align-items:center;gap:6px;cursor:pointer">' +
+          '<input type="checkbox"' + (r.active ? ' checked' : '') + ' onchange="toggleExRule(\'' + r.id + '\',this.checked)" style="width:16px;height:16px;accent-color:var(--c1);cursor:pointer">' +
+          '<span style="font-size:12px;color:' + (r.active ? '#10B981' : '#94A3B8') + '">' + (r.active ? 'On' : 'Off') + '</span>' +
+          '</label></td>' +
+        '<td><div style="display:flex;gap:4px">' +
+          '<button class="btn btn-sm btn-outline" onclick="openExRuleModal(\'' + r.id + '\')">&#9998; Edit</button>' +
+          '<button class="btn btn-sm btn-danger" onclick="deleteExRule(\'' + r.id + '\')">&#10005;</button>' +
+        '</div></td></tr>';
+    }).join('') +
+    '</tbody></table></div>' +
+
+    // Per-customer SLA reference
+    '<div class="card">' +
+    '<div style="font-size:14px;font-weight:800;margin-bottom:6px">&#128100; Per-Customer Temperature Ranges (from Pricing SLA)</div>' +
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Temperature exception rules automatically use these customer-specific ranges. Edit in Admin → Pricing.</div>' +
+    '<table class="tbl"><thead><tr><th>Customer</th><th>Min Temp (°C)</th><th>Max Temp (°C)</th><th>Chain Type</th></tr></thead><tbody>' +
+    Object.keys(S.custModifiers || {}).map(function(cu){
+      var m = S.custModifiers[cu];
+      var isAmb = m.slaMin >= 10;
+      return '<tr>' +
+        '<td style="font-weight:700">' + cu + '</td>' +
+        '<td style="color:#06B6D4;font-weight:700">' + m.slaMin + '</td>' +
+        '<td style="color:#EF4444;font-weight:700">' + m.slaMax + '</td>' +
+        '<td><span style="display:inline-block;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;' +
+          'background:' + (isAmb ? 'rgba(249,115,22,.1)' : 'rgba(59,130,246,.1)') + ';' +
+          'color:' + (isAmb ? '#F97316' : '#3B82F6') + '">' + (isAmb ? 'Ambient' : 'Cold Chain') + '</span></td>' +
+        '</tr>';
+    }).join('') +
+    '</tbody></table>' +
+    '<div style="margin-top:12px;padding:10px 14px;background:rgba(108,63,245,.06);border-radius:8px;font-size:12px;color:var(--c1)">' +
+    '&#9432; Rules with <strong>Ambient</strong> condition will apply SLA Min/Max from customers with slaMin ≥ 10°C. ' +
+    'Rules with <strong>Cold</strong> condition apply to customers with slaMin &lt; 10°C. Override per-rule via Edit.</div>' +
+    '</div>';
+}
+
+// ── Toggle rule on/off ──
+function toggleExRule(ruleId, active){
+  var r = (S.exRules || []).find(function(x){ return x.id === ruleId; });
+  if(!r) return;
+  r.active = active;
+  _exSaveRules();
+  audit('EXCEPTION_RULE_TOGGLE', ruleId + (active ? ' enabled' : ' disabled'), '');
+  toast('Rule ' + (active ? 'enabled' : 'disabled'), 'ok');
+}
+
+// ── Delete rule ──
+function deleteExRule(ruleId){
+  if(!confirm('Delete this exception rule?')) return;
+  S.exRules = (S.exRules || []).filter(function(r){ return r.id !== ruleId; });
+  _exSaveRules();
+  toast('Rule deleted', 'ok');
+  rAdminExceptions();
+}
+
+// ── Edit / Add Rule Modal ──
+function openExRuleModal(ruleId){
+  var isNew = !ruleId;
+  var r = ruleId ? (S.exRules || []).find(function(x){ return x.id === ruleId; }) : null;
+  var d = r || {
+    id: 'ER-' + Date.now(),
+    name: '', type: 'temperature', condition: 'Ambient',
+    tempMin: 15, tempMax: 25, thresholdHours: 4,
+    graceMins: 5, severity: 'warning',
+    notify: ['quality','manager'], active: true, customerOverrides: {}
+  };
+  var condOpts = ['Ambient','Frozen','Cold','all'].map(function(c){
+    return '<option value="' + c + '"' + (d.condition === c ? ' selected' : '') + '>' + c + '</option>';
+  }).join('');
+
+  openM(
+    '<div class="m-title">' + (isNew ? '+ New Exception Rule' : '&#9998; Edit Exception Rule') + '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">' +
+      '<div class="fg" style="grid-column:1/-1"><label>Rule Name *</label>' +
+        '<input id="er-name" value="' + (d.name || '') + '" placeholder="e.g. Frozen Temp Breach"/></div>' +
+      '<div class="fg"><label>Rule Type</label>' +
+        '<select id="er-type" onchange="exRuleTypeChange()">' +
+          '<option value="temperature"'    + (d.type==='temperature'     ? ' selected' : '') + '>&#127777;&#65039; Temperature</option>' +
+          '<option value="transit_time"'   + (d.type==='transit_time'    ? ' selected' : '') + '>&#9201; Transit Time</option>' +
+          '<option value="pending_timeout"'+ (d.type==='pending_timeout' ? ' selected' : '') + '>&#8987; Pending Timeout</option>' +
+          '<option value="no_movement"'    + (d.type==='no_movement'     ? ' selected' : '') + '>&#128205; No Movement</option>' +
+        '</select></div>' +
+      '<div class="fg"><label>Condition</label><select id="er-cond">' + condOpts + '</select></div>' +
+      '<div class="fg"><label>Severity</label>' +
+        '<select id="er-sev">' +
+          '<option value="warning"'  + (d.severity==='warning'  ? ' selected' : '') + '>&#9888;&#65039; Warning</option>' +
+          '<option value="critical"' + (d.severity==='critical' ? ' selected' : '') + '>&#128308; Critical</option>' +
+        '</select></div>' +
+      '<div class="fg"><label>Grace Period (minutes)</label>' +
+        '<input type="number" id="er-grace" value="' + (d.graceMins || 0) + '" min="0" max="60"/></div>' +
+    '</div>' +
+    // Temperature fields
+    '<div id="er-temp-fields" style="display:' + (d.type==='temperature'?'grid':'none') + ';grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">' +
+      '<div class="fg"><label>Temp Min (°C)</label><input type="number" id="er-tmin" value="' + (d.tempMin ?? 15) + '" step="0.5"/></div>' +
+      '<div class="fg"><label>Temp Max (°C)</label><input type="number" id="er-tmax" value="' + (d.tempMax ?? 25) + '" step="0.5"/></div>' +
+    '</div>' +
+    // Time-based fields
+    '<div id="er-time-fields" style="display:' + (d.type!=='temperature'?'block':'none') + ';margin-top:10px">' +
+      '<div class="fg"><label>Threshold (hours)</label><input type="number" id="er-thresh" value="' + (d.thresholdHours || 4) + '" min="0.5" step="0.5"/></div>' +
+    '</div>' +
+    '<div class="fg" style="margin-top:10px"><label>Notify Roles (comma-separated)</label>' +
+      '<input id="er-notify" value="' + (d.notify || []).join(',') + '" placeholder="quality,manager,dispatch"/></div>' +
+    // Info box
+    '<div style="background:rgba(108,63,245,.06);border-radius:8px;padding:10px 14px;font-size:12px;color:var(--c1);margin-top:12px">' +
+      '&#9432; Temperature rules auto-apply per-customer SLA ranges from Pricing settings. ' +
+      'Per-rule customer overrides can be added by editing the rule after saving.' +
+    '</div>' +
+    '<div class="m-foot">' +
+      '<button class="btn btn-outline" onclick="closeM()">Cancel</button>' +
+      '<button class="btn btn-primary" onclick="saveExRule(\'' + d.id + '\',' + isNew + ')">&#10003; Save Rule</button>' +
+    '</div>'
+  );
+}
+
+function exRuleTypeChange(){
+  var t  = (document.getElementById('er-type') || {}).value;
+  var tf = document.getElementById('er-temp-fields');
+  var thf= document.getElementById('er-time-fields');
+  if(tf)  tf.style.display  = (t === 'temperature') ? 'grid'  : 'none';
+  if(thf) thf.style.display = (t !== 'temperature') ? 'block' : 'none';
+}
+
+function saveExRule(ruleId, isNew){
+  var name = ((document.getElementById('er-name') || {}).value || '').trim();
+  if(!name){ toast('Enter a rule name', 'err'); return; }
+  var type    = (document.getElementById('er-type')   || {}).value || 'temperature';
+  var cond    = (document.getElementById('er-cond')   || {}).value || 'Ambient';
+  var sev     = (document.getElementById('er-sev')    || {}).value || 'warning';
+  var grace   = +((document.getElementById('er-grace')  || {}).value || 0);
+  var tmin    = +((document.getElementById('er-tmin')   || {}).value || 15);
+  var tmax    = +((document.getElementById('er-tmax')   || {}).value || 25);
+  var thresh  = +((document.getElementById('er-thresh') || {}).value || 4);
+  var ntStr   = ((document.getElementById('er-notify') || {}).value || '');
+  var notify  = ntStr.split(',').map(function(x){ return x.trim(); }).filter(Boolean);
+
+  if(isNew){
+    var nr = {
+      id: ruleId, name: name, type: type, condition: cond, severity: sev,
+      graceMins: grace, tempMin: tmin, tempMax: tmax, thresholdHours: thresh,
+      notify: notify, active: true, customerOverrides: {}
+    };
+    if(!S.exRules) S.exRules = [];
+    S.exRules.push(nr);
+    toast('Rule added!', 'ok');
+  } else {
+    var er = (S.exRules || []).find(function(x){ return x.id === ruleId; });
+    if(!er) return;
+    er.name = name; er.type = type; er.condition = cond; er.severity = sev;
+    er.graceMins = grace; er.tempMin = tmin; er.tempMax = tmax;
+    er.thresholdHours = thresh; er.notify = notify;
+    toast('Rule updated!', 'ok');
+  }
+  _exSaveRules();
+  audit('EXCEPTION_RULE_SAVE', name, '');
+  closeM();
+  rAdminExceptions();
+}
 
 </script>
 </body>
