@@ -10611,12 +10611,143 @@ function _expFname(title,ext){
   return title.replace(/[^a-z0-9]+/gi,'_').slice(0,40)+'_'+new Date().toISOString().slice(0,10)+'.'+ext;
 }
 
-// Dispatcher: get current page data → export
-function _pageExport(format){
-  var d=_getPageExportData();
-  if(!d||!d.rows||!d.rows.length){toast('No data to export on this page','err');return;}
-  uExportAll(format,d.title,d.headers,d.rows);
-  audit('EXPORT_'+format.toUpperCase(),d.title+' ('+d.rows.length+' rows)','');
+// Dispatcher: opens period-picker modal → export
+function _pageExport(format){_showExportModal(format||'csv');}
+
+// ── Date helpers ──────────────────────────────────
+function _expParseDate(str){
+  if(!str)return null;
+  str=String(str).trim();
+  // ISO: 2026-05-19 or 2026-05-19T…
+  if(/^\d{4}-\d{2}-\d{2}/.test(str))return new Date(str.slice(0,10)+'T00:00:00');
+  // UK locale: 19/05/2026 or 19/05/2026, 14:30:00
+  var m=str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if(m)return new Date(+m[3],+m[2]-1,+m[1]);
+  var d=new Date(str);return isNaN(d)?null:d;
+}
+function _expInRange(dateStr,from,to){
+  if(!from&&!to)return true;
+  var d=_expParseDate(dateStr);
+  if(!d||isNaN(d))return true;
+  if(from&&d<from)return false;
+  if(to&&d>to)return false;
+  return true;
+}
+function _expCalcRange(period){
+  var now=new Date();
+  var eod=new Date(now.getFullYear(),now.getMonth(),now.getDate(),23,59,59);
+  if(period==='all')return{from:null,to:null};
+  if(period==='today')return{from:new Date(now.getFullYear(),now.getMonth(),now.getDate()),to:eod};
+  if(period==='7d')return{from:new Date(now-7*864e5),to:eod};
+  if(period==='30d')return{from:new Date(now-30*864e5),to:eod};
+  if(period==='month')return{from:new Date(now.getFullYear(),now.getMonth(),1),to:eod};
+  if(period==='lastmonth')return{from:new Date(now.getFullYear(),now.getMonth()-1,1),to:new Date(now.getFullYear(),now.getMonth(),0,23,59,59)};
+  if(period==='3m')return{from:new Date(now.getFullYear(),now.getMonth()-3,now.getDate()),to:eod};
+  if(period==='6m')return{from:new Date(now.getFullYear(),now.getMonth()-6,now.getDate()),to:eod};
+  if(period==='year')return{from:new Date(now.getFullYear(),0,1),to:eod};
+  if(period==='custom'){
+    var fe=document.getElementById('exp-from');
+    var te=document.getElementById('exp-to');
+    var f=fe&&fe.value?new Date(fe.value+'T00:00:00'):null;
+    var t=te&&te.value?new Date(te.value+'T23:59:59'):eod;
+    return{from:f,to:t};
+  }
+  return{from:null,to:null};
+}
+
+// ── Period-picker modal ───────────────────────────
+function _showExportModal(fmt){
+  var base=_getPageExportData(null,null);
+  if(!base){toast('No exportable data on this page','err');return;}
+  var today=new Date().toISOString().slice(0,10);
+  var fmtLabels={csv:'&#128202; CSV',excel:'&#128196; Excel',pdf:'&#128444;&#65039; PDF'};
+  var periods=[
+    ['all','All Time'],['today','Today'],['7d','Last 7 Days'],['30d','Last 30 Days'],
+    ['month','This Month'],['lastmonth','Last Month'],
+    ['3m','Last 3 Months'],['6m','Last 6 Months'],['year','This Year'],['custom','Custom ▼']
+  ];
+  openM(
+    '<div class="m-title">&#128229; Export — '+base.title+'</div>'+
+    '<div style="margin-bottom:14px">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin-bottom:8px">FORMAT</div>'+
+    '<div style="display:flex;gap:8px">'+
+    ['csv','excel','pdf'].map(function(f){
+      return '<label style="display:flex;align-items:center;gap:6px;padding:7px 13px;border:2px solid '+(f===fmt?'var(--c1)':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;transition:border-color .2s">'+
+        '<input type="radio" name="exp-fmt" value="'+f+'"'+(f===fmt?' checked':'')+' style="accent-color:var(--c1);cursor:pointer" onchange="_expFmtChange()"/>'+fmtLabels[f]+'</label>';
+    }).join('')+
+    '</div></div>'+
+    '<div style="margin-bottom:14px">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.5px;margin-bottom:8px">TIME PERIOD</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+    periods.map(function(o,i){
+      return '<button id="epb-'+o[0]+'" class="btn btn-sm '+(i===0?'btn-primary':'btn-outline')+'" onclick="_expPeriodBtn(\''+o[0]+'\')" style="font-size:11px;padding:5px 10px">'+o[1]+'</button>';
+    }).join('')+
+    '</div>'+
+    '<div id="exp-custom-dates" style="display:none;margin-top:10px;padding:10px;background:var(--bg);border-radius:8px">'+
+    '<div style="display:flex;gap:10px;align-items:flex-end">'+
+    '<div class="fg" style="flex:1;margin:0"><label style="font-size:11px">From</label><input type="date" id="exp-from" value="'+today+'" onchange="_expUpdateCount()"/></div>'+
+    '<div style="padding-bottom:8px;color:var(--t2);font-size:13px">→</div>'+
+    '<div class="fg" style="flex:1;margin:0"><label style="font-size:11px">To</label><input type="date" id="exp-to" value="'+today+'" onchange="_expUpdateCount()"/></div>'+
+    '</div></div>'+
+    '</div>'+
+    '<div id="exp-count-row" style="padding:10px 14px;background:var(--bg);border-radius:8px;font-size:12px;margin-bottom:14px;display:flex;align-items:center;gap:8px">'+
+    '<span style="font-size:16px">&#128202;</span>'+
+    '<span id="exp-count-txt" style="font-weight:700;color:var(--c1)">'+base.rows.length+'</span>'+
+    '<span style="color:var(--t2)">of '+base.rows.length+' records ready to export</span>'+
+    '</div>'+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_doExportFromModal()">&#128229; Export</button>'+
+    '</div>'
+  );
+  window._expBaseData=base;
+  window._expCurrentPeriod='all';
+}
+
+function _expFmtChange(){_expUpdateCount();}
+
+function _expPeriodBtn(p){
+  window._expCurrentPeriod=p;
+  ['all','today','7d','30d','month','lastmonth','3m','6m','year','custom'].forEach(function(id){
+    var b=document.getElementById('epb-'+id);
+    if(b)b.className='btn btn-sm '+(id===p?'btn-primary':'btn-outline');
+  });
+  var cd=document.getElementById('exp-custom-dates');
+  if(cd)cd.style.display=p==='custom'?'block':'none';
+  _expUpdateCount();
+}
+
+function _expUpdateCount(){
+  var base=window._expBaseData;if(!base)return;
+  var p=window._expCurrentPeriod||'all';
+  var rng=_expCalcRange(p);
+  var filtered=_getPageExportData(rng.from,rng.to);
+  var total=base.rows.length;
+  var match=filtered?filtered.rows.length:0;
+  var txt=document.getElementById('exp-count-txt');
+  var row=document.getElementById('exp-count-row');
+  if(txt)txt.textContent=match;
+  if(row){
+    var span=row.querySelector('span:last-child');
+    if(span)span.textContent='of '+total+' records match the selected period'+(match===0?' — try a wider range':'');
+    row.style.borderLeft=match===0?'3px solid #EF4444':match<total?'3px solid #F97316':'3px solid #10B981';
+  }
+}
+
+function _doExportFromModal(){
+  var fmtEl=document.querySelector('input[name="exp-fmt"]:checked');
+  var fmt=fmtEl?fmtEl.value:'csv';
+  var p=window._expCurrentPeriod||'all';
+  var rng=_expCalcRange(p);
+  var d=_getPageExportData(rng.from,rng.to);
+  if(!d||!d.rows||!d.rows.length){toast('No records match the selected period','err');return;}
+  var label=p==='all'?'All Time':p==='custom'?
+    ((document.getElementById('exp-from')||{}).value||'')+' to '+((document.getElementById('exp-to')||{}).value||''):
+    p;
+  d.title=d.title+(p!=='all'?' ['+label+']':'');
+  closeM();
+  uExportAll(fmt,d.title,d.headers,d.rows);
+  audit('EXPORT_'+fmt.toUpperCase(),d.title+' ('+d.rows.length+' rows, period: '+label+')','');
 }
 
 // Universal dispatcher — injects timestamp + user
@@ -10711,9 +10842,13 @@ function _expPDF(title,headers,rows,ts,usr){
 }
 
 // ── Per-page data generators (13 pages) ──────────
-function _getPageExportData(){
+// _getPageExportData(from, to) — from/to are Date objects or null
+// Every dataset is date-filtered using _expInRange before rows are built
+function _getPageExportData(from,to){
   var p=S.page;
-  var trips=S.trips||[];
+  // helper: filter array by a date field string
+  var ir=function(v){return _expInRange(v,from,to);};
+  var trips=(S.trips||[]).filter(function(t){return ir(t.ts);});
 
   if(p==='trips'){
     return{title:'All Trips',
@@ -10723,9 +10858,10 @@ function _getPageExportData(){
   }
   if(p==='controlroom'){
     var active=trips.filter(function(t){return['in_transit','loading','waiting','dispatched'].indexOf(t.status)>-1;});
+    var src=active.length?active:trips;
     return{title:'Control Room — Active Trips',
       headers:['Trip ID','Customer','Status','Condition','Truck','Driver','Origin','Destination','Temp (°C)','Last Update'],
-      rows:(active.length?active:trips).map(function(t){return[t.id,t.customer,t.status,t.condition,t.truck,t.driver||'',t.origin||'',t.destination||'',t.currentTemp!==undefined?t.currentTemp:'—',t.ts||''];})
+      rows:src.map(function(t){return[t.id,t.customer,t.status,t.condition,t.truck,t.driver||'',t.origin||'',t.destination||'',t.currentTemp!==undefined?t.currentTemp:'—',t.ts||''];})
     };
   }
   if(p==='quality'){
@@ -10735,7 +10871,7 @@ function _getPageExportData(){
     };
   }
   if(p==='security'){
-    var alog=S.auditLog||S.audit||[];
+    var alog=(S.auditLog||S.audit||[]).filter(function(e){return ir(e.ts);});
     var secActs=['LOGIN','LOGOUT','ROLE','ACCESS','SEC','PASS','USER','PERM'];
     var sec=alog.filter(function(e){return secActs.some(function(k){return(e.action||'').indexOf(k)>-1;});});
     return{title:'Security Audit Log',
@@ -10745,7 +10881,6 @@ function _getPageExportData(){
   }
   if(p==='finance'){
     var comp=trips.filter(function(t){return t.status==='completed';});
-    var totalRev=comp.reduce(function(s,t){return s+(+t.cost||0);},0);
     return{title:'Finance Report — Revenue by Trip',
       headers:['Trip ID','Customer','Condition','KM','Revenue (EGP)','Truck','Driver','Date'],
       rows:comp.map(function(t){return[t.id,t.customer,t.condition,t.km||0,t.cost||0,t.truck,t.driver||'',t.ts||''];})
@@ -10758,14 +10893,14 @@ function _getPageExportData(){
     };
   }
   if(p==='billing'){
-    var invs=S.invoices||[];
+    var invs=(S.invoices||[]).filter(function(i){return ir(i.createdAt);});
     return{title:'Invoices',
       headers:['Invoice No','Customer','Period','Trips','Subtotal (EGP)','VAT (EGP)','Total (EGP)','Status','Due Date','Created','Created By'],
       rows:invs.map(function(i){return[i.id,i.customer,i.period,(i.tripIds||[]).length,i.subtotal||0,i.tax||0,i.total||0,i.status,i.dueDate||'',i.createdAt||'',i.createdBy||''];})
     };
   }
   if(p==='fuel'){
-    var fl=S.fuelLogs||[];
+    var fl=(S.fuelLogs||[]).filter(function(l){return ir(l.date);});
     return{title:'Fuel Management Log',
       headers:['Date','Truck','Driver','Fuel Type','Liters','Cost/L (EGP)','Total Cost (EGP)','Odometer (km)','Station','Receipt No','Status','Approved By'],
       rows:fl.map(function(l){return[l.date||'',l.truck||'',l.driver||'',l.fuelType||'',l.liters||'',l.costPerLiter||'',l.totalCost||0,l.odometer||'',l.station||'',l.receiptNo||'',l.status||'',l.approvedBy||''];})
@@ -10779,6 +10914,7 @@ function _getPageExportData(){
     };
   }
   if(p==='fleet'||p==='admin_fleet'||p==='trucks'){
+    // Fleet is not time-series data — return full list (date filter has no effect)
     var tks=typeof TRUCKS!=='undefined'?TRUCKS:[];
     return{title:'Fleet Register',
       headers:['Plate','Type','Condition','Driver','Year','Status','Last Service','Next Service','Mileage (km)'],
@@ -10786,7 +10922,7 @@ function _getPageExportData(){
     };
   }
   if(p==='maintenance'){
-    var maint=S.maint||S.maintenance||[];
+    var maint=(S.maint||S.maintenance||[]).filter(function(m){return ir(m.date);});
     if(maint.length){
       return{title:'Maintenance Log',
         headers:['ID','Truck','Type','Date','Cost (EGP)','Description','Status','Technician'],
@@ -10799,14 +10935,14 @@ function _getPageExportData(){
     };
   }
   if(p==='audit'){
-    var auditLog=S.auditLog||S.audit||[];
+    var auditLog=(S.auditLog||S.audit||[]).filter(function(e){return ir(e.ts);});
     return{title:'Full Audit Trail',
       headers:['Timestamp','User','Role','Action','Detail','Trip ID'],
       rows:auditLog.map(function(e){return[e.ts||'',e.user||'',e.role||'',e.action||'',e.detail||'',e.tripId||''];})
     };
   }
   if(p==='exceptions'){
-    var exs=S.exceptions||[];
+    var exs=(S.exceptions||[]).filter(function(e){return ir(e.raisedAt||e.ts);});
     return{title:'Exception Management Log',
       headers:['ID','Trip ID','Type','Severity','Message','Customer','Truck','Status','Raised At','Resolved At'],
       rows:exs.map(function(e){return[e.id||'',e.tripId||'',e.type||'',e.severity||'',e.message||'',e.customer||'',e.truck||'',e.status||'open',e.raisedAt||e.ts||'',e.resolvedAt||''];})
