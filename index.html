@@ -1661,8 +1661,8 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 #login .ll-hero-bg {
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  object-position: center center;
+  object-fit: cover;
+  object-position: left center;
   display: block;
   pointer-events: none;
   border: none; outline: none; box-shadow: none;
@@ -1752,22 +1752,21 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   mask-image: none;
 }
 #login .login-right {
-  flex: 0 0 460px;
-  width: 460px;
+  flex: 0 0 500px;
+  width: 500px;
   height: 100vh;
   display: flex; flex-direction: column;
-  align-items: stretch; justify-content: center;
-  padding: 32px 28px 40px;
-  background: #ffffff;
+  align-items: center; justify-content: center;
+  padding: 32px 32px 40px;
+  background: linear-gradient(150deg, #1a0d4a 0%, #2d1a7a 50%, #1e1055 100%);
   position: relative;
   overflow-y: auto;
 }
 [data-theme=dark] #login .login-right {
-  background: #12112A;
+  background: linear-gradient(150deg, #0d0628 0%, #1a0d4a 50%, #120b38 100%);
 }
-[data-theme=dark] #login .login-right { background: transparent; }
 #login .login-right-toolbar {
-  position: absolute; top: 28px; right: 32px;
+  position: absolute; top: 20px; right: 20px;
   display: flex; align-items: center; gap: 10px;
   z-index: 3;
 }
@@ -1795,14 +1794,14 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); color: #94A3B8;
 }
 #login .login-right-inner {
-  width: 100%; max-width: 420px; margin: 0 auto;
+  width: 100%; max-width: 380px; margin: 0 auto;
   padding-top: 48px;
 }
 #login .lcard {
-  width: 100%; max-width: 420px;
-  background: #fff; border-radius: 24px;
-  padding: 40px 38px 36px;
-  box-shadow: 0 8px 32px rgba(108,63,245,.06);
+  width: 100%; max-width: 380px;
+  background: #fff; border-radius: 20px;
+  padding: 32px 30px 28px;
+  box-shadow: 0 8px 40px rgba(0,0,0,.25);
   border: none;
   outline: none;
 }
