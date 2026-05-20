@@ -1647,16 +1647,22 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   z-index: 2;
 }
 #login .login-left::after { display: none; }
-/* Content pinned absolutely to top-left corner */
+/* Content pinned to top-left — dark circle wraps logo + brand + headline */
 #login .ll-content {
   display: flex;
   flex-direction: column;
   position: absolute;
-  top: 28px;
-  left: 28px;
+  top: 18px;
+  left: 18px;
   z-index: 3;
   width: auto;
-  max-width: 460px;
+  max-width: 310px;
+  background: rgba(14, 7, 36, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(196,181,253,0.14);
+  border-radius: 36px;
+  padding: 22px 26px 26px 22px;
 }
 /* Photo anchored to bottom of panel — natural width, auto height = no cropping */
 #login .ll-hero-wrap {
@@ -1692,18 +1698,10 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   mask-image: none;
 }
 #login .ll-brand {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 18px;
-  /* dark oval/circle background around logo + brand text */
-  background: rgba(6, 3, 22, 0.72);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(196,181,253,0.18);
-  border-radius: 999px;
-  padding: 10px 22px 10px 10px;
-  width: fit-content;
+  margin-bottom: 14px;
 }
 #login .ll-logo-img,
 .ip-logo {
@@ -1712,25 +1710,26 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   flex-shrink: 0;
 }
 #login .ll-logo-img {
-  width: 48px;
-  height: 48px;
+  width: 64px;
+  height: 64px;
   mix-blend-mode: lighten;
-  filter: drop-shadow(0 0 12px rgba(108,63,245,.7));
+  filter: drop-shadow(0 0 14px rgba(108,63,245,.7));
   opacity: 0.95;
 }
-/* Sidebar is always dark — lighten makes the logo pop on dark bg */
+/* Sidebar logo — larger, crisp on dark background */
 .sidebar .ip-logo {
-  width: 32px;
-  height: 32px;
+  width: 40px;
+  height: 40px;
   mix-blend-mode: lighten;
+  filter: drop-shadow(0 0 8px rgba(108,63,245,.5));
 }
-/* Topbar: normal so logo is visible in both light and dark mode */
+/* Topbar logo */
 .topbar .ip-logo {
-  width: 28px;
-  height: 28px;
-  mix-blend-mode: normal;
+  width: 34px;
+  height: 34px;
+  mix-blend-mode: lighten;
+  filter: drop-shadow(0 0 6px rgba(108,63,245,.4));
 }
-/* In dark mode topbar, lighten helps if logo is light-on-dark */
 [data-theme=dark] .topbar .ip-logo {
   mix-blend-mode: lighten;
 }
@@ -1743,9 +1742,9 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   font-size: 13px; color: rgba(196,181,253,.8); font-weight: 500; margin-top: 5px;
 }
 #login .ll-headline {
-  font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; color: #FFFFFF;
-  letter-spacing: -1.5px; line-height: 1.12;
-  margin: 0 0 24px; max-width: 480px;
+  font-size: clamp(26px, 2.8vw, 36px); font-weight: 800; color: #FFFFFF;
+  letter-spacing: -1px; line-height: 1.15;
+  margin: 0; max-width: 100%;
   font-family: 'Space Grotesk', sans-serif;
   flex-shrink: 0;
 }
