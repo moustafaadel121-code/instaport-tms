@@ -1647,16 +1647,16 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   z-index: 2;
 }
 #login .login-left::after { display: none; }
-/* Content sits on top of photo + overlay */
+/* Content pinned absolutely to top-left corner */
 #login .ll-content {
   display: flex;
   flex-direction: column;
-  position: relative;
+  position: absolute;
+  top: 28px;
+  left: 28px;
   z-index: 3;
-  flex-shrink: 0;
-  width: 100%;
-  max-width: 520px;
-  padding: 36px 44px 0 44px;
+  width: auto;
+  max-width: 460px;
 }
 /* Photo anchored to bottom of panel — natural width, auto height = no cropping */
 #login .ll-hero-wrap {
@@ -1692,8 +1692,18 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   mask-image: none;
 }
 #login .ll-brand {
-  display: flex; align-items: center; gap: 14px;
-  margin-bottom: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  /* dark oval/circle background around logo + brand text */
+  background: rgba(6, 3, 22, 0.72);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(196,181,253,0.18);
+  border-radius: 999px;
+  padding: 10px 22px 10px 10px;
+  width: fit-content;
 }
 #login .ll-logo-img,
 .ip-logo {
@@ -1702,12 +1712,11 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   flex-shrink: 0;
 }
 #login .ll-logo-img {
-  width: 90px;
-  height: 90px;
+  width: 48px;
+  height: 48px;
   mix-blend-mode: lighten;
-  /* subtle glow — merges the logo softly into the panel scene */
-  filter: drop-shadow(0 0 18px rgba(108,63,245,.65)) drop-shadow(0 0 6px rgba(196,181,253,.4));
-  opacity: 0.92;
+  filter: drop-shadow(0 0 12px rgba(108,63,245,.7));
+  opacity: 0.95;
 }
 /* Sidebar is always dark — lighten makes the logo pop on dark bg */
 .sidebar .ip-logo {
