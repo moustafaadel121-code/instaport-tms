@@ -1687,14 +1687,13 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   display: block;
   pointer-events: none;
   border: none; outline: none; box-shadow: none;
-  /* normal: show the full photo as-is on top of dark bg */
+  /* contain = full truck visible, no cropping; anchored to bottom of panel */
+  object-fit: contain;
+  object-position: center bottom;
   mix-blend-mode: normal;
-  filter: contrast(1.06) saturate(1.12) brightness(0.94);
+  filter: contrast(1.06) saturate(1.1) brightness(0.96);
   -webkit-mask-image: none;
   mask-image: none;
-  /* Slight zoom-out — shows more of the scene, dark panel bleeds through naturally */
-  transform: scale(0.84);
-  transform-origin: center center;
 }
 #login .ll-brand {
   display: flex; align-items: center; gap: 14px;
@@ -1707,9 +1706,12 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   flex-shrink: 0;
 }
 #login .ll-logo-img {
-  width: 78px;
-  height: 78px;
+  width: 90px;
+  height: 90px;
   mix-blend-mode: lighten;
+  /* subtle glow — merges the logo softly into the panel scene */
+  filter: drop-shadow(0 0 18px rgba(108,63,245,.65)) drop-shadow(0 0 6px rgba(196,181,253,.4));
+  opacity: 0.92;
 }
 /* Sidebar is always dark — lighten makes the logo pop on dark bg */
 .sidebar .ip-logo {
@@ -1729,11 +1731,11 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 }
 #login .ll-wordmark { display: flex; flex-direction: column; }
 #login .ll-wordmark-name {
-  font-size: 26px; font-weight: 800; color: #FFFFFF;
+  font-size: 30px; font-weight: 800; color: #FFFFFF;
   letter-spacing: -.5px; font-family: 'Space Grotesk', sans-serif; line-height: 1.1;
 }
 #login .ll-wordmark-sub {
-  font-size: 12px; color: rgba(196,181,253,.75); font-weight: 500; margin-top: 4px;
+  font-size: 13px; color: rgba(196,181,253,.8); font-weight: 500; margin-top: 5px;
 }
 #login .ll-headline {
   font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; color: #FFFFFF;
