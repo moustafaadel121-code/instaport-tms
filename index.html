@@ -1631,35 +1631,11 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   padding: 36px 0 0 44px;
   position: relative;
   overflow: hidden;
-  /* ── PREMIUM VIOLET ── */
-  background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
+  background: transparent;
   border: none;
 }
-/* Radial glow top-right */
-#login .login-left::before {
-  content: '';
-  position: absolute;
-  top: -120px; right: -80px;
-  width: 480px; height: 480px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(108,63,245,.45) 0%, transparent 65%);
-  pointer-events: none;
-  display: block;
-}
-/* Radial glow bottom-left */
-#login .login-left::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: -60px;
-  width: 360px; height: 280px;
-  background: radial-gradient(ellipse, rgba(79,31,212,.5) 0%, transparent 70%);
-  pointer-events: none;
-  display: block;
-}
-/* Dark-mode keeps same rich gradient */
-[data-theme=dark] #login .login-left {
-  background: linear-gradient(150deg, #0A0620 0%, #120B38 35%, #1E1055 65%, #2D1A7A 100%);
-}
+#login .login-left::before,
+#login .login-left::after { display: none; }
 #login .ll-content {
   display: flex;
   flex-direction: column;
@@ -1678,33 +1654,36 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   position: relative;
   min-height: 0;
   width: 100%;
-  margin: 0;
+  margin: 4px -8% 0;
   padding: 0;
   border: none;
   background: transparent;
-  overflow: hidden;
 }
-/* NO opaque overlay — dark bg does not need it */
-#login .ll-hero-wrap::before { display: none; }
-#login .ll-hero-wrap::after  { display: none; }
+#login .ll-hero-wrap::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 0;
+  height: 28%;
+  background: linear-gradient(to bottom, rgba(240,237,255,.92) 0%, transparent 100%);
+  z-index: 2;
+  pointer-events: none;
+}
+#login .ll-hero-wrap::after { display: none; }
 #login .ll-truck-stage {
   position: relative;
-  width: 110%;
-  max-width: 740px;
+  width: 120%;
+  max-width: 820px;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   z-index: 1;
-  background: transparent;
-  overflow: visible;
 }
-/* Soft purple ground shadow under the truck */
 #login .ll-truck-stage::after {
   content: '';
   position: absolute;
-  left: 12%; right: 12%; bottom: 0;
-  height: 40px;
-  background: radial-gradient(ellipse at center bottom, rgba(108,63,245,.55) 0%, transparent 72%);
+  left: 8%; right: 8%; bottom: 2px;
+  height: 48px;
+  background: radial-gradient(ellipse at center bottom, rgba(108,63,245,.22) 0%, transparent 72%);
   pointer-events: none;
   z-index: 0;
 }
@@ -1712,28 +1691,20 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   position: relative;
   width: 100%;
   height: auto;
-  max-height: min(72vh, 580px);
-  min-height: 240px;
+  max-height: min(76vh, 660px);
+  min-height: 300px;
   object-fit: contain;
   object-position: center bottom;
   display: block;
   pointer-events: none;
   z-index: 1;
-  border: none !important;
-  outline: none !important;
-  box-shadow: none !important;
-  background: transparent;
-  /* Dark violet bg: screen makes white/light parts glow, dark parts vanish */
+  border: none;
+  outline: none;
+  box-shadow: none;
   mix-blend-mode: screen;
-  filter: contrast(1.12) saturate(1.25) brightness(1.1)
-          drop-shadow(0 0 32px rgba(108,63,245,.6));
-  /* Fade sides and bottom edge only — no top fade needed */
-  -webkit-mask-image: linear-gradient(
-    to right, transparent 0%, #000 6%, #000 94%, transparent 100%
-  );
-  mask-image: linear-gradient(
-    to right, transparent 0%, #000 6%, #000 94%, transparent 100%
-  );
+  filter: contrast(1.14) saturate(1.12) brightness(1.04);
+  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 3%, #000 97%, transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0%, #000 3%, #000 97%, transparent 100%);
 }
 #login .ll-brand {
   display: flex; align-items: center; gap: 14px;
@@ -1744,14 +1715,11 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   object-fit: contain;
   display: block;
   flex-shrink: 0;
-  mix-blend-mode: normal; /* default: always visible */
 }
 #login .ll-logo-img {
   width: 52px;
   height: 52px;
-}
-.ip-logo {
-  /* blend mode intentionally normal — overridden per context below */
+  mix-blend-mode: lighten;
 }
 /* Sidebar is always dark — lighten makes the logo pop on dark bg */
 .sidebar .ip-logo {
@@ -1771,20 +1739,20 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 }
 #login .ll-wordmark { display: flex; flex-direction: column; }
 #login .ll-wordmark-name {
-  font-size: 26px; font-weight: 800; color: #FFFFFF;
+  font-size: 26px; font-weight: 800; color: #0F0E2E;
   letter-spacing: -.5px; font-family: 'Space Grotesk', sans-serif; line-height: 1.1;
 }
 #login .ll-wordmark-sub {
-  font-size: 12px; color: rgba(196,181,253,.75); font-weight: 500; margin-top: 4px;
+  font-size: 12px; color: #6B7280; font-weight: 500; margin-top: 4px;
 }
 #login .ll-headline {
-  font-size: clamp(28px, 3.2vw, 42px); font-weight: 800; color: #FFFFFF;
+  font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; color: #0F0E2E;
   letter-spacing: -1.5px; line-height: 1.12;
   margin: 0 0 24px; max-width: 480px;
   font-family: 'Space Grotesk', sans-serif;
   flex-shrink: 0;
 }
-#login .ll-headline span { color: #C4B5FD; }
+#login .ll-headline span { color: #6C3FF5; }
 #login .ll-hero-spacer { flex: 1; min-height: 120px; }
 #login .ll-tagline2,
 #login .ll-truck-wrapper,
@@ -2005,7 +1973,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 .cmw-truck-svg {
   display:block; width:100%; height:auto;
   min-height:120px; max-height:148px;
-  opacity:.58; overflow:visible;
+  opacity:.78; overflow:visible;
   filter:drop-shadow(0 4px 22px rgba(108,63,245,.65));
 }
 .cmw-content { position:relative; z-index:2; }
@@ -2574,32 +2542,9 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 <div id="login">
   <!-- LEFT: logo + headline + truck scene (truck.png) -->
   <div class="login-left">
-    <!-- Premium decorative route SVG -->
-    <svg class="ll-route-deco" aria-hidden="true" viewBox="0 0 500 400" xmlns="http://www.w3.org/2000/svg" style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0;opacity:.18">
-      <!-- Horizontal route lines -->
-      <line x1="0" y1="120" x2="500" y2="120" stroke="rgba(155,127,248,1)" stroke-width="1" stroke-dasharray="8 16"/>
-      <line x1="0" y1="200" x2="500" y2="200" stroke="rgba(108,63,245,1)" stroke-width="0.6" stroke-dasharray="5 20"/>
-      <line x1="0" y1="280" x2="500" y2="280" stroke="rgba(155,127,248,1)" stroke-width="0.8" stroke-dasharray="6 18"/>
-      <!-- Node dots -->
-      <circle cx="80"  cy="120" r="3" fill="rgba(249,115,22,1)"/>
-      <circle cx="200" cy="200" r="2.5" fill="rgba(249,115,22,.8)"/>
-      <circle cx="340" cy="120" r="3" fill="rgba(249,115,22,1)"/>
-      <circle cx="120" cy="280" r="2" fill="rgba(249,115,22,.7)"/>
-      <!-- Vertical connectors -->
-      <line x1="200" y1="120" x2="200" y2="200" stroke="rgba(108,63,245,1)" stroke-width="0.6"/>
-      <line x1="340" y1="120" x2="340" y2="200" stroke="rgba(155,127,248,.6)" stroke-width="0.5"/>
-      <!-- Grid dots -->
-      <circle cx="100" cy="160" r="1.2" fill="rgba(155,127,248,1)"/>
-      <circle cx="180" cy="240" r="1.2" fill="rgba(155,127,248,1)"/>
-      <circle cx="280" cy="160" r="1.2" fill="rgba(155,127,248,1)"/>
-      <circle cx="400" cy="240" r="1.2" fill="rgba(155,127,248,1)"/>
-      <circle cx="60"  cy="300" r="1"   fill="rgba(155,127,248,.7)"/>
-      <circle cx="460" cy="160" r="1"   fill="rgba(155,127,248,.7)"/>
-    </svg>
-
-    <div class="ll-content" style="position:relative;z-index:2">
+    <div class="ll-content">
       <div class="ll-brand">
-        <img src="logo.png" alt="" class="ll-logo-img" style="mix-blend-mode:lighten;filter:brightness(1.3)"/>
+        <img src="logo.png" alt="" class="ll-logo-img"/>
         <div class="ll-wordmark">
           <span class="ll-wordmark-name">InstaPort</span>
           <span class="ll-wordmark-sub">Transportation Management System</span>
