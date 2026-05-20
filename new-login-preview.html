@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>InstaPort — New Login Design Preview</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet"/>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Space Grotesk',sans-serif;height:100vh;overflow:hidden;display:flex;}
+
+/* ══ LEFT PANEL ══ */
+.left{
+  flex:0 0 48%;width:48%;min-height:100vh;
+  display:flex;flex-direction:column;
+  position:relative;overflow:hidden;
+  background:linear-gradient(155deg,#06031A 0%,#120B38 30%,#1E1055 60%,#2D1A7A 100%);
+}
+/* Radial glows */
+.left::before{
+  content:'';position:absolute;top:-140px;right:-100px;
+  width:520px;height:520px;border-radius:50%;
+  background:radial-gradient(circle,rgba(108,63,245,.5) 0%,transparent 65%);
+  pointer-events:none;
+}
+.left::after{
+  content:'';position:absolute;bottom:-60px;left:-80px;
+  width:400px;height:320px;
+  background:radial-gradient(ellipse,rgba(79,31,212,.45) 0%,transparent 70%);
+  pointer-events:none;
+}
+
+/* Dot grid */
+.dot-grid{
+  position:absolute;inset:0;
+  background-image:radial-gradient(rgba(155,127,248,.18) 1.2px,transparent 1.2px);
+  background-size:36px 36px;
+  pointer-events:none;z-index:0;
+}
+
+/* Diagonal lines */
+.diag-lines{
+  position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0;
+}
+.diag-lines svg{position:absolute;inset:0;width:100%;height:100%;}
+
+/* Large hex ring decoration */
+.hex-ring{
+  position:absolute;right:-120px;top:50%;transform:translateY(-50%);
+  width:480px;height:480px;pointer-events:none;z-index:0;opacity:.12;
+}
+
+/* Content */
+.left-content{position:relative;z-index:2;padding:44px 48px;display:flex;flex-direction:column;height:100%;}
+
+/* Brand */
+.brand{display:flex;align-items:center;gap:16px;margin-bottom:auto;}
+.logo-badge{
+  width:52px;height:52px;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+}
+.logo-badge img,.logo-badge svg{width:100%;height:100%;}
+.wordmark-name{font-size:22px;font-weight:800;color:#fff;letter-spacing:-.5px;}
+.wordmark-sub{font-size:11px;color:rgba(196,181,253,.7);font-weight:500;margin-top:3px;}
+
+/* Headline */
+.headline-block{margin-top:auto;margin-bottom:0;padding-bottom:20px;}
+.headline{font-size:clamp(32px,3.2vw,46px);font-weight:800;color:#fff;
+  letter-spacing:-1.5px;line-height:1.1;margin-bottom:12px;}
+.headline span{color:#C4B5FD;}
+.sub-line{font-size:14px;color:rgba(196,181,253,.65);line-height:1.65;max-width:380px;margin-bottom:28px;}
+
+/* Route visual */
+.route-deco{
+  position:absolute;bottom:0;left:0;right:0;
+  height:55%;pointer-events:none;z-index:1;
+}
+
+/* ══ RIGHT PANEL ══ */
+.right{
+  flex:1;min-height:100vh;
+  display:flex;align-items:center;justify-content:center;
+  background:#F5F4FD;position:relative;
+  padding:32px;
+}
+.right::before{
+  content:'';position:absolute;top:0;left:0;width:1px;height:100%;
+  background:linear-gradient(to bottom,transparent,rgba(108,63,245,.25),transparent);
+}
+
+.toolbar{position:absolute;top:28px;right:32px;display:flex;gap:8px;}
+.pill{padding:6px 16px;border-radius:20px;font-size:12px;font-weight:600;
+  background:rgba(108,63,245,.08);border:1px solid rgba(108,63,245,.2);color:#6C3FF5;cursor:pointer;}
+.pill:hover{background:rgba(108,63,245,.15);}
+
+/* Form card */
+.card{
+  width:100%;max-width:420px;
+  background:#fff;border-radius:20px;
+  box-shadow:0 8px 48px rgba(108,63,245,.12),0 2px 8px rgba(0,0,0,.06);
+  overflow:hidden;position:relative;
+}
+/* Gradient top bar */
+.card::before{
+  content:'';display:block;height:4px;
+  background:linear-gradient(90deg,#4F1FD4,#9B7FF8,#F97316);
+}
+.card-body{padding:36px 36px 32px;}
+
+.card-title{font-size:26px;font-weight:800;color:#0F0E2E;letter-spacing:-.5px;margin-bottom:6px;}
+.card-sub{font-size:13px;color:#6B7280;margin-bottom:28px;}
+
+.field-label{font-size:12px;font-weight:600;color:#374151;display:block;margin-bottom:6px;}
+.field-wrap{position:relative;margin-bottom:18px;}
+.field-ico{position:absolute;left:14px;top:50%;transform:translateY(-50%);font-size:15px;}
+.field-inp{
+  width:100%;padding:12px 14px 12px 40px;
+  border:1.5px solid #E5E7EB;border-radius:10px;
+  font-size:13px;color:#374151;background:#F9FAFB;
+  outline:none;font-family:inherit;transition:border-color .2s;
+}
+.field-inp:focus{border-color:#6C3FF5;background:#fff;}
+.field-inp::placeholder{color:#9CA3AF;}
+
+.row-split{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;}
+.remember{display:flex;align-items:center;gap:7px;font-size:12px;color:#6B7280;}
+.remember input[type=checkbox]{accent-color:#6C3FF5;width:14px;height:14px;}
+.forgot{font-size:12px;color:#6C3FF5;text-decoration:none;font-weight:600;}
+.forgot:hover{text-decoration:underline;}
+
+.login-btn{
+  width:100%;padding:14px;border:none;border-radius:12px;
+  background:linear-gradient(90deg,#4F1FD4,#6C3FF5);
+  color:#fff;font-size:15px;font-weight:700;letter-spacing:.3px;
+  cursor:pointer;font-family:inherit;
+  transition:transform .15s,box-shadow .15s;
+  box-shadow:0 4px 20px rgba(108,63,245,.4);
+}
+.login-btn:hover{transform:translateY(-1px);box-shadow:0 8px 28px rgba(108,63,245,.5);}
+
+.signup-row{text-align:center;margin-top:20px;font-size:12px;color:#9CA3AF;}
+.signup-row a{color:#6C3FF5;font-weight:600;text-decoration:none;}
+
+/* Demo chip */
+.demo-chip{
+  margin-top:18px;padding:12px 14px;
+  background:rgba(108,63,245,.05);border:1px solid rgba(108,63,245,.12);
+  border-radius:10px;font-size:11px;color:#6C3FF5;
+}
+.demo-chip strong{display:block;margin-bottom:4px;font-size:12px;}
+</style>
+</head>
+<body>
+
+<!-- LEFT PANEL -->
+<div class="left">
+  <div class="dot-grid"></div>
+
+  <!-- Diagonal decorative lines -->
+  <div class="diag-lines">
+    <svg viewBox="0 0 600 900" preserveAspectRatio="none">
+      <defs><pattern id="diag" x="0" y="0" width="120" height="900" patternUnits="userSpaceOnUse">
+        <line x1="0" y1="0" x2="300" y2="900" stroke="rgba(108,63,245,0.12)" stroke-width="1"/>
+      </pattern></defs>
+      <rect width="600" height="900" fill="url(#diag)"/>
+    </svg>
+  </div>
+
+  <!-- Large hex ring -->
+  <svg class="hex-ring" viewBox="0 0 480 480">
+    <polygon points="240,10 460,130 460,350 240,470 20,350 20,130"
+             fill="none" stroke="rgba(108,63,245,1)" stroke-width="60"/>
+    <polygon points="240,10 460,130 460,350 240,470 20,350 20,130"
+             fill="none" stroke="rgba(196,181,253,0.4)" stroke-width="2"/>
+  </svg>
+
+  <div class="left-content">
+    <!-- Brand row -->
+    <div class="brand">
+      <div class="logo-badge">
+        <!-- New logo SVG inline -->
+        <svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="bg2" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#1E0B5E"/>
+              <stop offset="50%" stop-color="#4F1FD4"/>
+              <stop offset="100%" stop-color="#7C3AED"/>
+            </linearGradient>
+            <linearGradient id="bar2" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stop-color="#6C3FF5"/>
+              <stop offset="60%" stop-color="#C4B5FD"/>
+              <stop offset="100%" stop-color="#F97316"/>
+            </linearGradient>
+          </defs>
+          <polygon points="256,28 456,142 456,370 256,484 56,370 56,142" fill="url(#bg2)"/>
+          <radialGradient id="glow2" cx="50%" cy="35%" r="55%">
+            <stop offset="0%" stop-color="#C4B5FD" stop-opacity="0.3"/>
+            <stop offset="100%" stop-color="#C4B5FD" stop-opacity="0"/>
+          </radialGradient>
+          <polygon points="256,28 456,142 456,370 256,484 56,370 56,142" fill="url(#glow2)"/>
+          <polygon points="256,28 456,142 456,370 256,484 56,370 56,142"
+                   fill="none" stroke="rgba(196,181,253,0.4)" stroke-width="4"/>
+          <line x1="100" y1="355" x2="412" y2="355"
+                stroke="#F97316" stroke-width="2.5" stroke-dasharray="8,14" opacity="0.5"/>
+          <circle cx="256" cy="355" r="8" fill="#F97316"/>
+          <circle cx="256" cy="355" r="15" fill="none" stroke="#F97316" stroke-width="1.5" opacity="0.4"/>
+          <text x="256" y="306" font-family="'Arial Black',Arial,sans-serif"
+                font-size="210" font-weight="900" text-anchor="middle"
+                fill="white" opacity="0.97">IP</text>
+          <rect x="199" y="368" width="114" height="6" rx="3" fill="url(#bar2)"/>
+          <rect x="248" y="68" width="16" height="16" rx="2"
+                fill="#F97316" opacity="0.75" transform="rotate(45 256 76)"/>
+        </svg>
+      </div>
+      <div>
+        <div class="wordmark-name">InstaPort</div>
+        <div class="wordmark-sub">Transportation Management System</div>
+      </div>
+    </div>
+
+    <!-- Headline -->
+    <div class="headline-block">
+      <div class="headline">Move Smarter.<br><span>Deliver Faster.</span></div>
+      <div class="sub-line">Real-time fleet visibility, intelligent dispatch, and seamless logistics — all in one platform.</div>
+    </div>
+  </div>
+
+  <!-- Route decoration (truck + route) -->
+  <div class="route-deco">
+    <svg viewBox="0 0 640 360" preserveAspectRatio="xMidYMax meet"
+         style="position:absolute;bottom:0;left:0;width:100%;height:100%">
+      <!-- Ground glow -->
+      <ellipse cx="320" cy="330" rx="280" ry="22" fill="rgba(108,63,245,0.35)"/>
+      <!-- Route line -->
+      <path d="M40 290 Q180 240 320 270 Q460 300 600 250"
+            fill="none" stroke="rgba(249,115,22,0.35)" stroke-width="2" stroke-dasharray="8,12"/>
+      <!-- Nodes -->
+      <circle cx="40"  cy="290" r="4" fill="rgba(249,115,22,0.5)"/>
+      <circle cx="200" cy="255" r="6" fill="#F97316"/>
+      <circle cx="200" cy="255" r="12" fill="none" stroke="rgba(249,115,22,0.3)" stroke-width="1.5"/>
+      <circle cx="440" cy="278" r="4" fill="rgba(249,115,22,0.5)"/>
+      <circle cx="600" cy="250" r="4" fill="rgba(249,115,22,0.5)"/>
+      <!-- Truck silhouette -->
+      <!-- Trailer -->
+      <rect x="60" y="165" width="340" height="118" rx="8"
+            fill="rgba(108,63,245,0.1)" stroke="rgba(196,181,253,0.28)" stroke-width="2"/>
+      <line x1="140" y1="165" x2="140" y2="283" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+      <line x1="220" y1="165" x2="220" y2="283" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+      <line x1="300" y1="165" x2="300" y2="283" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
+      <line x1="80"  y1="210" x2="397" y2="210" stroke="rgba(249,115,22,0.28)" stroke-width="1" stroke-dasharray="7,9"/>
+      <rect x="64" y="185" width="2.5" height="52" rx="1.5" fill="rgba(255,255,255,0.18)"/>
+      <!-- Cab -->
+      <rect x="400" y="180" width="168" height="103" rx="10"
+            fill="rgba(108,63,245,0.16)" stroke="rgba(196,181,253,0.35)" stroke-width="2"/>
+      <!-- Windshield -->
+      <path d="M403 186 L545 186 L562 222 L403 222 Z"
+            fill="rgba(155,127,248,0.1)" stroke="rgba(196,181,253,0.18)" stroke-width="1"/>
+      <path d="M410 189 L492 189 L500 202 L410 202 Z" fill="rgba(255,255,255,0.1)"/>
+      <!-- Cab door window -->
+      <rect x="407" y="228" width="150" height="36" rx="4"
+            fill="rgba(255,255,255,0.05)" stroke="rgba(255,255,255,0.08)" stroke-width="0.8"/>
+      <!-- Headlight -->
+      <rect x="558" y="234" width="14" height="26" rx="3" fill="rgba(249,115,22,0.45)" stroke="rgba(249,115,22,0.7)" stroke-width="1"/>
+      <rect x="560" y="236" width="10" height="13" rx="2" fill="rgba(249,200,80,0.6)"/>
+      <!-- Mirror -->
+      <rect x="566" y="194" width="14" height="10" rx="2"
+            fill="rgba(255,255,255,0.22)" stroke="rgba(255,255,255,0.3)" stroke-width="1"/>
+      <!-- Exhaust -->
+      <rect x="533" y="152" width="10" height="30" rx="5"
+            fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.16)" stroke-width="1"/>
+      <!-- Fifth wheel -->
+      <rect x="392" y="277" width="20" height="7" rx="2" fill="rgba(255,255,255,0.18)"/>
+      <!-- Ground line -->
+      <line x1="40" y1="308" x2="590" y2="308" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+      <!-- Wheels -->
+      <circle cx="115" cy="302" r="20" fill="rgba(255,255,255,0.06)" stroke="rgba(196,181,253,0.25)" stroke-width="2"/>
+      <circle cx="115" cy="302" r="10" fill="rgba(255,255,255,0.04)" stroke="rgba(196,181,253,0.12)" stroke-width="1"/>
+      <circle cx="115" cy="302" r="4"  fill="rgba(255,255,255,0.22)"/>
+      <circle cx="173" cy="302" r="20" fill="rgba(255,255,255,0.06)" stroke="rgba(196,181,253,0.25)" stroke-width="2"/>
+      <circle cx="173" cy="302" r="10" fill="rgba(255,255,255,0.04)" stroke="rgba(196,181,253,0.12)" stroke-width="1"/>
+      <circle cx="173" cy="302" r="4"  fill="rgba(255,255,255,0.22)"/>
+      <circle cx="428" cy="302" r="20" fill="rgba(255,255,255,0.06)" stroke="rgba(196,181,253,0.25)" stroke-width="2"/>
+      <circle cx="428" cy="302" r="10" fill="rgba(255,255,255,0.04)" stroke="rgba(196,181,253,0.12)" stroke-width="1"/>
+      <circle cx="428" cy="302" r="4"  fill="rgba(255,255,255,0.22)"/>
+      <circle cx="476" cy="302" r="20" fill="rgba(255,255,255,0.06)" stroke="rgba(196,181,253,0.25)" stroke-width="2"/>
+      <circle cx="476" cy="302" r="10" fill="rgba(255,255,255,0.04)" stroke="rgba(196,181,253,0.12)" stroke-width="1"/>
+      <circle cx="476" cy="302" r="4"  fill="rgba(255,255,255,0.22)"/>
+      <circle cx="532" cy="302" r="18" fill="rgba(255,255,255,0.06)" stroke="rgba(196,181,253,0.25)" stroke-width="2"/>
+      <circle cx="532" cy="302" r="9"  fill="rgba(255,255,255,0.04)" stroke="rgba(196,181,253,0.12)" stroke-width="1"/>
+      <circle cx="532" cy="302" r="4"  fill="rgba(255,255,255,0.22)"/>
+    </svg>
+  </div>
+</div>
+
+<!-- RIGHT PANEL -->
+<div class="right">
+  <div class="toolbar">
+    <button class="pill">☀ Light</button>
+    <button class="pill">🌙 Dark</button>
+    <button class="pill">🌐 AR</button>
+  </div>
+
+  <div class="card">
+    <div class="card-body">
+      <div class="card-title">Welcome back</div>
+      <div class="card-sub">Sign in to your organization</div>
+
+      <label class="field-label">Organization Code</label>
+      <div class="field-wrap">
+        <span class="field-ico">🏢</span>
+        <input class="field-inp" type="text" placeholder="e.g. instaport"/>
+      </div>
+
+      <label class="field-label">Employee ID</label>
+      <div class="field-wrap">
+        <span class="field-ico">👤</span>
+        <input class="field-inp" type="text" placeholder="e.g. john.smith@instaport.com"/>
+      </div>
+
+      <label class="field-label">PIN / Password</label>
+      <div class="field-wrap">
+        <span class="field-ico">🔒</span>
+        <input class="field-inp" type="password" placeholder="••••••••"/>
+      </div>
+
+      <div class="row-split">
+        <label class="remember"><input type="checkbox"/> Remember me</label>
+        <a href="#" class="forgot">Forgot Password?</a>
+      </div>
+
+      <button class="login-btn">LOGIN</button>
+
+      <div class="signup-row">New organization? <a href="#">Register here</a></div>
+
+      <div class="demo-chip">
+        <strong>🎯 Demo Credentials</strong>
+        Org: <b>instaport</b> &nbsp;|&nbsp; ID: <b>5454/5832</b> &nbsp;|&nbsp; PIN: <b>Admin</b>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

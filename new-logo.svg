@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Background gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%"   stop-color="#1E0B5E"/>
+      <stop offset="45%"  stop-color="#4F1FD4"/>
+      <stop offset="100%" stop-color="#7C3AED"/>
+    </linearGradient>
+    <!-- Inner glow -->
+    <radialGradient id="innerGlow" cx="50%" cy="35%" r="55%">
+      <stop offset="0%"   stop-color="#C4B5FD" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#C4B5FD" stop-opacity="0"/>
+    </radialGradient>
+    <!-- Accent gradient bar -->
+    <linearGradient id="barGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%"   stop-color="#6C3FF5"/>
+      <stop offset="50%"  stop-color="#C4B5FD"/>
+      <stop offset="100%" stop-color="#F97316"/>
+    </linearGradient>
+    <!-- Drop shadow filter -->
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="8" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <filter id="textGlow">
+      <feGaussianBlur stdDeviation="6" result="blur"/>
+      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
+    </filter>
+    <!-- Hex clip path -->
+    <clipPath id="hexClip">
+      <polygon points="256,28 456,142 456,370 256,484 56,370 56,142"/>
+    </clipPath>
+  </defs>
+
+  <!-- ── Hex background ── -->
+  <polygon points="256,28 456,142 456,370 256,484 56,370 56,142"
+           fill="url(#bgGrad)"/>
+  <!-- Inner glow layer -->
+  <polygon points="256,28 456,142 456,370 256,484 56,370 56,142"
+           fill="url(#innerGlow)"/>
+  <!-- Hex border -->
+  <polygon points="256,28 456,142 456,370 256,484 56,370 56,142"
+           fill="none" stroke="rgba(196,181,253,0.35)" stroke-width="4"/>
+  <!-- Inner thin hex ring -->
+  <polygon points="256,56 432,158 432,354 256,456 80,354 80,158"
+           fill="none" stroke="rgba(255,255,255,0.07)" stroke-width="2"/>
+
+  <!-- ── Dot grid (subtle background texture) ── -->
+  <g opacity="0.15" fill="#C4B5FD">
+    <circle cx="130" cy="120" r="2"/><circle cx="170" cy="120" r="2"/><circle cx="210" cy="120" r="2"/>
+    <circle cx="302" cy="120" r="2"/><circle cx="342" cy="120" r="2"/><circle cx="382" cy="120" r="2"/>
+    <circle cx="110" cy="155" r="2"/><circle cx="150" cy="155" r="2"/><circle cx="190" cy="155" r="2"/>
+    <circle cx="322" cy="155" r="2"/><circle cx="362" cy="155" r="2"/><circle cx="402" cy="155" r="2"/>
+  </g>
+
+  <!-- ── Route dashes across bottom ── -->
+  <line x1="100" y1="355" x2="412" y2="355"
+        stroke="#F97316" stroke-width="2.5" stroke-dasharray="8,14" opacity="0.5"/>
+
+  <!-- ── Route nodes ── -->
+  <circle cx="160" cy="355" r="5"  fill="#F97316" opacity="0.65"/>
+  <circle cx="256" cy="355" r="8"  fill="#F97316"/>
+  <circle cx="256" cy="355" r="15" fill="none" stroke="#F97316" stroke-width="1.5" opacity="0.4"/>
+  <circle cx="352" cy="355" r="5"  fill="#F97316" opacity="0.65"/>
+
+  <!-- ── "IP" monogram ── -->
+  <text x="256" y="306"
+        font-family="'Arial Black', 'Impact', Arial, sans-serif"
+        font-size="210" font-weight="900"
+        text-anchor="middle" dominant-baseline="auto"
+        fill="white" filter="url(#textGlow)" opacity="0.97">IP</text>
+
+  <!-- ── Gradient accent bar ── -->
+  <rect x="199" y="368" width="114" height="6" rx="3" fill="url(#barGrad)"/>
+
+  <!-- ── Small amber diamond accent (top) ── -->
+  <rect x="248" y="68" width="16" height="16" rx="2"
+        fill="#F97316" opacity="0.75" transform="rotate(45 256 76)"/>
+
+  <!-- ── Hex stroke final overlay ── -->
+  <polygon points="256,28 456,142 456,370 256,484 56,370 56,142"
+           fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
+</svg>
