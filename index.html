@@ -1687,9 +1687,9 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   display: block;
   pointer-events: none;
   border: none; outline: none; box-shadow: none;
-  /* contain = full truck visible, no cropping; anchored to bottom of panel */
-  object-fit: contain;
-  object-position: center bottom;
+  /* cover = fills the full left panel edge-to-edge */
+  object-fit: cover;
+  object-position: center 60%;
   mix-blend-mode: normal;
   filter: contrast(1.06) saturate(1.1) brightness(0.96);
   -webkit-mask-image: none;
