@@ -2513,6 +2513,80 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   .topbar { padding: 0 12px; }
 }
 
+/* ══ PREMIUM APP LOADER ══ */
+#app-loader {
+  position: fixed; inset: 0; z-index: 9999;
+  display: flex; align-items: center; justify-content: center;
+}
+.apl-bg {
+  position: absolute; inset: 0;
+  background: url('kinetic-threshold.png') center center / cover no-repeat;
+}
+.apl-overlay {
+  position: absolute; inset: 0;
+  background: linear-gradient(160deg, rgba(10,6,32,.82) 0%, rgba(18,11,56,.78) 50%, rgba(45,26,122,.68) 100%);
+  backdrop-filter: blur(2px);
+}
+.apl-center {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  text-align: center;
+}
+.apl-logo {
+  width: 64px; height: 64px;
+  mix-blend-mode: lighten;
+  filter: drop-shadow(0 0 28px rgba(108,63,245,.9));
+  margin-bottom: 18px;
+  animation: aplPulse 2.4s ease-in-out infinite;
+}
+@keyframes aplPulse {
+  0%,100% { filter: drop-shadow(0 0 20px rgba(108,63,245,.75)); transform: scale(1); }
+  50%      { filter: drop-shadow(0 0 40px rgba(155,127,248,1));  transform: scale(1.06); }
+}
+.apl-wordmark {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 32px; font-weight: 800; color: #fff;
+  letter-spacing: -1px; line-height: 1;
+  margin-bottom: 6px;
+  text-shadow: 0 2px 24px rgba(108,63,245,.8);
+}
+.apl-sub {
+  font-size: 12px; color: rgba(196,181,253,.7);
+  font-weight: 500; letter-spacing: .5px;
+  margin-bottom: 36px;
+}
+.apl-bar-track {
+  width: 260px; height: 3px;
+  background: rgba(255,255,255,.12);
+  border-radius: 2px; overflow: hidden;
+  margin-bottom: 14px;
+}
+.apl-bar-fill {
+  height: 100%; width: 0%; border-radius: 2px;
+  background: linear-gradient(90deg, #6C3FF5, #C4B5FD, #F97316);
+  transition: width .35s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 0 10px rgba(108,63,245,.7);
+}
+.apl-status {
+  font-size: 11px; color: rgba(196,181,253,.55);
+  font-weight: 500; letter-spacing: .4px;
+  min-height: 16px;
+}
+/* Decorative corner frames */
+.apl-corner-tl, .apl-corner-br {
+  position: absolute; width: 48px; height: 48px;
+  pointer-events: none; z-index: 2;
+}
+.apl-corner-tl {
+  top: 32px; left: 40px;
+  border-top: 2px solid rgba(108,63,245,.5);
+  border-left: 2px solid rgba(108,63,245,.5);
+}
+.apl-corner-br {
+  bottom: 32px; right: 40px;
+  border-bottom: 2px solid rgba(249,115,22,.45);
+  border-right: 2px solid rgba(249,115,22,.45);
+}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -2671,6 +2745,21 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 
     </div><!-- /login-right-inner -->
   </div><!-- /login-right -->
+</div>
+
+<!-- ══ PREMIUM FULL-SCREEN LOADER ══ -->
+<div id="app-loader" style="display:none">
+  <div class="apl-bg"></div>
+  <div class="apl-overlay"></div>
+  <div class="apl-center">
+    <img src="logo.png" alt="InstaPort" class="apl-logo"/>
+    <div class="apl-wordmark">InstaPort</div>
+    <div class="apl-sub">Transportation Management System</div>
+    <div class="apl-bar-track"><div class="apl-bar-fill" id="apl-bar"></div></div>
+    <div class="apl-status" id="apl-status">Initializing…</div>
+  </div>
+  <div class="apl-corner-tl"></div>
+  <div class="apl-corner-br"></div>
 </div>
 
 <div id="app" style="display:none;height:100vh;flex-direction:row">
@@ -3088,12 +3177,32 @@ function showRegister(){document.getElementById('login-panel').style.display='no
 function showLogin(){document.getElementById('reg-panel').style.display='none';document.getElementById('login-panel').style.display='block';}
 
 /* ── Tenant-scoped data loader ── */
+function _showAppLoader(msg){
+  var el=document.getElementById('app-loader');
+  if(el){el.style.display='flex';}
+  var s=document.getElementById('apl-status');if(s)s.textContent=msg||'Initializing…';
+  var b=document.getElementById('apl-bar');if(b)b.style.width='8%';
+}
+function _setLoaderProgress(pct,msg){
+  var b=document.getElementById('apl-bar');if(b)b.style.width=pct+'%';
+  var s=document.getElementById('apl-status');if(s&&msg)s.textContent=msg;
+}
+function _hideAppLoader(){
+  var el=document.getElementById('app-loader');
+  if(!el)return;
+  var b=document.getElementById('apl-bar');if(b)b.style.width='100%';
+  setTimeout(function(){
+    el.style.transition='opacity .45s ease';
+    el.style.opacity='0';
+    setTimeout(function(){el.style.display='none';el.style.opacity='';el.style.transition='';},460);
+  },280);
+}
 async function initApp(){
   if(!_sb||!_tenantId)return;
   _supabaseLoading=true;
-  var contentEl=document.getElementById('content');
-  if(contentEl)contentEl.innerHTML='<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:var(--t2)"><div style="font-size:36px;margin-bottom:12px">⚙️</div><div style="font-size:13px;font-weight:600">Loading '+_tenantName+' data…</div></div>';
+  _showAppLoader('Connecting to '+_tenantName+'…');
   try{
+    _setLoaderProgress(22,'Loading shipment records…');
     // Run all queries in parallel — much faster than sequential
     var results=await Promise.all([
       _sb.from('trips').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}),
@@ -3103,6 +3212,7 @@ async function initApp(){
       _sb.from('trucks').select('*').eq('tenant_id',_tenantId),
       _sb.from('am_assignments').select('*').eq('tenant_id',_tenantId)
     ]);
+    _setLoaderProgress(68,'Processing fleet data…');
     var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4],r6=results[5];
     // Trips
     if(!r1.error&&r1.data&&r1.data.length){
@@ -3146,6 +3256,8 @@ async function initApp(){
     if(!navigator.onLine)toast('You are offline — using local data','err');
   }finally{
     _supabaseLoading=false;
+    _setLoaderProgress(100,'Ready');
+    _hideAppLoader();
   }
 }
 
@@ -4902,7 +5014,10 @@ function rDispatch(){
   var rel=TRUCKS.filter(function(t){return t.valid;});
   var drivers=USERS.filter(function(u){return u.role==='driver'&&u.active!==false;});
   c.innerHTML='<div class="page-head"><div><h2>🚦 Dispatch</h2></div></div>'+
-  (pend.length===0?'<div class="card" style="text-align:center;padding:48px;color:var(--t2)"><div style="font-size:48px">✅</div>No pending dispatches</div>':'')+
+  (pend.length===0?_emptyState('✅','All Clear — No Pending Dispatches','Every trip has been assigned. Create a new shipment or check active trips below.',
+    '<button class="btn btn-primary" onclick="nav(\'forecast\')">+ New Shipment</button>' +
+    '<button class="btn btn-outline" style="margin-left:8px" onclick="nav(\'trips\')">View All Trips &rsaquo;</button>'
+  ):'') +
   pend.map(function(t){return '<div class="card">'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:14px"><div><div style="font-size:17px;font-weight:700">'+t.id+'</div><div style="color:var(--t2);font-size:13px;margin-top:3px">'+t.customer+' · <span class="tag tag-info">'+t.type+'</span> · <span class="tag tag-blue">'+t.condition+'</span></div>'+
     '<div style="font-size:12px;color:var(--t2);margin-top:3px">📍 '+t.from+' > '+t.dests+' · '+t.km+' km</div></div>'+stB(t.status)+'</div>'+
