@@ -3034,6 +3034,252 @@ function resetTruckMaint(plate){
   });
 }
 
+// ══════════════════════════════════════════════════
+// WORKSHOP ALERT SYSTEM — Maintenance / License / Calibration
+// ══════════════════════════════════════════════════
+function _saveWorkshopConfig(){
+  try{localStorage.setItem('ip_workshopconfig',JSON.stringify(S.workshopConfig||{}));}catch(e){}
+}
+function _loadWorkshopConfig(){
+  try{var d=localStorage.getItem('ip_workshopconfig');if(d)S.workshopConfig=JSON.parse(d);}catch(e){}
+  if(!S.workshopConfig)S.workshopConfig={contacts:[]};
+  if(!S.workshopConfig.contacts)S.workshopConfig.contacts=[];
+}
+
+// ── Workshop contact form (reuses _rcptEmailRow/_rcptPhoneRow helpers) ──
+function openWorkshopContacts(){
+  _loadWorkshopConfig();
+  var contacts=S.workshopConfig.contacts||[];
+  openM(
+    '<div class="m-title">&#128295; Workshop Contacts</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">These contacts receive maintenance, calibration &amp; license expiry alerts.</div>'+
+    (contacts.length===0?
+      '<div style="text-align:center;padding:20px;background:var(--bg);border-radius:10px;color:var(--t2);font-size:13px;margin-bottom:12px">No workshop contacts yet.</div>'
+    :
+      '<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px">'+
+      contacts.map(function(c,i){
+        var emails=_rcptEmails(c);var phones=_rcptPhones(c);
+        var badges=(c.methods||[]).map(function(m){
+          return m==='email'?'<span style="background:rgba(59,130,246,.12);color:#3B82F6;border-radius:20px;padding:2px 7px;font-size:10px;font-weight:700">&#9993; EMAIL</span>':
+            '<span style="background:rgba(37,211,102,.12);color:#25D366;border-radius:20px;padding:2px 7px;font-size:10px;font-weight:700">&#128172; WA</span>';
+        }).join(' ');
+        return '<div style="display:flex;align-items:flex-start;gap:8px;background:var(--bg);border-radius:10px;padding:10px 12px">'+
+          '<div style="flex:1;min-width:0">'+
+          '<div style="font-weight:700;font-size:13px;margin-bottom:4px">'+c.label+'</div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:4px">'+
+          emails.map(function(e){return'<span style="background:rgba(59,130,246,.07);color:#3B82F6;border-radius:6px;padding:2px 7px;font-size:11px">&#9993; '+e+'</span>';}).join('')+
+          phones.map(function(p){return'<span style="background:rgba(37,211,102,.07);color:#25D366;border-radius:6px;padding:2px 7px;font-size:11px">&#128172; '+p+'</span>';}).join('')+
+          '</div>'+badges+'</div>'+
+          '<div style="display:flex;gap:5px;flex-shrink:0">'+
+          '<button class="btn btn-outline btn-sm" onclick="openEditWorkshopContact('+i+')">&#9998;</button>'+
+          '<button class="btn btn-danger btn-sm" onclick="deleteWorkshopContact('+i+')">&#215;</button>'+
+          '</div></div>';
+      }).join('')+
+      '</div>'
+    )+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Close</button>'+
+    '<button class="btn btn-primary" onclick="openAddWorkshopContact()">+ Add Contact</button>'+
+    '</div>'
+  );
+}
+function openAddWorkshopContact(){
+  window._wsEditIdx=null;
+  window._rcptEC=0;window._rcptPC=0;
+  openM(
+    '<div class="m-title">+ Workshop Contact</div>'+
+    _recipientForm(null)+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="openWorkshopContacts()">&#8592; Back</button>'+
+    '<button class="btn btn-primary" onclick="_saveWorkshopContact()">&#10003; Save Contact</button>'+
+    '</div>'
+  );
+}
+function openEditWorkshopContact(i){
+  _loadWorkshopConfig();
+  var c=(S.workshopConfig.contacts||[])[i];if(!c)return;
+  window._wsEditIdx=i;
+  var emails=_rcptEmails(c);var phones=_rcptPhones(c);
+  window._rcptEC=emails.length-1;window._rcptPC=phones.length-1;
+  openM(
+    '<div class="m-title">&#9998; Edit Contact</div>'+
+    _recipientForm(c)+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="openWorkshopContacts()">&#8592; Back</button>'+
+    '<button class="btn btn-primary" onclick="_saveWorkshopContact()">&#10003; Save Changes</button>'+
+    '</div>'
+  );
+}
+function _saveWorkshopContact(){
+  var r=_readRecipientForm();if(!r)return;
+  _loadWorkshopConfig();
+  if(!S.workshopConfig.contacts)S.workshopConfig.contacts=[];
+  var i=window._wsEditIdx;
+  if(i!=null)S.workshopConfig.contacts[i]=r;
+  else S.workshopConfig.contacts.push(r);
+  _saveWorkshopConfig();
+  audit('WORKSHOP_CONTACT_SAVE',r.label,'');
+  toast(r.label+' saved!','ok');
+  openWorkshopContacts();
+}
+function deleteWorkshopContact(i){
+  if(!confirm('Remove this contact?'))return;
+  _loadWorkshopConfig();
+  (S.workshopConfig.contacts||[]).splice(i,1);
+  _saveWorkshopConfig();
+  toast('Contact removed','ok');
+  openWorkshopContacts();
+}
+
+// ── Build Email/WA buttons for workshop contacts ──
+function _wsContactButtons(subj,body,waText){
+  _loadWorkshopConfig();
+  var contacts=S.workshopConfig.contacts||[];
+  if(!contacts.length)return '<div style="background:rgba(108,63,245,.06);border-radius:8px;padding:10px;font-size:12px;color:var(--c1)">&#9432; No workshop contacts configured. <button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="margin-left:6px">+ Add Contact</button></div>';
+  return contacts.map(function(c){
+    var emails=_rcptEmails(c);var phones=_rcptPhones(c);
+    var wantsEmail=(c.methods||[]).indexOf('email')>=0;
+    var wantsWA=(c.methods||[]).indexOf('whatsapp')>=0;
+    var btns='';
+    if(wantsEmail){emails.forEach(function(em){if(em)btns+='<a href="mailto:'+em+'?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;font-size:11px">&#9993; '+em+'</a>';});}
+    if(wantsWA){phones.forEach(function(ph){var p=ph.replace(/[^\d+]/g,'');if(p)btns+='<a href="https://wa.me/'+p+'?text='+waText+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;border-color:#25D366;color:#25D366;font-size:11px">&#128172; '+ph+'</a>';});}
+    return '<div style="background:var(--bg);border-radius:9px;padding:10px 12px;margin-bottom:6px">'+
+      '<div style="font-size:12px;font-weight:700;margin-bottom:6px">'+c.label+'</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:5px">'+btns+'</div></div>';
+  }).join('');
+}
+
+// ── 1. MAINTENANCE DUE ALERT ──
+function openMaintDueAlert(){
+  var due=TRUCKS.filter(function(t){var a=_truckMaintAlert(t);return a&&(a.level==='overdue'||a.level==='warning');});
+  var company=(S.billingConfig&&S.billingConfig.companyName)||'InstaPort Logistics';
+  var today=new Date().toLocaleDateString('en-GB');
+  var lines=due.map(function(t){var a=_truckMaintAlert(t);return t.plate+' ('+t.type+') — '+a.msg+' ['+a.pct+'%]';}).join('\n');
+  var subj=encodeURIComponent('['+company+'] Maintenance Due Alert — '+due.length+' truck(s) — '+today);
+  var body=encodeURIComponent('Dear Workshop,\n\nThe following trucks require maintenance attention as of '+today+':\n\n'+lines+'\n\nPlease arrange service at the earliest convenience.\n\n'+company);
+  var waMsg=encodeURIComponent('&#9888; *Maintenance Due Alert*\n*'+company+'* — '+today+'\n\n'+due.map(function(t){var a=_truckMaintAlert(t);return '&#128666; '+t.plate+' — '+a.msg;}).join('\n')+'\n\nPlease arrange service ASAP.');
+  if(!due.length){toast('No trucks currently due for maintenance','ok');return;}
+  openM(
+    '<div class="m-title">&#128295; Maintenance Due Alert</div>'+
+    '<div style="background:linear-gradient(135deg,#7C2D12,#9A3412);border-radius:12px;padding:12px 16px;margin-bottom:14px;color:white">'+
+    '<div style="font-size:11px;opacity:.7;font-weight:700;letter-spacing:.8px">MAINTENANCE REQUIRED</div>'+
+    '<div style="font-size:22px;font-weight:900;margin:4px 0">'+due.length+' Truck(s)</div>'+
+    '<div style="font-size:12px;opacity:.75">'+today+'</div></div>'+
+    '<div style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px">'+
+    due.map(function(t){
+      var a=_truckMaintAlert(t);
+      var col=a.level==='overdue'?'#EF4444':'#F97316';
+      return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);border-radius:8px;padding:8px 12px">'+
+        '<div><div style="font-weight:700;font-size:13px">'+t.plate+'</div>'+
+        '<div style="font-size:11px;color:var(--t2)">'+t.type+' · '+t.mfr+'</div></div>'+
+        '<span style="background:'+col+'22;color:'+col+';border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+a.msg+'</span></div>';
+    }).join('')+
+    '</div>'+
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px">Notify Workshop</div>'+
+    _wsContactButtons(subj,body,waMsg)+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Close</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="border-color:var(--c1);color:var(--c1)">&#9881; Manage Contacts</button>'+
+    '</div>'
+  );
+}
+
+// ── 2. CALIBRATION EXPIRY ALERT ──
+function openCalibrationAlert(){
+  var today=new Date();
+  var todayStr=today.toISOString().slice(0,10);
+  var soon30=new Date(today);soon30.setDate(soon30.getDate()+30);
+  var soon30Str=soon30.toISOString().slice(0,10);
+  var expired=TRUCKS.filter(function(t){return t.calExpiry&&t.calExpiry<todayStr;});
+  var expiringSoon=TRUCKS.filter(function(t){return t.calExpiry&&t.calExpiry>=todayStr&&t.calExpiry<=soon30Str;});
+  var all=[].concat(expired,expiringSoon);
+  if(!all.length){toast('No calibration issues found','ok');return;}
+  var company=(S.billingConfig&&S.billingConfig.companyName)||'InstaPort Logistics';
+  var todayLabel=today.toLocaleDateString('en-GB');
+  var lines=expired.map(function(t){return t.plate+' ('+t.type+') — EXPIRED '+t.calExpiry;}).concat(
+    expiringSoon.map(function(t){var d=Math.ceil((new Date(t.calExpiry)-today)/864e5);return t.plate+' ('+t.type+') — Expires in '+d+' days ('+t.calExpiry+')';})
+  ).join('\n');
+  var subj=encodeURIComponent('['+company+'] Calibration Expiry Alert — '+all.length+' truck(s) — '+todayLabel);
+  var body=encodeURIComponent('Dear Workshop,\n\nThe following trucks have calibration certificates that are expired or expiring within 30 days:\n\n'+lines+'\n\nPlease arrange calibration renewal immediately.\n\n'+company);
+  var waMsg=encodeURIComponent('&#128203; *Calibration Alert*\n*'+company+'* — '+todayLabel+
+    (expired.length?'\n\n&#128308; *EXPIRED ('+expired.length+'):*\n'+expired.map(function(t){return t.plate+' — expired '+t.calExpiry;}).join('\n'):'')  +
+    (expiringSoon.length?'\n\n&#128992; *Expiring Soon ('+expiringSoon.length+'):*\n'+expiringSoon.map(function(t){var d=Math.ceil((new Date(t.calExpiry)-today)/864e5);return t.plate+' — '+d+'d left ('+t.calExpiry+')';}).join('\n'):'')  +
+    '\n\nPlease arrange renewal urgently.');
+  openM(
+    '<div class="m-title">&#128203; Calibration Expiry Alert</div>'+
+    '<div style="background:linear-gradient(135deg,#1E1B4B,#312E81);border-radius:12px;padding:12px 16px;margin-bottom:14px;color:white">'+
+    '<div style="font-size:11px;opacity:.7;font-weight:700;letter-spacing:.8px">CALIBRATION STATUS</div>'+
+    '<div style="display:flex;gap:18px;margin-top:8px">'+
+    '<div><div style="font-size:22px;font-weight:900">'+expired.length+'</div><div style="font-size:11px;opacity:.65">Expired</div></div>'+
+    '<div><div style="font-size:22px;font-weight:900">'+expiringSoon.length+'</div><div style="font-size:11px;opacity:.65">Expiring ≤30d</div></div>'+
+    '</div></div>'+
+    (expired.length?'<div style="font-size:11px;font-weight:700;color:#EF4444;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">&#128308; Expired</div>'+
+    expired.map(function(t){return '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(239,68,68,.06);border-radius:8px;padding:8px 12px;margin-bottom:4px">'+
+      '<div><div style="font-weight:700;font-size:13px">'+t.plate+'</div><div style="font-size:11px;color:var(--t2)">'+t.type+'</div></div>'+
+      '<span style="background:rgba(239,68,68,.15);color:#EF4444;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">Expired '+t.calExpiry+'</span></div>';}).join(''):'')  +
+    (expiringSoon.length?'<div style="font-size:11px;font-weight:700;color:#F97316;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.5px">&#128992; Expiring Soon</div>'+
+    expiringSoon.map(function(t){var d=Math.ceil((new Date(t.calExpiry)-today)/864e5);return '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(249,115,22,.06);border-radius:8px;padding:8px 12px;margin-bottom:4px">'+
+      '<div><div style="font-weight:700;font-size:13px">'+t.plate+'</div><div style="font-size:11px;color:var(--t2)">'+t.type+'</div></div>'+
+      '<span style="background:rgba(249,115,22,.15);color:#F97316;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+d+'d left</span></div>';}).join(''):'')  +
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;margin:12px 0 8px">Notify Workshop</div>'+
+    _wsContactButtons(subj,body,waMsg)+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Close</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="border-color:var(--c1);color:var(--c1)">&#9881; Manage Contacts</button>'+
+    '</div>'
+  );
+}
+
+// ── 3. DRIVER LICENSE EXPIRY ALERT ──
+function openLicenseAlert(){
+  _loadWorkshopConfig();
+  var profiles=S.driverProfiles||{};
+  var allUsers=(_tenantUsers&&_tenantUsers.length)?_tenantUsers:USERS;
+  var drivers=allUsers.filter(function(u){return u.role==='driver'&&u.active!==false;});
+  var today=new Date();
+  var todayStr=today.toISOString().slice(0,10);
+  var soon30=new Date(today);soon30.setDate(soon30.getDate()+30);
+  var soon30Str=soon30.toISOString().slice(0,10);
+  var expired=drivers.filter(function(d){var p=profiles[d.id]||{};return p.licenseExpiry&&p.licenseExpiry<todayStr;});
+  var expiringSoon=drivers.filter(function(d){var p=profiles[d.id]||{};return p.licenseExpiry&&p.licenseExpiry>=todayStr&&p.licenseExpiry<=soon30Str;});
+  var all=[].concat(expired,expiringSoon);
+  if(!all.length){toast('All driver licenses are valid','ok');return;}
+  var company=(S.billingConfig&&S.billingConfig.companyName)||'InstaPort Logistics';
+  var todayLabel=today.toLocaleDateString('en-GB');
+  var lines=expired.map(function(d){var p=profiles[d.id]||{};return d.name+' (ID: '+d.id+') — LICENSE EXPIRED '+p.licenseExpiry;}).concat(
+    expiringSoon.map(function(d){var p=profiles[d.id]||{};var days=Math.ceil((new Date(p.licenseExpiry)-today)/864e5);return d.name+' (ID: '+d.id+') — Expires in '+days+' days ('+p.licenseExpiry+')';})
+  ).join('\n');
+  var subj=encodeURIComponent('['+company+'] Driver License Expiry Alert — '+all.length+' driver(s) — '+todayLabel);
+  var body=encodeURIComponent('Dear Workshop / Compliance,\n\nThe following drivers have licenses that are expired or expiring within 30 days:\n\n'+lines+'\n\nImmediate renewal action is required to maintain compliance.\n\n'+company);
+  var waMsg=encodeURIComponent('&#128100; *Driver License Alert*\n*'+company+'* — '+todayLabel+
+    (expired.length?'\n\n&#128308; *EXPIRED ('+expired.length+'):*\n'+expired.map(function(d){var p=profiles[d.id]||{};return d.name+' — expired '+p.licenseExpiry;}).join('\n'):'')  +
+    (expiringSoon.length?'\n\n&#128992; *Expiring Soon ('+expiringSoon.length+'):*\n'+expiringSoon.map(function(d){var p=profiles[d.id]||{};var days=Math.ceil((new Date(p.licenseExpiry)-today)/864e5);return d.name+' — '+days+'d left ('+p.licenseExpiry+')';}).join('\n'):'')  +
+    '\n\nPlease arrange license renewals urgently.');
+  openM(
+    '<div class="m-title">&#128100; Driver License Alert</div>'+
+    '<div style="background:linear-gradient(135deg,#064E3B,#065F46);border-radius:12px;padding:12px 16px;margin-bottom:14px;color:white">'+
+    '<div style="font-size:11px;opacity:.7;font-weight:700;letter-spacing:.8px">LICENSE COMPLIANCE</div>'+
+    '<div style="display:flex;gap:18px;margin-top:8px">'+
+    '<div><div style="font-size:22px;font-weight:900">'+expired.length+'</div><div style="font-size:11px;opacity:.65">Expired</div></div>'+
+    '<div><div style="font-size:22px;font-weight:900">'+expiringSoon.length+'</div><div style="font-size:11px;opacity:.65">Expiring ≤30d</div></div>'+
+    '</div></div>'+
+    (expired.length?'<div style="font-size:11px;font-weight:700;color:#EF4444;margin-bottom:6px;text-transform:uppercase;letter-spacing:.5px">&#128308; Expired Licenses</div>'+
+    expired.map(function(d){var p=profiles[d.id]||{};return '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(239,68,68,.06);border-radius:8px;padding:8px 12px;margin-bottom:4px">'+
+      '<div><div style="font-weight:700;font-size:13px">'+d.name+'</div><div style="font-size:11px;color:var(--t2)">No. '+(p.licenseNo||'—')+' · '+(p.licenseType||'—')+'</div></div>'+
+      '<span style="background:rgba(239,68,68,.15);color:#EF4444;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">Expired '+p.licenseExpiry+'</span></div>';}).join(''):'')  +
+    (expiringSoon.length?'<div style="font-size:11px;font-weight:700;color:#F97316;margin:10px 0 6px;text-transform:uppercase;letter-spacing:.5px">&#128992; Expiring Soon</div>'+
+    expiringSoon.map(function(d){var p=profiles[d.id]||{};var days=Math.ceil((new Date(p.licenseExpiry)-today)/864e5);return '<div style="display:flex;justify-content:space-between;align-items:center;background:rgba(249,115,22,.06);border-radius:8px;padding:8px 12px;margin-bottom:4px">'+
+      '<div><div style="font-weight:700;font-size:13px">'+d.name+'</div><div style="font-size:11px;color:var(--t2)">No. '+(p.licenseNo||'—')+'</div></div>'+
+      '<span style="background:rgba(249,115,22,.15);color:#F97316;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:700">'+days+'d left</span></div>';}).join(''):'')  +
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;margin:12px 0 8px">Notify Workshop / Compliance</div>'+
+    _wsContactButtons(subj,body,waMsg)+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Close</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="border-color:var(--c1);color:var(--c1)">&#9881; Manage Contacts</button>'+
+    '</div>'
+  );
+}
+
 // InstaPort v4 Enterprise
 // ══════════════════════════════════════════════════
 // RBAC — Role-Based Access Control
@@ -3187,6 +3433,8 @@ let S={
     companyName:'InstaPort Logistics',companyAddress:'',vatNo:'',
     bankName:'',bankAccount:'',iban:'',invoicePrefix:'INV',
     notifRecipients:[]},
+  // ── Workshop Alert Contacts ──
+  workshopConfig:{contacts:[]},
   // ── Fuel Management ──
   fuelLogs:[],
   fuelConfig:{defaultCostPerLiter:14.5,currency:'EGP',fuelTypes:['Diesel','Petrol','CNG'],
@@ -3286,6 +3534,7 @@ async function doLogin(){
       try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}
       try{_loadInvoices();}catch(e){}
       try{_loadFuelLogs();}catch(e){}
+      try{_loadWorkshopConfig();}catch(e){}
       try{_loadESGConfig();}catch(e){}
       try{_loadRolePages();}catch(e){}
       try{_loadPMData();}catch(e){}
@@ -5098,6 +5347,9 @@ function rMaint(){
     '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'excel\')" style="padding:5px 9px">&#128196; XLS</button>'+
     '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'pdf\')" style="padding:5px 9px">&#128444;&#65039; PDF</button>'+
     '<button class="btn btn-outline" onclick="nav(\'spare_parts\')">&#128297; Spare Parts</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="border-color:var(--c1);color:var(--c1)">&#9881; Contacts</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openMaintDueAlert()" style="border-color:#F97316;color:#F97316">&#128295; Maint Alert</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openCalibrationAlert()" style="border-color:#6366F1;color:#6366F1">&#128203; Cal Alert</button>'+
     (can('maintenance_create')||can('all')?'<button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button>':'')+
     '</div></div>'+
   '<div class="kpi-row">'+ckpi('🔧','orange',_opn,'Open Tickets','open')+ckpi('✅','green',_don,'Completed','done')+kpiBox('⚠️','red',_hld,'Trucks On Hold','')+kpiBox('🤖','purple',_aut,'Auto Tickets','')+'</div>'+
@@ -13439,9 +13691,12 @@ function _hrRenderDrivers(drivers,profiles,today){
       (p.emergencyContact?'<div style="font-size:11px;color:var(--t2)">🚨 Emergency: '+p.emergencyContact+'</div>':'')+
       '</div>';
   }).join('')+'</div>'+
-  '<div style="margin-top:12px;display:flex;gap:8px">'+
-  '<button class="btn btn-outline btn-sm" onclick="exportDriverCompliance()">📄 Export Compliance Report</button>'+
-  '<button class="btn btn-outline btn-sm" onclick="exportComplianceCert()">📜 Cold Chain Certificate</button></div>';
+  '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
+  '<button class="btn btn-outline btn-sm" onclick="exportDriverCompliance()">&#128196; Export Compliance</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="exportComplianceCert()">&#128220; Cold Chain Cert</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="openLicenseAlert()" style="border-color:#EF4444;color:#EF4444">&#9993; License Expiry Alert</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="border-color:var(--c1);color:var(--c1)">&#9881; Workshop Contacts</button>'+
+  '</div>';
 }
 
 function _hrRenderShifts(shifts,today){
