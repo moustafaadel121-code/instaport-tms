@@ -1662,7 +1662,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: left center;
+  object-position: left 18%;  /* anchor left, shift up slightly so logo stays in view */
   display: block;
   pointer-events: none;
   border: none; outline: none; box-shadow: none;
@@ -1751,15 +1751,17 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   -webkit-mask-image: none;
   mask-image: none;
 }
-/* Right panel — fluid width: scales with zoom so it's always fully visible.
+/* Right panel — fluid width:
    clamp(min, preferred, max):
-     min  380px → never too narrow (card fits at 150% zoom on small screens)
-     pref 36vw  → proportional to viewport (scales up/down with zoom)
-     max  520px → never too wide on large screens
-   Result: at 100% zoom on 1366px → 492px, at 150% → 380px, at 90% → 520px */
+     min  400px → card always fits
+     pref 40vw  → scales with viewport/zoom
+     max  560px → cap on large screens
+   At 100%/1366px → 546px right, 820px left (photo more zoomed = logo visible)
+   At 150%/910px  → 400px right, 510px left ✓
+   At 90%/1518px  → 560px right, 958px left ✓ */
 #login .login-right {
-  flex: 0 0 clamp(380px, 36vw, 520px);
-  width: clamp(380px, 36vw, 520px);
+  flex: 0 0 clamp(400px, 40vw, 560px);
+  width: clamp(400px, 40vw, 560px);
   height: 100vh;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
