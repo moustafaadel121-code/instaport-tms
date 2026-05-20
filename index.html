@@ -1701,10 +1701,12 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   border: none;
   outline: none;
   box-shadow: none;
-  mix-blend-mode: screen;
-  filter: contrast(1.14) saturate(1.12) brightness(1.04);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 3%, #000 97%, transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0%, #000 3%, #000 97%, transparent 100%);
+  /* multiply removes the white PNG background on light panels */
+  mix-blend-mode: multiply;
+  filter: contrast(1.08) saturate(1.15) brightness(1.02);
+  /* Fade all four edges so the rectangle border is invisible */
+  -webkit-mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
+  mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
 }
 #login .ll-brand {
   display: flex; align-items: center; gap: 14px;
@@ -1776,6 +1778,8 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   mix-blend-mode: screen;
   opacity: 1;
   filter: contrast(1.16) saturate(1.14) brightness(1.1);
+  -webkit-mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
+  mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
 }
 #login .login-right {
   flex: 1 1 50%;
