@@ -3185,7 +3185,8 @@ let S={
   invoices:[],
   billingConfig:{taxRate:14,paymentTermsDays:30,currency:'EGP',
     companyName:'InstaPort Logistics',companyAddress:'',vatNo:'',
-    bankName:'',bankAccount:'',iban:'',invoicePrefix:'INV'},
+    bankName:'',bankAccount:'',iban:'',invoicePrefix:'INV',
+    notifRecipients:[]},
   // ── Fuel Management ──
   fuelLogs:[],
   fuelConfig:{defaultCostPerLiter:14.5,currency:'EGP',fuelTypes:['Diesel','Petrol','CNG'],
@@ -5563,6 +5564,9 @@ function driverComplete(id){
     autoHoldTruckAfterTrip(t);
   }
   toast('Arrived! Cost: EGP '+r.cost,'ok');rDriverTrips();
+  // Offer notification to interested parties if recipients are configured
+  var _nr=(S.billingConfig&&S.billingConfig.notifRecipients)||[];
+  if(_nr.length>0){setTimeout(function(){_notifTripComplete(t);},400);}
 }
 
 // TRIPS
@@ -10538,6 +10542,7 @@ function _renderInvoiceList(){
           (inv.status==='sent'?'<button class="btn btn-sm btn-success" onclick="markInvPaid(\''+inv.id+'\')">&#10003; Paid</button>':'')+''+
           (inv.status==='sent'?'<button class="btn btn-sm btn-danger" onclick="markInvOverdue(\''+inv.id+'\')">&#8987;</button>':'')+
           '<button class="btn btn-sm btn-outline" onclick="openInvoiceExport(\''+inv.id+'\')" title="Export Invoice">&#128196; Export</button>'+
+          '<button class="btn btn-sm btn-outline" onclick="openInvoiceShare(\''+inv.id+'\')" title="Share Invoice" style="border-color:#25D366;color:#25D366">&#128172; Share</button>'+
           '</div></td></tr>';
       }).join('')+'</tbody></table></div>');
 }
@@ -10557,28 +10562,288 @@ function _renderBillingConfig(){
     ['Bank Account No.','bc-bacc','text',cfg.bankAccount||''],
     ['IBAN','bc-iban','text',cfg.iban||'']
   ];
+  var recipients=cfg.notifRecipients||[];
   el.innerHTML=
-    '<div class="card">'+
+    '<div class="card" style="margin-bottom:16px">'+
     '<div style="font-size:15px;font-weight:800;margin-bottom:16px">&#9881;&#65039; Billing Configuration</div>'+
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
     fields.map(function(f){return '<div class="fg"><label>'+f[0]+'</label><input type="'+f[2]+'" id="'+f[1]+'" value="'+f[3]+'"/></div>';}).join('')+
     '</div>'+
     '<div style="margin-top:16px;padding:12px;background:rgba(108,63,245,.06);border-radius:8px;font-size:12px;color:var(--c1)">&#9432; These details appear on exported invoices. Tax rate applies to all new invoices.</div>'+
     '<div style="margin-top:14px"><button class="btn btn-primary" onclick="saveBillingConfig()">&#10003; Save Configuration</button></div>'+
+    '</div>'+
+    // ── Notification Recipients ──
+    '<div class="card">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">'+
+    '<div>'+
+    '<div style="font-size:15px;font-weight:800">&#128276; Notification Recipients</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-top:2px">Send invoices &amp; trip alerts via Email or WhatsApp</div>'+
+    '</div>'+
+    '<button class="btn btn-primary btn-sm" onclick="openAddRecipient()">+ Add Recipient</button>'+
+    '</div>'+
+    (recipients.length===0?
+      '<div style="text-align:center;padding:28px 16px;background:var(--bg);border-radius:12px;color:var(--t2);font-size:13px">'+
+      '&#128231; No recipients yet.<br><span style="font-size:12px">Add emails or WhatsApp numbers to receive invoice &amp; trip notifications.</span>'+
+      '</div>'
+    :
+      '<div style="display:flex;flex-direction:column;gap:8px">'+
+      recipients.map(function(r,i){
+        var badges=(r.methods||[]).map(function(m){
+          if(m==='email')return '<span style="background:rgba(59,130,246,.12);color:#3B82F6;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">&#9993; EMAIL</span>';
+          if(m==='whatsapp')return '<span style="background:rgba(37,211,102,.12);color:#25D366;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">&#128172; WHATSAPP</span>';
+          return '';
+        }).join(' ');
+        return '<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px">'+
+          '<div style="flex:1;min-width:0">'+
+          '<div style="font-weight:700;font-size:13px">'+r.label+'</div>'+
+          '<div style="font-size:11px;color:var(--t2);margin-top:2px">'+
+          (r.email?'&#9993; '+r.email+'&nbsp;&nbsp;':'')+
+          (r.phone?'&#128172; '+r.phone:'')+
+          '</div>'+
+          '<div style="margin-top:5px">'+badges+'</div>'+
+          '</div>'+
+          '<div style="display:flex;gap:6px;flex-shrink:0">'+
+          '<button class="btn btn-outline btn-sm" onclick="openEditRecipient('+i+')">&#9998; Edit</button>'+
+          '<button class="btn btn-danger btn-sm" onclick="deleteRecipient('+i+')">&#215;</button>'+
+          '</div>'+
+          '</div>';
+      }).join('')+
+      '</div>'
+    )+
+    '<div style="margin-top:14px;padding:12px;background:rgba(108,63,245,.06);border-radius:8px;font-size:12px;color:var(--c1)">'+
+    '&#9432; <strong>How it works:</strong> Recipients receive a notification when you share an invoice or when a driver marks a trip as arrived. '+
+    'Email opens your default mail client (Outlook/Gmail). WhatsApp opens WhatsApp with a pre-filled message.'+
+    '</div>'+
     '</div>';
 }
 
 function saveBillingConfig(){
   function g(id){return(document.getElementById(id)||{}).value||'';}
-  S.billingConfig=Object.assign(S.billingConfig||{},{
+  var prev=S.billingConfig||{};
+  S.billingConfig=Object.assign(prev,{
     companyName:g('bc-cname'),companyAddress:g('bc-addr'),vatNo:g('bc-vat'),
     invoicePrefix:g('bc-pfx')||'INV',
     taxRate:+(g('bc-tax')||14),paymentTermsDays:+(g('bc-terms')||30),
-    currency:g('bc-curr')||'EGP',bankName:g('bc-bank'),bankAccount:g('bc-bacc'),iban:g('bc-iban')
+    currency:g('bc-curr')||'EGP',bankName:g('bc-bank'),bankAccount:g('bc-bacc'),iban:g('bc-iban'),
+    notifRecipients:prev.notifRecipients||[]
   });
   try{localStorage.setItem('ip_billingcfg',JSON.stringify(S.billingConfig));}catch(e){}
   audit('BILLING_CONFIG_SAVE','Billing config updated','');
   toast('Billing config saved!','ok');
+}
+
+// ── Recipient management ───────────────────────────────────────
+function _saveRecipients(){
+  if(!S.billingConfig)S.billingConfig={};
+  try{localStorage.setItem('ip_billingcfg',JSON.stringify(S.billingConfig));}catch(e){}
+}
+function _recipientForm(r){
+  r=r||{};
+  var mEmail=(r.methods||[]).indexOf('email')>=0;
+  var mWA=(r.methods||[]).indexOf('whatsapp')>=0;
+  if(!r.methods)mEmail=true; // default email checked for new
+  return '<div style="display:flex;flex-direction:column;gap:10px">'+
+    '<div class="fg"><label>Name / Label *</label><input id="rcpt-label" placeholder="e.g. Finance Team, Customer ABC" value="'+(r.label||'')+'"/></div>'+
+    '<div class="fg"><label>&#9993; Email Address</label><input type="email" id="rcpt-email" placeholder="invoices@example.com" value="'+(r.email||'')+'"/></div>'+
+    '<div class="fg"><label>&#128172; WhatsApp Number</label><input id="rcpt-phone" placeholder="+201234567890 (with country code)" value="'+(r.phone||'')+'"/></div>'+
+    '<div class="fg"><label>Notify via</label>'+
+    '<div style="display:flex;gap:14px;margin-top:4px">'+
+    '<label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer"><input type="checkbox" id="rcpt-memail"'+(mEmail?' checked':'')+'/> &#9993; Email</label>'+
+    '<label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer"><input type="checkbox" id="rcpt-mwa"'+(mWA?' checked':'')+'/> &#128172; WhatsApp</label>'+
+    '</div></div>'+
+    '</div>';
+}
+function openAddRecipient(){
+  openM(
+    '<div class="m-title">&#128231; Add Notification Recipient</div>'+
+    _recipientForm(null)+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_saveNewRecipient()">&#10003; Add Recipient</button>'+
+    '</div>'
+  );
+}
+function openEditRecipient(idx){
+  var r=(S.billingConfig.notifRecipients||[])[idx];if(!r)return;
+  window._editRcptIdx=idx;
+  openM(
+    '<div class="m-title">&#9998; Edit Recipient</div>'+
+    _recipientForm(r)+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_saveEditRecipient()">&#10003; Save Changes</button>'+
+    '</div>'
+  );
+}
+function _readRecipientForm(){
+  var label=(document.getElementById('rcpt-label')||{}).value||'';
+  var email=(document.getElementById('rcpt-email')||{}).value||'';
+  var phone=(document.getElementById('rcpt-phone')||{}).value||'';
+  var mEmail=!!(document.getElementById('rcpt-memail')||{}).checked;
+  var mWA=!!(document.getElementById('rcpt-mwa')||{}).checked;
+  if(!label){toast('Enter a name/label','err');return null;}
+  if(!email&&!phone){toast('Enter email or phone','err');return null;}
+  if(!mEmail&&!mWA){toast('Select at least one notification method','err');return null;}
+  var methods=[];if(mEmail)methods.push('email');if(mWA)methods.push('whatsapp');
+  return{label:label,email:email,phone:phone,methods:methods};
+}
+function _saveNewRecipient(){
+  var r=_readRecipientForm();if(!r)return;
+  if(!S.billingConfig)S.billingConfig={};
+  if(!S.billingConfig.notifRecipients)S.billingConfig.notifRecipients=[];
+  S.billingConfig.notifRecipients.push(r);
+  _saveRecipients();
+  audit('NOTIF_RECIPIENT_ADD',r.label,'');
+  toast(r.label+' added!','ok');
+  closeM();
+  _renderBillingConfig();
+}
+function _saveEditRecipient(){
+  var r=_readRecipientForm();if(!r)return;
+  var idx=window._editRcptIdx||0;
+  if(!S.billingConfig.notifRecipients)S.billingConfig.notifRecipients=[];
+  S.billingConfig.notifRecipients[idx]=r;
+  _saveRecipients();
+  audit('NOTIF_RECIPIENT_EDIT',r.label,'');
+  toast('Recipient updated!','ok');
+  closeM();
+  _renderBillingConfig();
+}
+function deleteRecipient(idx){
+  if(!confirm('Remove this recipient?'))return;
+  (S.billingConfig.notifRecipients||[]).splice(idx,1);
+  _saveRecipients();
+  audit('NOTIF_RECIPIENT_DEL','index '+idx,'');
+  toast('Recipient removed','ok');
+  _renderBillingConfig();
+}
+
+// ── Invoice Share / Notify Modal ───────────────────────────────
+function openInvoiceShare(id){
+  var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;
+  var cfg=S.billingConfig||{};
+  var recipients=cfg.notifRecipients||[];
+  var company=cfg.companyName||'InstaPort Logistics';
+  // Build email subject & body
+  var subj=encodeURIComponent('Invoice '+inv.id+' — '+inv.customer+' (EGP '+inv.total.toLocaleString()+')');
+  var body=encodeURIComponent(
+    'Dear '+inv.customer+',\n\n'+
+    'Please find below the details for Invoice '+inv.id+'.\n\n'+
+    'Period: '+inv.period+'\n'+
+    'Subtotal: EGP '+inv.subtotal.toLocaleString()+'\n'+
+    'VAT ('+inv.taxRate+'%): EGP '+inv.tax.toLocaleString()+'\n'+
+    'Total Due: EGP '+inv.total.toLocaleString()+'\n'+
+    (inv.dueDate?'Due Date: '+inv.dueDate+'\n':'')+
+    (cfg.bankName?'\nBank: '+cfg.bankName+'\nAccount: '+cfg.bankAccount+(cfg.iban?'\nIBAN: '+cfg.iban:''):'')+
+    '\n\nThank you for your business.\n'+company
+  );
+  var waText=encodeURIComponent(
+    '📄 *Invoice '+inv.id+'*\nCustomer: '+inv.customer+'\nPeriod: '+inv.period+'\nTotal Due: *EGP '+inv.total.toLocaleString()+'*'+(inv.dueDate?'\nDue: '+inv.dueDate:'')+'\n\nPlease contact us for any queries.\n_'+company+'_'
+  );
+  var clipText='Invoice: '+inv.id+'\nCustomer: '+inv.customer+'\nPeriod: '+inv.period+'\nSubtotal: EGP '+inv.subtotal.toLocaleString()+'\nVAT: EGP '+inv.tax.toLocaleString()+'\nTotal: EGP '+inv.total.toLocaleString()+(inv.dueDate?'\nDue: '+inv.dueDate:'');
+
+  // Per-recipient rows
+  var rcptRows='';
+  if(recipients.length>0){
+    rcptRows='<div style="margin-bottom:16px">'+
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px">Saved Recipients</div>'+
+    '<div style="display:flex;flex-direction:column;gap:6px">'+
+    recipients.map(function(r){
+      var btns='';
+      if((r.methods||[]).indexOf('email')>=0&&r.email){
+        var to=encodeURIComponent(r.email);
+        btns+='<a href="mailto:'+r.email+'?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none">&#9993; Email</a>';
+      }
+      if((r.methods||[]).indexOf('whatsapp')>=0&&r.phone){
+        var ph=r.phone.replace(/[^\d+]/g,'');
+        btns+='<a href="https://wa.me/'+ph+'?text='+waText+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;background:rgba(37,211,102,.08);border-color:#25D366;color:#25D366">&#128172; WhatsApp</a>';
+      }
+      return '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-radius:9px;padding:8px 12px">'+
+        '<div style="font-size:13px;font-weight:700">'+r.label+'<br><span style="font-size:11px;color:var(--t2);font-weight:400">'+(r.email||r.phone)+'</span></div>'+
+        '<div style="display:flex;gap:6px">'+btns+'</div>'+
+        '</div>';
+    }).join('')+
+    '</div></div>';
+  }
+
+  openM(
+    '<div class="m-title">&#128172; Share Invoice '+inv.id+'</div>'+
+    // Invoice banner
+    '<div style="background:linear-gradient(135deg,#1E1453,#2D1B69);border-radius:12px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">'+
+    '<div><div style="font-size:11px;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:.8px">INVOICE</div>'+
+    '<div style="font-size:17px;font-weight:900;color:#fff">'+inv.id+'</div>'+
+    '<div style="font-size:12px;color:rgba(255,255,255,.65)">'+inv.customer+' · '+inv.period+'</div></div>'+
+    '<div style="font-size:22px;font-weight:900;color:#fff">EGP '+(inv.total||0).toLocaleString()+'</div>'+
+    '</div>'+
+    // Saved recipients
+    rcptRows+
+    // Manual quick actions
+    '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px">Quick Share</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:16px">'+
+    '<a href="mailto:?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-outline" style="text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px">'+
+    '<span style="font-size:22px">&#9993;</span><span style="font-size:12px;font-weight:700">Email</span><span style="font-size:10px;color:var(--t2)">Opens Outlook/Gmail</span></a>'+
+    '<a href="https://wa.me/?text='+waText+'" target="_blank" class="btn btn-outline" style="text-decoration:none;display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px;border-color:#25D366">'+
+    '<span style="font-size:22px">&#128172;</span><span style="font-size:12px;font-weight:700;color:#25D366">WhatsApp</span><span style="font-size:10px;color:var(--t2)">Opens WhatsApp</span></a>'+
+    '<button class="btn btn-outline" style="display:flex;flex-direction:column;align-items:center;gap:4px;padding:14px 8px" onclick="_copyInvSummary()">'+
+    '<span style="font-size:22px">&#128203;</span><span style="font-size:12px;font-weight:700">Copy</span><span style="font-size:10px;color:var(--t2)">Copy to clipboard</span></button>'+
+    '</div>'+
+    (recipients.length===0?'<div style="background:rgba(108,63,245,.06);border-radius:8px;padding:10px;font-size:12px;color:var(--c1)">&#9432; Add recipients in <strong>Billing Config → Notification Recipients</strong> for one-click sharing.</div>':'')+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Close</button>'+
+    '<button class="btn btn-primary" onclick="openInvoiceExport(\''+id+'\');closeM()">&#128196; Export PDF/Excel</button>'+
+    '</div>'
+  );
+  window._invShareClipText=clipText;
+}
+function _copyInvSummary(){
+  var txt=window._invShareClipText||'';
+  try{
+    navigator.clipboard.writeText(txt).then(function(){toast('Invoice summary copied!','ok');}).catch(function(){_fallbackCopy(txt);});
+  }catch(e){_fallbackCopy(txt);}
+}
+function _fallbackCopy(txt){
+  var ta=document.createElement('textarea');ta.value=txt;ta.style.position='fixed';ta.style.opacity='0';
+  document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand('copy');toast('Invoice summary copied!','ok');}catch(e){toast('Copy failed — please copy manually','err');}
+  document.body.removeChild(ta);
+}
+
+// ── Trip-complete notification helper ─────────────────────────
+function _notifTripComplete(trip){
+  var recipients=(S.billingConfig&&S.billingConfig.notifRecipients)||[];
+  if(!recipients.length)return;
+  var company=(S.billingConfig&&S.billingConfig.companyName)||'InstaPort Logistics';
+  var waText=encodeURIComponent(
+    '✅ *Trip Completed — '+trip.id+'*\nCustomer: '+trip.customer+'\nTruck: '+trip.truck+'\nActual KM: '+trip.actualKm+'\nCost: EGP '+trip.cost+'\nStatus: Arrived / In Inbound\n\n_'+company+'_'
+  );
+  var subj=encodeURIComponent('Trip '+trip.id+' Completed — '+trip.customer);
+  var body=encodeURIComponent('Trip '+trip.id+' has been completed.\n\nCustomer: '+trip.customer+'\nTruck: '+trip.truck+'\nDriver: '+(trip.driver||'—')+'\nActual KM: '+trip.actualKm+'\nCost: EGP '+trip.cost+'\n\n'+company);
+
+  var rcptLinks=recipients.map(function(r){
+    var btns='';
+    if((r.methods||[]).indexOf('email')>=0&&r.email){
+      btns+='<a href="mailto:'+r.email+'?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none">&#9993; Email '+r.label+'</a>';
+    }
+    if((r.methods||[]).indexOf('whatsapp')>=0&&r.phone){
+      var ph=r.phone.replace(/[^\d+]/g,'');
+      btns+='<a href="https://wa.me/'+ph+'?text='+waText+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;border-color:#25D366;color:#25D366">&#128172; WA '+r.label+'</a>';
+    }
+    return btns;
+  }).join('');
+
+  openM(
+    '<div class="m-title">&#128276; Notify Interested Parties</div>'+
+    '<div style="background:linear-gradient(135deg,#064E3B,#065F46);border-radius:12px;padding:12px 16px;margin-bottom:14px;color:white">'+
+    '<div style="font-size:10px;opacity:.7;font-weight:700;letter-spacing:.8px;text-transform:uppercase">TRIP COMPLETED</div>'+
+    '<div style="font-size:18px;font-weight:900;margin:3px 0">'+trip.id+'</div>'+
+    '<div style="font-size:12px;opacity:.75">'+trip.customer+' · '+trip.truck+' · EGP '+trip.cost+'</div>'+
+    '</div>'+
+    '<div style="font-size:13px;color:var(--t2);margin-bottom:12px">Would you like to notify any interested parties about this trip completion?</div>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">'+rcptLinks+'</div>'+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Skip</button>'+
+    '</div>'
+  );
 }
 
 function openNewInvoice(){
@@ -10699,6 +10964,7 @@ function viewInvoiceSP(id){
     (inv.status==='sent'?'<button class="btn btn-success btn-sm" onclick="markInvPaid(\''+id+'\');closeSP()">&#10003; Mark Paid</button>':'')+
     (inv.status==='sent'?'<button class="btn btn-danger btn-sm" onclick="markInvOverdue(\''+id+'\');closeSP()">&#8987; Overdue</button>':'')+
     '<button class="btn btn-outline btn-sm" onclick="openInvoiceExport(\''+id+'\')">&#128196; Export</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openInvoiceShare(\''+id+'\')" style="border-color:#25D366;color:#25D366">&#128172; Share</button>'+
     '</div>'
   );
 }
