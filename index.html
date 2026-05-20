@@ -3019,8 +3019,11 @@ function _addTruckOdometer(plate,km){
     toast('&#9888; Truck '+plate+' is OVERDUE for maintenance! ('+_truckDueKm(t)+' km since last service)','err');
     S.notifs.push({msg:'Maintenance OVERDUE: '+plate+' — '+_truckDueKm(t)+' km since last service',type:'alert',ts:new Date().toLocaleString('en-GB')});
     var nc=document.getElementById('notif-cnt');if(nc)nc.style.display='flex';
+    // Auto-prompt workshop alert if contacts configured
+    var _wc=(S.workshopConfig&&S.workshopConfig.contacts)||[];
+    if(_wc.length>0){setTimeout(function(){openMaintDueAlert();},600);}
   } else if(a&&a.level==='warning'){
-    toast('&#128295; Truck '+plate+': maintenance due in '+(t.maintIntervalKm||10000)-_truckDueKm(t)+' km','info');
+    toast('&#128295; Truck '+plate+': maintenance due in '+((t.maintIntervalKm||10000)-_truckDueKm(t))+' km','info');
   }
   syncTruck(t);
 }
@@ -3947,7 +3950,14 @@ function rDash(){
 function rFleet(){
   var c=document.getElementById('content');
   var rel=TRUCKS.filter(function(t){return t.valid;}).length;
-  c.innerHTML='<div class="page-head"><div><h2>Fleet</h2></div><div style="display:flex;gap:8px">'+vBtn()+(can('add_truck')||can('all')?'<button class="btn btn-primary" onclick="openAddTruck()">+ Add Truck</button>':'')+(can('all')||S.role==='admin'?'<button class="btn btn-outline" onclick="openTruckTypeManager()" style="display:flex;align-items:center;gap:5px">&#9881; Truck Types <span style="background:#6C3FF5;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">'+(S.truckTypes||[]).length+'</span></button>'+
+  c.innerHTML='<div class="page-head"><div><h2>Fleet</h2></div><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">'+
+  vBtn()+
+  '<button class="btn btn-outline btn-sm" onclick="openMaintDueAlert()" style="border-color:#F97316;color:#F97316">&#128295; Maint Alert</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="openCalibrationAlert()" style="border-color:#6366F1;color:#6366F1">&#128203; Cal Alert</button>'+
+  '<button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="border-color:var(--c1);color:var(--c1)">&#9881; Workshop</button>'+
+  (can('add_truck')||can('all')?'<button class="btn btn-primary" onclick="openAddTruck()">+ Add Truck</button>':'')+
+  (can('all')||S.role==='admin'?
+    '<button class="btn btn-outline" onclick="openTruckTypeManager()" style="display:flex;align-items:center;gap:5px">&#9881; Truck Types <span style="background:#6C3FF5;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">'+(S.truckTypes||[]).length+'</span></button>'+
     '<button class="btn btn-outline btn-sm" onclick="openConditionManager()">&#127777; Conditions <span style="background:#10B981;color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700">'+(S.tripConditions||[]).length+'</span></button>'+
     '<button class="btn btn-outline btn-sm" onclick="openCustomerAssignment()">&#128101; AM Assign</button>':'')+
   '</div></div>'+
@@ -5347,9 +5357,6 @@ function rMaint(){
     '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'excel\')" style="padding:5px 9px">&#128196; XLS</button>'+
     '<button class="btn btn-sm btn-outline" onclick="_pageExport(\'pdf\')" style="padding:5px 9px">&#128444;&#65039; PDF</button>'+
     '<button class="btn btn-outline" onclick="nav(\'spare_parts\')">&#128297; Spare Parts</button>'+
-    '<button class="btn btn-outline btn-sm" onclick="openWorkshopContacts()" style="border-color:var(--c1);color:var(--c1)">&#9881; Contacts</button>'+
-    '<button class="btn btn-outline btn-sm" onclick="openMaintDueAlert()" style="border-color:#F97316;color:#F97316">&#128295; Maint Alert</button>'+
-    '<button class="btn btn-outline btn-sm" onclick="openCalibrationAlert()" style="border-color:#6366F1;color:#6366F1">&#128203; Cal Alert</button>'+
     (can('maintenance_create')||can('all')?'<button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button>':'')+
     '</div></div>'+
   '<div class="kpi-row">'+ckpi('🔧','orange',_opn,'Open Tickets','open')+ckpi('✅','green',_don,'Completed','done')+kpiBox('⚠️','red',_hld,'Trucks On Hold','')+kpiBox('🤖','purple',_aut,'Auto Tickets','')+'</div>'+
