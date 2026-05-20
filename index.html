@@ -9015,54 +9015,6 @@ function secHoldC(id){
 // ── Init sidebar color theme on page load ──
 (function(){try{_sbThemeInit();}catch(e){}})();
 
-// ── AUTO-LOGIN: skip login screen, boot directly as Admin ──
-(function _autoLogin(){
-  try{
-    // Set up tenant with built-in users
-    _tenantId='instaport';
-    _tenantName='InstaPort Logistics';
-    _tenantPlan='enterprise';
-    _tenantUsers=USERS.slice();
-    // Use the first admin user
-    var u=USERS.find(function(x){return x.role==='admin'&&x.active!==false;})||USERS[0];
-    S.user=u;S.role=u.role;
-    // Hide login, show app
-    var lg=document.getElementById('login');
-    var ap=document.getElementById('app');
-    if(lg)lg.style.cssText='display:none!important';
-    if(ap){ap.style.display='flex';ap.style.flexDirection='row';}
-    // Populate topbar
-    var av=document.getElementById('tb-avatar');
-    var un=document.getElementById('tb-uname');
-    var ro=document.getElementById('tb-role');
-    var tbn=document.getElementById('tb-tenant-name');
-    var sbn=document.getElementById('sb-tenant-name');
-    var sbb=document.getElementById('sb-tenant-badge-name');
-    if(av)av.textContent=u.name.split(' ').map(function(x){return x[0];}).join('');
-    if(un)un.textContent=u.name;
-    if(ro)ro.textContent=RL[u.role]||u.role;
-    if(tbn)tbn.textContent=_tenantName;
-    if(sbn)sbn.textContent=_tenantName;
-    if(sbb)sbb.textContent=_tenantName;
-    // Build sidebar and navigate
-    buildSB();
-    nav('dashboard');
-    // Initialize app data (Supabase sync + local storage loads)
-    initApp().then(function(){nav('dashboard');}).catch(function(){});
-    startTemp();
-    setTimeout(function(){
-      try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}
-      try{_loadInvoices();}catch(e){}
-      try{_loadFuelLogs();}catch(e){}
-      try{_loadESGConfig();}catch(e){}
-      try{_loadRolePages();}catch(e){}
-      try{_loadPMData();}catch(e){}
-      try{_loadHRData();}catch(e){}
-    },2500);
-    if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
-  }catch(e){console.error('Auto-login failed',e);}
-})();
-
 
 // ════ PREMIUM UI OVERRIDES ════
 
