@@ -3049,6 +3049,41 @@ function _loadWorkshopConfig(){
   if(!S.workshopConfig.contacts)S.workshopConfig.contacts=[];
 }
 
+// ── Supabase Edge Function — auto-send emails ─────────────────
+// Returns: {sent:N, failed:N} or null if function not deployed
+async function _sbSendAlert(alertType, toEmails, subject, bodyHtml, bodyText){
+  if(!_sb||!toEmails||!toEmails.length)return null;
+  var company=(S.billingConfig&&S.billingConfig.companyName)||'InstaPort Logistics';
+  var html=bodyHtml||('<div style="font-family:sans-serif;max-width:600px;margin:auto">'+
+    '<div style="background:#1E1453;color:#fff;padding:20px 24px;border-radius:12px 12px 0 0">'+
+    '<h2 style="margin:0;font-size:18px">&#9888;&#65039; '+subject+'</h2>'+
+    '<p style="margin:4px 0 0;opacity:.7;font-size:12px">'+company+' · '+new Date().toLocaleDateString('en-GB')+'</p></div>'+
+    '<div style="background:#f8f9ff;padding:20px 24px;border-radius:0 0 12px 12px;border:1px solid #e2e8f0">'+
+    '<pre style="font-family:sans-serif;font-size:13px;line-height:1.7;white-space:pre-wrap;margin:0">'+bodyText+'</pre>'+
+    '<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0"/>'+
+    '<p style="font-size:11px;color:#94a3b8;margin:0">Sent automatically by InstaPort TMS</p>'+
+    '</div></div>');
+  try{
+    var res=await fetch(_SUPA_URL+'/functions/v1/send-alert',{
+      method:'POST',
+      headers:{'Content-Type':'application/json','Authorization':'Bearer '+_SUPA_KEY},
+      body:JSON.stringify({
+        to_emails:toEmails,
+        subject:subject,
+        body_html:html,
+        body_text:bodyText,
+        alert_type:alertType,
+        tenant_id:_tenantId||'instaport'
+      })
+    });
+    var data=await res.json();
+    return data;
+  }catch(e){
+    console.warn('send-alert Edge Function error:',e);
+    return null;
+  }
+}
+
 // ── Workshop contact form (reuses _rcptEmailRow/_rcptPhoneRow helpers) ──
 function openWorkshopContacts(){
   _loadWorkshopConfig();
@@ -3158,10 +3193,23 @@ function openMaintDueAlert(){
   var company=(S.billingConfig&&S.billingConfig.companyName)||'InstaPort Logistics';
   var today=new Date().toLocaleDateString('en-GB');
   var lines=due.map(function(t){var a=_truckMaintAlert(t);return t.plate+' ('+t.type+') — '+a.msg+' ['+a.pct+'%]';}).join('\n');
-  var subj=encodeURIComponent('['+company+'] Maintenance Due Alert — '+due.length+' truck(s) — '+today);
-  var body=encodeURIComponent('Dear Workshop,\n\nThe following trucks require maintenance attention as of '+today+':\n\n'+lines+'\n\nPlease arrange service at the earliest convenience.\n\n'+company);
+  var subj='['+company+'] Maintenance Due Alert — '+due.length+' truck(s) — '+today;
+  var bodyText='Dear Workshop,\n\nThe following trucks require maintenance attention as of '+today+':\n\n'+lines+'\n\nPlease arrange service at the earliest convenience.\n\n'+company;
+  var body=encodeURIComponent(bodyText);
   var waMsg=encodeURIComponent('&#9888; *Maintenance Due Alert*\n*'+company+'* — '+today+'\n\n'+due.map(function(t){var a=_truckMaintAlert(t);return '&#128666; '+t.plate+' — '+a.msg;}).join('\n')+'\n\nPlease arrange service ASAP.');
   if(!due.length){toast('No trucks currently due for maintenance','ok');return;}
+  // Auto-send emails via Supabase Edge Function
+  _loadWorkshopConfig();
+  var emailContacts=(S.workshopConfig.contacts||[]).filter(function(c){return(c.methods||[]).indexOf('email')>=0;});
+  var allEmails=[];emailContacts.forEach(function(c){(_rcptEmails(c)).forEach(function(e){if(e)allEmails.push(e);});});
+  if(allEmails.length){
+    toast('&#9993; Sending maintenance alert emails…','info');
+    _sbSendAlert('maintenance_due',allEmails,subj,null,bodyText).then(function(r){
+      if(r&&r.sent>0)toast('&#9989; Maintenance alert sent to '+r.sent+' email(s)','ok');
+      else if(r&&r.error)toast('&#9888; Email error: '+r.error,'err');
+    });
+    audit('ALERT_MAINT_EMAIL','Sent to '+allEmails.length+' email(s)','');
+  }
   openM(
     '<div class="m-title">&#128295; Maintenance Due Alert</div>'+
     '<div style="background:linear-gradient(135deg,#7C2D12,#9A3412);border-radius:12px;padding:12px 16px;margin-bottom:14px;color:white">'+
@@ -3202,8 +3250,21 @@ function openCalibrationAlert(){
   var lines=expired.map(function(t){return t.plate+' ('+t.type+') — EXPIRED '+t.calExpiry;}).concat(
     expiringSoon.map(function(t){var d=Math.ceil((new Date(t.calExpiry)-today)/864e5);return t.plate+' ('+t.type+') — Expires in '+d+' days ('+t.calExpiry+')';})
   ).join('\n');
-  var subj=encodeURIComponent('['+company+'] Calibration Expiry Alert — '+all.length+' truck(s) — '+todayLabel);
-  var body=encodeURIComponent('Dear Workshop,\n\nThe following trucks have calibration certificates that are expired or expiring within 30 days:\n\n'+lines+'\n\nPlease arrange calibration renewal immediately.\n\n'+company);
+  var subj='['+company+'] Calibration Expiry Alert — '+all.length+' truck(s) — '+todayLabel;
+  var bodyText='Dear Workshop,\n\nThe following trucks have calibration certificates that are expired or expiring within 30 days:\n\n'+lines+'\n\nPlease arrange calibration renewal immediately.\n\n'+company;
+  var body=encodeURIComponent(bodyText);
+  // Auto-send emails
+  _loadWorkshopConfig();
+  var emailContacts=(S.workshopConfig.contacts||[]).filter(function(c){return(c.methods||[]).indexOf('email')>=0;});
+  var allEmails=[];emailContacts.forEach(function(c){(_rcptEmails(c)).forEach(function(e){if(e)allEmails.push(e);});});
+  if(allEmails.length){
+    toast('&#9993; Sending calibration alert emails…','info');
+    _sbSendAlert('calibration',allEmails,subj,null,bodyText).then(function(r){
+      if(r&&r.sent>0)toast('&#9989; Calibration alert sent to '+r.sent+' email(s)','ok');
+      else if(r&&r.error)toast('&#9888; Email error: '+r.error,'err');
+    });
+    audit('ALERT_CAL_EMAIL','Sent to '+allEmails.length+' email(s)','');
+  }
   var waMsg=encodeURIComponent('&#128203; *Calibration Alert*\n*'+company+'* — '+todayLabel+
     (expired.length?'\n\n&#128308; *EXPIRED ('+expired.length+'):*\n'+expired.map(function(t){return t.plate+' — expired '+t.calExpiry;}).join('\n'):'')  +
     (expiringSoon.length?'\n\n&#128992; *Expiring Soon ('+expiringSoon.length+'):*\n'+expiringSoon.map(function(t){var d=Math.ceil((new Date(t.calExpiry)-today)/864e5);return t.plate+' — '+d+'d left ('+t.calExpiry+')';}).join('\n'):'')  +
@@ -3252,8 +3313,20 @@ function openLicenseAlert(){
   var lines=expired.map(function(d){var p=profiles[d.id]||{};return d.name+' (ID: '+d.id+') — LICENSE EXPIRED '+p.licenseExpiry;}).concat(
     expiringSoon.map(function(d){var p=profiles[d.id]||{};var days=Math.ceil((new Date(p.licenseExpiry)-today)/864e5);return d.name+' (ID: '+d.id+') — Expires in '+days+' days ('+p.licenseExpiry+')';})
   ).join('\n');
-  var subj=encodeURIComponent('['+company+'] Driver License Expiry Alert — '+all.length+' driver(s) — '+todayLabel);
-  var body=encodeURIComponent('Dear Workshop / Compliance,\n\nThe following drivers have licenses that are expired or expiring within 30 days:\n\n'+lines+'\n\nImmediate renewal action is required to maintain compliance.\n\n'+company);
+  var subj='['+company+'] Driver License Expiry Alert — '+all.length+' driver(s) — '+todayLabel;
+  var bodyText='Dear Workshop / Compliance,\n\nThe following drivers have licenses that are expired or expiring within 30 days:\n\n'+lines+'\n\nImmediate renewal action is required to maintain compliance.\n\n'+company;
+  var body=encodeURIComponent(bodyText);
+  // Auto-send emails
+  var emailContacts=(S.workshopConfig.contacts||[]).filter(function(c){return(c.methods||[]).indexOf('email')>=0;});
+  var allEmails=[];emailContacts.forEach(function(c){(_rcptEmails(c)).forEach(function(e){if(e)allEmails.push(e);});});
+  if(allEmails.length){
+    toast('&#9993; Sending license alert emails…','info');
+    _sbSendAlert('license_expiry',allEmails,subj,null,bodyText).then(function(r){
+      if(r&&r.sent>0)toast('&#9989; License alert sent to '+r.sent+' email(s)','ok');
+      else if(r&&r.error)toast('&#9888; Email error: '+r.error,'err');
+    });
+    audit('ALERT_LICENSE_EMAIL','Sent to '+allEmails.length+' email(s)','');
+  }
   var waMsg=encodeURIComponent('&#128100; *Driver License Alert*\n*'+company+'* — '+todayLabel+
     (expired.length?'\n\n&#128308; *EXPIRED ('+expired.length+'):*\n'+expired.map(function(d){var p=profiles[d.id]||{};return d.name+' — expired '+p.licenseExpiry;}).join('\n'):'')  +
     (expiringSoon.length?'\n\n&#128992; *Expiring Soon ('+expiringSoon.length+'):*\n'+expiringSoon.map(function(d){var p=profiles[d.id]||{};var days=Math.ceil((new Date(p.licenseExpiry)-today)/864e5);return d.name+' — '+days+'d left ('+p.licenseExpiry+')';}).join('\n'):'')  +
