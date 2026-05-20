@@ -1729,11 +1729,11 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   mix-blend-mode: lighten;
   filter: drop-shadow(0 0 10px rgba(108,63,245,.55));
 }
-/* Topbar logo */
+/* Topbar logo — normal in light mode so it's always visible */
 .topbar .ip-logo {
   width: 44px;
   height: 44px;
-  mix-blend-mode: lighten;
+  mix-blend-mode: normal;
   filter: drop-shadow(0 0 8px rgba(108,63,245,.45));
 }
 [data-theme=dark] .topbar .ip-logo {
@@ -4560,7 +4560,7 @@ function rDash(){
   c.innerHTML=
     '<div class="page-head" style="align-items:center">' +
     '<div style="display:flex;align-items:center;gap:14px">' +
-    '<img src="logo.png" alt="InstaPort" style="width:56px;height:56px;object-fit:contain;filter:drop-shadow(0 0 12px rgba(108,63,245,.5));flex-shrink:0"/>' +
+    '<img src="logo.png" alt="InstaPort" style="width:88px;height:88px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 2px 16px rgba(108,63,245,.35));"/>' +
     '<div><h2 style="margin:0">'+subtitle+'</h2>'+
     '<div class="page-head-sub">Welcome, '+S.user.name+' &nbsp;<span class="live"><span class="live-dot"></span>Live</span></div></div></div>'+
     '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')">+ New Shipment</button>':'')+'</div></div>'+
