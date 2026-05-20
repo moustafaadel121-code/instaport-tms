@@ -1658,38 +1658,34 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   max-width: 520px;
   padding: 36px 44px 0 44px;
 }
-/* Photo fills the entire left panel absolutely */
+/* Photo anchored to bottom of panel — natural width, auto height = no cropping */
 #login .ll-hero-wrap {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  padding: 0;
   z-index: 0;
   overflow: hidden;
-  display: block;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: stretch;
+  margin: 0; padding: 0;
 }
 #login .ll-hero-wrap::before { display: none; }
 #login .ll-hero-wrap::after  { display: none; }
 #login .ll-truck-stage {
   width: 100%;
-  height: 100%;
+  flex-shrink: 0;
   max-width: none;
   display: block;
 }
 #login .ll-truck-stage::after { display: none; }
 #login .ll-hero-bg {
+  /* width=100% fills panel; height=auto is proportional — full truck, zero crop */
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: center center;
+  height: auto;
   display: block;
   pointer-events: none;
   border: none; outline: none; box-shadow: none;
-  /* cover = fills the full left panel edge-to-edge */
-  object-fit: cover;
-  object-position: center 60%;
   mix-blend-mode: normal;
   filter: contrast(1.06) saturate(1.1) brightness(0.96);
   -webkit-mask-image: none;
