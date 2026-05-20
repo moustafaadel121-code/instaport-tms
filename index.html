@@ -1619,7 +1619,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 #login {
   position: fixed; inset: 0; z-index: 999;
   display: flex; height: 100vh;
-  background: linear-gradient(145deg, #F0EDFF 0%, #F5F3FF 42%, #EDE9FE 100%);
+  background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
 }
 #login .lcard-topbar { display: none; }
 #login .login-left {
@@ -1631,11 +1631,27 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   padding: 36px 0 0 44px;
   position: relative;
   overflow: hidden;
-  background: transparent;
+  background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
   border: none;
 }
-#login .login-left::before,
-#login .login-left::after { display: none; }
+/* Top-right radial glow */
+#login .login-left::before {
+  content: '';
+  position: absolute;
+  top: -120px; right: -80px;
+  width: 520px; height: 520px;
+  background: radial-gradient(circle, rgba(108,63,245,.28) 0%, transparent 65%);
+  pointer-events: none; z-index: 0;
+}
+/* Bottom-left accent glow */
+#login .login-left::after {
+  content: '';
+  position: absolute;
+  bottom: -80px; left: -60px;
+  width: 400px; height: 400px;
+  background: radial-gradient(circle, rgba(249,115,22,.14) 0%, transparent 65%);
+  pointer-events: none; z-index: 0;
+}
 #login .ll-content {
   display: flex;
   flex-direction: column;
@@ -1659,15 +1675,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   border: none;
   background: transparent;
 }
-#login .ll-hero-wrap::before {
-  content: '';
-  position: absolute;
-  left: 0; right: 0; top: 0;
-  height: 28%;
-  background: linear-gradient(to bottom, rgba(240,237,255,.92) 0%, transparent 100%);
-  z-index: 2;
-  pointer-events: none;
-}
+#login .ll-hero-wrap::before { display: none; }
 #login .ll-hero-wrap::after { display: none; }
 #login .ll-truck-stage {
   position: relative;
@@ -1701,12 +1709,12 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   border: none;
   outline: none;
   box-shadow: none;
-  /* multiply removes the white PNG background on light panels */
-  mix-blend-mode: multiply;
-  filter: contrast(1.08) saturate(1.15) brightness(1.02);
-  /* Fade all four edges so the rectangle border is invisible */
-  -webkit-mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
-  mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
+  /* screen blend: dark parts of the image vanish into the dark panel */
+  mix-blend-mode: screen;
+  filter: contrast(1.05) saturate(1.1) brightness(1.08);
+  /* No mask — show full image with clean edges */
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 #login .ll-brand {
   display: flex; align-items: center; gap: 14px;
@@ -1741,45 +1749,45 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 }
 #login .ll-wordmark { display: flex; flex-direction: column; }
 #login .ll-wordmark-name {
-  font-size: 26px; font-weight: 800; color: #0F0E2E;
+  font-size: 26px; font-weight: 800; color: #FFFFFF;
   letter-spacing: -.5px; font-family: 'Space Grotesk', sans-serif; line-height: 1.1;
 }
 #login .ll-wordmark-sub {
-  font-size: 12px; color: #6B7280; font-weight: 500; margin-top: 4px;
+  font-size: 12px; color: rgba(196,181,253,.75); font-weight: 500; margin-top: 4px;
 }
 #login .ll-headline {
-  font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; color: #0F0E2E;
+  font-size: clamp(32px, 3.6vw, 46px); font-weight: 800; color: #FFFFFF;
   letter-spacing: -1.5px; line-height: 1.12;
   margin: 0 0 24px; max-width: 480px;
   font-family: 'Space Grotesk', sans-serif;
   flex-shrink: 0;
 }
-#login .ll-headline span { color: #6C3FF5; }
+#login .ll-headline span { color: #C4B5FD; }
 #login .ll-hero-spacer { flex: 1; min-height: 120px; }
 #login .ll-tagline2,
 #login .ll-truck-wrapper,
 #login .ll-truck-hero { display: none !important; }
 [data-theme=dark] #login {
-  background: linear-gradient(145deg, #0F0E24 0%, #12112A 50%, #0D0B1C 100%);
+  background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
 }
-[data-theme=dark] #login .login-left { background: transparent; }
-[data-theme=dark] #login .ll-hero-wrap::before {
-  background: linear-gradient(to bottom, rgba(15,14,36,.9) 0%, transparent 100%);
+[data-theme=dark] #login .login-left {
+  background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
 }
+[data-theme=dark] #login .ll-hero-wrap::before { display: none; }
 [data-theme=dark] #login .ll-hero-wrap::after { display: none; }
 [data-theme=dark] #login .ll-truck-stage::after {
   background: radial-gradient(ellipse at center bottom, rgba(108,63,245,.35) 0%, transparent 70%);
 }
 [data-theme=dark] #login .ll-wordmark-name,
-[data-theme=dark] #login .ll-headline { color: #EEF0FF; }
+[data-theme=dark] #login .ll-headline { color: #FFFFFF; }
 [data-theme=dark] #login .ll-headline span { color: #C4B5FD; }
-[data-theme=dark] #login .ll-wordmark-sub { color: #94A3B8; }
+[data-theme=dark] #login .ll-wordmark-sub { color: rgba(196,181,253,.75); }
 [data-theme=dark] #login .ll-hero-bg {
   mix-blend-mode: screen;
   opacity: 1;
-  filter: contrast(1.16) saturate(1.14) brightness(1.1);
-  -webkit-mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
-  mask-image: radial-gradient(ellipse 88% 82% at 50% 100%, black 45%, transparent 100%);
+  filter: contrast(1.05) saturate(1.1) brightness(1.08);
+  -webkit-mask-image: none;
+  mask-image: none;
 }
 #login .login-right {
   flex: 0 0 460px;
