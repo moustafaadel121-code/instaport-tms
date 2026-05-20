@@ -1751,13 +1751,19 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   -webkit-mask-image: none;
   mask-image: none;
 }
+/* Right panel — fluid width: scales with zoom so it's always fully visible.
+   clamp(min, preferred, max):
+     min  380px → never too narrow (card fits at 150% zoom on small screens)
+     pref 36vw  → proportional to viewport (scales up/down with zoom)
+     max  520px → never too wide on large screens
+   Result: at 100% zoom on 1366px → 492px, at 150% → 380px, at 90% → 520px */
 #login .login-right {
-  flex: 0 0 500px;
-  width: 500px;
+  flex: 0 0 clamp(380px, 36vw, 520px);
+  width: clamp(380px, 36vw, 520px);
   height: 100vh;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 32px 32px 40px;
+  padding: 32px 28px 40px;
   background: linear-gradient(150deg, #1a0d4a 0%, #2d1a7a 50%, #1e1055 100%);
   position: relative;
   overflow-y: auto;
@@ -1794,13 +1800,13 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); color: #94A3B8;
 }
 #login .login-right-inner {
-  width: 100%; max-width: 380px; margin: 0 auto;
+  width: 100%; max-width: min(360px, 90%); margin: 0 auto;
   padding-top: 48px;
 }
 #login .lcard {
-  width: 100%; max-width: 380px;
+  width: 100%; max-width: min(360px, 100%);
   background: #fff; border-radius: 20px;
-  padding: 32px 30px 28px;
+  padding: 28px 24px 24px;
   box-shadow: 0 8px 40px rgba(0,0,0,.25);
   border: none;
   outline: none;
@@ -1896,25 +1902,19 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 
 @media (max-width: 900px) {
   #login { flex-direction: column; overflow-y: auto; }
-  #login .login-left {
-    flex: 0 0 auto;
-    min-height: auto;
-    padding: 28px 20px 16px;
-  }
-  #login .login-left { padding: 28px 0 0 20px; }
-  #login .ll-hero-wrap { margin: 4px -4% 0; }
-  #login .ll-truck-stage { width: 112%; }
+  #login .login-left { flex: 0 0 auto; padding: 0; min-height: auto; }
   #login .ll-hero-bg {
-    width: 100%;
-    max-height: min(42vh, 400px);
-    min-height: 200px;
+    width: 100%; height: auto;
+    max-height: min(45vh, 380px); min-height: 200px;
+    object-fit: cover; object-position: left 20% center;
   }
   #login .login-right {
     flex: 1 1 auto;
-    max-width: none;
-    min-width: 0;
-    width: 100%;
+    width: 100%; max-width: none; min-width: 0;
+    height: auto;
   }
+  #login .login-right-inner { max-width: 400px; }
+  #login .lcard { max-width: 400px; }
 }
 
 /* ═══ TRUCK CAPACITY WIDGET ═══ */
