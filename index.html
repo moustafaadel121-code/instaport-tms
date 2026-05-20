@@ -4480,7 +4480,7 @@ function rDash(){
     var holdTrucks=TRUCKS.filter(function(t){return !t.valid;});
     rolePanel='<div class="card"><div class="card-hd"><div class="card-title">🔧 Open Tickets</div>'+
       '<button class="btn btn-outline btn-sm" onclick="S._maintFilter=\'\';nav(\'maintenance\')">All Tickets →</button></div>'+
-      (openTks.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No open tickets ✅</div>':
+      (openTks.length===0?_emptyState('✅','No Open Tickets','All maintenance is resolved. No open tickets right now.',''):
       openTks.map(function(tk){
         var ptot=(tk.parts||[]).reduce(function(s,p){return s+((+p.cost||0)*(+p.qty||1));},0);
         return '<div style="padding:12px 0;border-bottom:1px solid var(--dv);display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="S._maintFilter=\'open\';nav(\'maintenance\')">'+
@@ -5207,7 +5207,7 @@ function rQuality(){
   var inbQ=S.trips.filter(function(t){return t.status==='inbound_quality';});
   var intrans=S.trips.filter(function(t){return t.status==='in_transit';});
   var html='<div class="page-head"><div><h2>🧪 Quality Control</h2></div></div>';
-  if(pend.length===0&&inbQ.length===0&&intrans.length===0)html+='<div class="card" style="text-align:center;padding:48px;color:var(--t2)"><div style="font-size:48px">✅</div>No trips pending quality</div>';
+  if(pend.length===0&&inbQ.length===0&&intrans.length===0)html+=_emptyState('🧪','All Quality Checks Passed','No trips are currently awaiting quality inspection. Everything is cleared and on track.','');
   pend.concat(inbQ).forEach(function(t){
     var qa=S.qaAgr[t.customer]||{minTemp:2,maxTemp:8,checkReq:7};
     var done=t.checklist.filter(Boolean).length;var isInb=t.status==='inbound_quality';
@@ -5279,7 +5279,7 @@ function rCtrl(){
   '<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px">'+
   // LEFT PANEL
   '<div>'+
-  (pending.length>0?pending.map(function(t){return '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-size:16px;font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:13px;color:var(--t2);margin-bottom:12px">'+t.customer+' · '+t.truck+' · '+t.condition+'</div><div style="display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="ctOkConfirm(\''+t.id+'\')">✅ Approve Gate Pass</button><button class="btn btn-danger btn-sm" onclick="ctNoM(\''+t.id+'\')">❌ Reject</button></div></div>';}).join(''):'<div class="card" style="text-align:center;padding:24px;color:var(--t2)">No outbound pending</div>')+
+  (pending.length>0?pending.map(function(t){return '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-size:16px;font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:13px;color:var(--t2);margin-bottom:12px">'+t.customer+' · '+t.truck+' · '+t.condition+'</div><div style="display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="ctOkConfirm(\''+t.id+'\')">✅ Approve Gate Pass</button><button class="btn btn-danger btn-sm" onclick="ctNoM(\''+t.id+'\')">❌ Reject</button></div></div>';}).join(''):'<div class="card">'+_emptyState('🎛️','No Outbound Trips Pending','All outbound trips have been approved or there are none queued for control room review.','')+'</div>')+
   (inbCtrl.length>0?'<div class="card" style="border:2px solid var(--c3)"><div class="card-hd"><div class="card-title">📥 Inbound Arrivals</div></div>'+
   inbCtrl.map(function(t){return '<div style="padding:10px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div style="font-weight:700">'+t.id+' — '+t.customer+'</div>'+stB(t.status)+'</div><div style="font-size:12px;color:var(--t2);margin-bottom:8px">Truck: '+t.truck+' · Driver: '+t.driver+'</div><div style="display:flex;gap:6px"><button class="btn btn-success btn-sm" onclick="inbCtrlOkConfirm(\''+t.id+'\')">✅ Approve Inbound</button><button class="btn btn-danger btn-sm" onclick="ctNoM(\''+t.id+'\')">❌ Reject</button></div></div>';}).join('')+'</div>':'')+
   '</div>'+
@@ -5300,7 +5300,7 @@ function rCtrlTrucks(){
   var el=document.getElementById('ctrl-trucks');if(!el)return;
   var trips=S.trips.filter(function(t){return ['awaiting_ctrl','in_transit'].includes(t.status);});
   var fil=trips.filter(function(t){return !s||(t.truck||'').toLowerCase().includes(s)||t.id.toLowerCase().includes(s)||(t.driver||'').toLowerCase().includes(s)||t.customer.toLowerCase().includes(s);});
-  el.innerHTML=fil.length===0?'<div style="text-align:center;padding:16px;color:var(--t2);font-size:13px">No active trucks</div>':
+  el.innerHTML=fil.length===0?_emptyState('🚛','No Active Trucks','No trucks are currently in transit or awaiting control room clearance.',''):
     fil.map(function(t){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;cursor:pointer" onclick="ctrlTripDetail(\''+t.id+'\')"><div><div style="font-weight:600;font-size:13px">'+(t.truck||'No truck')+'</div><div style="font-size:11px;color:var(--t2)">'+t.id+' · '+t.customer+' · '+(t.driver||'—')+'</div></div><div style="display:flex;align-items:center;gap:8px"><div id="ctr-'+t.id+'" style="font-size:17px;font-weight:700;color:var(--c4)">--</div><span style="font-size:10px;color:var(--c1)">→</span></div></div>';}).join('');
 }
 function ctrlTripDetail(id){
@@ -5369,7 +5369,7 @@ function rSec(){
   var c=document.getElementById('content');
   var atGate=S.trips.filter(function(t){return t.status==='awaiting_security'||t.status==='inbound_security';});
   c.innerHTML='<div class="page-head"><div><h2>🔒 Gate Security</h2></div></div>'+
-  (atGate.length===0?'<div class="card" style="text-align:center;padding:48px;color:var(--t2)"><div style="font-size:48px">🔒</div>No vehicles at gate</div>':'')+
+  (atGate.length===0?_emptyState('🔒','Gate Is Clear','No vehicles are currently at the gate awaiting security clearance.',''):'')+
   atGate.map(function(t){var isInb=t.status==='inbound_security';return '<div class="card" style="border-left:4px solid '+(isInb?'var(--c3)':'var(--c1)')+'">'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">'+t.id+(isInb?' <span class="tag tag-blue" style="font-size:11px">INBOUND</span>':'')+'</div>'+
     '<div style="font-size:13px;color:var(--t2);margin-top:3px"><span class="tag tag-info">'+t.type+'</span> · '+t.customer+'</div></div>'+stB(t.status)+'</div>'+
@@ -5987,7 +5987,7 @@ function rMaint(){
     (can('maintenance_create')||can('all')?'<button class="btn btn-primary" onclick="openMaint()">+ New Ticket</button>':'')+
     '</div></div>'+
   '<div class="kpi-row">'+ckpi('🔧','orange',_opn,'Open Tickets','open')+ckpi('✅','green',_don,'Completed','done')+kpiBox('⚠️','red',_hld,'Trucks On Hold','')+kpiBox('🤖','purple',_aut,'Auto Tickets','')+'</div>'+
-  (shown.length===0?'<div class="card" style="text-align:center;padding:40px;color:var(--t2)">'+(S._maintFilter?'No '+S._maintFilter+' tickets':'No tickets')+'</div>':'')+
+  (shown.length===0?_emptyState('🔧','No Maintenance Tickets',(S._maintFilter?'No '+S._maintFilter+' tickets found. Try a different filter or create a new ticket.':'All systems operational — no maintenance tickets logged yet.'),''):'')+
   shown.slice().reverse().map(function(tk){return '<div class="card" id="maint-tk-'+tk.id+'" style="border-left:4px solid '+(tk.status==='done'?'var(--c4)':tk.auto?'var(--c3)':'var(--c2)')+'">'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:8px"><div><div style="font-weight:700;font-size:15px">'+tk.id+(tk.auto?' <span class="tag tag-purple" style="font-size:10px">AUTO</span>':'')+'</div><div style="font-size:13px;color:var(--t2);margin-top:2px">'+tk.truck+' · '+tk.ts+'</div></div><span class="tag '+(tk.status==='done'?'tag-ok':'tag-pend')+'">'+tk.status+'</span></div>'+
     '<div style="font-size:13px;margin-bottom:12px">'+tk.desc+'</div>'+
@@ -9846,7 +9846,7 @@ rSec=function(){
   var inTr=canForce?S.trips.filter(function(t){return t.status==='in_transit';}):[];
   c.innerHTML=ph('&#128274; Gate Security','')+
   '<div class="kpi-row">'+kpiBox('&#128274;','kpi-icon-purple',atGate.length,'At Gate','')+kpiBox('&#128666;','kpi-icon-green',inTr.length,'In Transit','')+kpiBox('&#10003;','kpi-icon-cyan',S.trips.filter(function(t){return t.status==='completed';}).length,'Completed','')+'</div>'+
-  (atGate.length===0&&inTr.length===0?'<div class="card" style="text-align:center;padding:48px;color:var(--t2)"><div style="font-size:48px">&#128274;</div><div style="margin-top:12px">No vehicles at gate</div></div>':'')+
+  (atGate.length===0&&inTr.length===0?_emptyState('🔒','Gate Is Clear','No vehicles are currently at the gate or in transit. All clear.',''):'')+
   atGate.map(function(t){
     var isInb=t.status==='inbound_security';
     return '<div class="card" style="border-left:4px solid '+(isInb?'var(--c3)':'var(--c1)')+'">'+
@@ -11427,8 +11427,7 @@ function _renderInvoiceList(){
     '</div>'+
     // ── Table ──
     (shown.length===0?
-      '<div class="card">'+_emptyState('📄','No Invoices Here','No invoices match this filter. Create your first invoice to start tracking revenue.',
-        (can('finance_view')||can('all')?'<button class="btn btn-primary" onclick="openNewInvoice()">+ Create Invoice</button>':''))+'</div>':
+      '<div class="card">'+_emptyState('📄','No Invoices Here','No invoices match this filter. Try adjusting the filter or create a new invoice from the header above.','')+'</div>':
       '<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'+
       '<th>Invoice #</th><th>Customer</th><th>Period</th><th>Trips</th><th>Subtotal</th><th>VAT</th><th>Total</th><th>Due</th><th>Status</th><th>Actions</th>'+
       '</tr></thead><tbody>'+
