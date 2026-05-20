@@ -1616,61 +1616,27 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 
 
 /* ═══ LOGIN PREMIUM ═══ */
+/* ═══ LOGIN — UNIFIED SINGLE CANVAS ═══
+   truck.png fills the whole viewport via CSS background.
+   login-left is hidden; login-right floats over photo as overlay.
+   One seamless image — no seam, no colour mismatch, any zoom. */
 #login {
   position: fixed; inset: 0; z-index: 999;
-  display: flex; height: 100vh; overflow: hidden;
-  background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
+  display: block !important;          /* kill base display:flex */
+  height: 100vh; width: 100vw;
+  overflow: hidden;
+  /* truck photo as page background */
+  background: url('truck.png') left center / cover no-repeat, #0A0520;
+  filter: none;
 }
 #login .lcard-topbar { display: none; }
+
+/* ── Left panel: hidden — photo is the bg of #login itself ── */
 #login .login-left {
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 100vh;
-  display: flex;
-  flex-direction: column;
-  padding: 0;
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
-  border: none;
-}
-/* No overlay — photo is complete with all branding */
-#login .login-left::before { display: none; }
-#login .login-left::after  { display: none; }
-/* Content hidden — branding is baked into truck.png */
-#login .ll-content {
   display: none !important;
 }
-/* Photo fills full panel at any zoom level */
-#login .ll-hero-wrap {
-  position: absolute;
-  inset: 0;
-  z-index: 0;
-  overflow: hidden;
-  margin: 0; padding: 0;
-}
-#login .ll-hero-wrap::before { display: none; }
-#login .ll-hero-wrap::after  { display: none; }
-#login .ll-truck-stage {
-  width: 100%;
-  height: 100%;
-  max-width: none;
-  display: block;
-}
-#login .ll-truck-stage::after { display: none; }
-#login .ll-hero-bg {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  object-position: left center;
-  display: block;
-  pointer-events: none;
-  border: none; outline: none; box-shadow: none;
-  mix-blend-mode: normal;
-  filter: contrast(1.04) saturate(1.08) brightness(0.97);
-  -webkit-mask-image: none;
-  mask-image: none;
-}
+#login .ll-content  { display: none !important; }
+#login .ll-hero-wrap { display: none !important; }
 #login .ll-brand {
   display: flex;
   align-items: center;
@@ -1736,34 +1702,40 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 #login .ll-tagline2,
 #login .ll-truck-wrapper,
 #login .ll-truck-hero { display: none !important; }
+/* Dark mode: photo brightness reduced */
 [data-theme=dark] #login {
-  background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
+  background: url('truck.png') left center / cover no-repeat, #060214;
+  filter: brightness(0.88) contrast(1.05) saturate(1.08);
 }
-[data-theme=dark] #login {
-  background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
-}
-[data-theme=dark] #login .login-left {
-  background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
-}
-[data-theme=dark] #login .ll-hero-bg {
-  mix-blend-mode: normal;
-  filter: contrast(1.06) saturate(1.12) brightness(0.88);
-  -webkit-mask-image: none;
-  mask-image: none;
-}
+
+/* ── Right panel: floats over photo, gradient left→right fade ──
+   Left edge transparent (shows truck) → solid violet on right.
+   Creates perfectly seamless blend at any viewport width/zoom. */
 #login .login-right {
-  flex: 0 0 500px;
-  width: 500px;
-  height: 100vh;
+  position: absolute;
+  right: 0; top: 0; bottom: 0;
+  width: 540px;
+  z-index: 2;
   display: flex; flex-direction: column;
   align-items: center; justify-content: center;
-  padding: 32px 32px 40px;
-  background: linear-gradient(150deg, #1a0d4a 0%, #2d1a7a 50%, #1e1055 100%);
-  position: relative;
+  padding: 32px 36px 40px;
+  background: linear-gradient(to right,
+    rgba(14,  7, 40, 0)    0%,
+    rgba(18, 10, 52, 0.68) 15%,
+    rgba(26, 14, 72, 0.90) 32%,
+    rgba(30, 16, 85, 0.97) 50%,
+    #1b1057               68%
+  );
   overflow-y: auto;
 }
 [data-theme=dark] #login .login-right {
-  background: linear-gradient(150deg, #0d0628 0%, #1a0d4a 50%, #120b38 100%);
+  background: linear-gradient(to right,
+    rgba(6,  2, 20, 0)    0%,
+    rgba(10, 4, 32, 0.68) 15%,
+    rgba(15, 8, 48, 0.90) 32%,
+    rgba(18, 9, 56, 0.97) 50%,
+    #0c0525              68%
+  );
 }
 #login .login-right-toolbar {
   position: absolute; top: 20px; right: 20px;
@@ -1794,16 +1766,16 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.1); color: #94A3B8;
 }
 #login .login-right-inner {
-  width: 100%; max-width: 380px; margin: 0 auto;
-  padding-top: 48px;
+  width: 100%; max-width: 390px; margin: 0 auto;
+  padding-top: 52px; /* room for toolbar above */
 }
 #login .lcard {
-  width: 100%; max-width: 380px;
-  background: #fff; border-radius: 20px;
+  width: 100%; max-width: 390px;
+  background: rgba(255,255,255,0.97);
+  border-radius: 20px;
   padding: 32px 30px 28px;
-  box-shadow: 0 8px 40px rgba(0,0,0,.25);
-  border: none;
-  outline: none;
+  box-shadow: 0 16px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08);
+  border: none; outline: none;
 }
 [data-theme=dark] #login .lcard {
   background: #141228; box-shadow: 0 12px 48px rgba(0,0,0,.35);
@@ -1895,25 +1867,22 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 #login .l-demo-btn:hover { color: #6C3FF5; }
 
 @media (max-width: 900px) {
-  #login { flex-direction: column; overflow-y: auto; }
-  #login .login-left {
-    flex: 0 0 auto;
-    min-height: auto;
-    padding: 28px 20px 16px;
-  }
-  #login .login-left { padding: 28px 0 0 20px; }
-  #login .ll-hero-wrap { margin: 4px -4% 0; }
-  #login .ll-truck-stage { width: 112%; }
-  #login .ll-hero-bg {
-    width: 100%;
-    max-height: min(42vh, 400px);
-    min-height: 200px;
+  /* Mobile: photo fills full background, panel slides to bottom */
+  #login {
+    background-position: center 30%;
+    overflow-y: auto;
   }
   #login .login-right {
-    flex: 1 1 auto;
-    max-width: none;
-    min-width: 0;
+    position: absolute;
+    right: 0; left: 0;
+    top: auto; bottom: 0;
     width: 100%;
+    height: auto; min-height: 60vh;
+    background: linear-gradient(to bottom,
+      rgba(14, 7, 40, 0)    0%,
+      rgba(20, 12, 60, 0.88) 12%,
+      #1b1057               28%
+    );
   }
 }
 
