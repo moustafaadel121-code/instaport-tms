@@ -1618,20 +1618,19 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 /* ═══ LOGIN PREMIUM ═══ */
 #login {
   position: fixed; inset: 0; z-index: 999;
-  display: flex; height: 100vh;
+  display: flex; height: 100vh; overflow: hidden;
   background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
 }
 #login .lcard-topbar { display: none; }
 #login .login-left {
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
   padding: 0;
   position: relative;
   overflow: hidden;
-  /* Dark violet fallback — photo overlays on top */
   background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
   border: none;
 }
@@ -1642,36 +1641,33 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 #login .ll-content {
   display: none !important;
 }
-/* Photo anchored to bottom of panel — natural width, auto height = no cropping */
+/* Photo fills full panel at any zoom level */
 #login .ll-hero-wrap {
   position: absolute;
   inset: 0;
   z-index: 0;
   overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  align-items: stretch;
   margin: 0; padding: 0;
 }
 #login .ll-hero-wrap::before { display: none; }
 #login .ll-hero-wrap::after  { display: none; }
 #login .ll-truck-stage {
   width: 100%;
-  flex-shrink: 0;
+  height: 100%;
   max-width: none;
   display: block;
 }
 #login .ll-truck-stage::after { display: none; }
 #login .ll-hero-bg {
-  /* width=100% fills panel; height=auto is proportional — full truck, zero crop */
   width: 100%;
-  height: auto;
+  height: 100%;
+  object-fit: cover;
+  object-position: center center;
   display: block;
   pointer-events: none;
   border: none; outline: none; box-shadow: none;
   mix-blend-mode: normal;
-  filter: contrast(1.06) saturate(1.1) brightness(0.96);
+  filter: contrast(1.04) saturate(1.08) brightness(0.97);
   -webkit-mask-image: none;
   mask-image: none;
 }
@@ -1758,12 +1754,16 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 #login .login-right {
   flex: 0 0 460px;
   width: 460px;
-  min-height: 100vh;
+  height: 100vh;
   display: flex; flex-direction: column;
   align-items: stretch; justify-content: center;
   padding: 32px 28px 40px;
-  background: transparent;
+  background: #ffffff;
   position: relative;
+  overflow-y: auto;
+}
+[data-theme=dark] #login .login-right {
+  background: #12112A;
 }
 [data-theme=dark] #login .login-right { background: transparent; }
 #login .login-right-toolbar {
