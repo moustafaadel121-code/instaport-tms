@@ -1716,25 +1716,25 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   flex-shrink: 0;
 }
 #login .ll-logo-img {
-  width: 64px;
-  height: 64px;
+  width: 88px;
+  height: 88px;
   mix-blend-mode: lighten;
-  filter: drop-shadow(0 0 14px rgba(108,63,245,.7));
+  filter: drop-shadow(0 0 18px rgba(108,63,245,.75));
   opacity: 0.95;
 }
-/* Sidebar logo — larger, crisp on dark background */
+/* Sidebar logo */
 .sidebar .ip-logo {
-  width: 40px;
-  height: 40px;
+  width: 52px;
+  height: 52px;
   mix-blend-mode: lighten;
-  filter: drop-shadow(0 0 8px rgba(108,63,245,.5));
+  filter: drop-shadow(0 0 10px rgba(108,63,245,.55));
 }
 /* Topbar logo */
 .topbar .ip-logo {
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   mix-blend-mode: lighten;
-  filter: drop-shadow(0 0 6px rgba(108,63,245,.4));
+  filter: drop-shadow(0 0 8px rgba(108,63,245,.45));
 }
 [data-theme=dark] .topbar .ip-logo {
   mix-blend-mode: lighten;
@@ -4558,8 +4558,11 @@ function rDash(){
       }).join('')+'</tbody></table></div>')+'</div>';
   }
   c.innerHTML=
-    '<div class="page-head"><div><h2>'+subtitle+'</h2>'+
-    '<div class="page-head-sub">Welcome, '+S.user.name+' &nbsp;<span class="live"><span class="live-dot"></span>Live</span></div></div>'+
+    '<div class="page-head" style="align-items:center">' +
+    '<div style="display:flex;align-items:center;gap:14px">' +
+    '<img src="logo.png" alt="InstaPort" style="width:56px;height:56px;object-fit:contain;filter:drop-shadow(0 0 12px rgba(108,63,245,.5));flex-shrink:0"/>' +
+    '<div><h2 style="margin:0">'+subtitle+'</h2>'+
+    '<div class="page-head-sub">Welcome, '+S.user.name+' &nbsp;<span class="live"><span class="live-dot"></span>Live</span></div></div></div>'+
     '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')">+ New Shipment</button>':'')+'</div></div>'+
     '<div class="kpi-row">'+kpis+'</div>'+
     (role==='driver'?rolePanel:chartsSection+tripsSection+rolePanel);
