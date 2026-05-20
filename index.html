@@ -1692,6 +1692,9 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   filter: contrast(1.06) saturate(1.12) brightness(0.94);
   -webkit-mask-image: none;
   mask-image: none;
+  /* Slight zoom-out — shows more of the scene, dark panel bleeds through naturally */
+  transform: scale(0.84);
+  transform-origin: center center;
 }
 #login .ll-brand {
   display: flex; align-items: center; gap: 14px;
@@ -1704,8 +1707,8 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   flex-shrink: 0;
 }
 #login .ll-logo-img {
-  width: 52px;
-  height: 52px;
+  width: 78px;
+  height: 78px;
   mix-blend-mode: lighten;
 }
 /* Sidebar is always dark — lighten makes the logo pop on dark bg */
