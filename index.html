@@ -1698,13 +1698,26 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   display: block;
   pointer-events: none;
   z-index: 1;
-  border: none;
-  outline: none;
-  box-shadow: none;
+  border: none !important;
+  outline: none !important;
+  box-shadow: none !important;
+  background: transparent;
+  /* Light mode: multiply removes white background of the truck PNG */
+  mix-blend-mode: multiply;
+  filter: contrast(1.08) saturate(1.15) brightness(0.98);
+  -webkit-mask-image:
+    linear-gradient(to right,  transparent 0%, #000 4%, #000 96%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 5%, #000 100%);
+  mask-image:
+    linear-gradient(to right,  transparent 0%, #000 4%, #000 96%, transparent 100%),
+    linear-gradient(to bottom, transparent 0%, #000 5%, #000 100%);
+  -webkit-mask-composite: intersect;
+  mask-composite: intersect;
+}
+/* Dark mode: screen makes the dark areas of the image transparent */
+[data-theme=dark] #login .ll-hero-bg {
   mix-blend-mode: screen;
-  filter: contrast(1.14) saturate(1.12) brightness(1.04);
-  -webkit-mask-image: linear-gradient(to right, transparent 0%, #000 3%, #000 97%, transparent 100%);
-  mask-image: linear-gradient(to right, transparent 0%, #000 3%, #000 97%, transparent 100%);
+  filter: contrast(1.14) saturate(1.12) brightness(1.08);
 }
 #login .ll-brand {
   display: flex; align-items: center; gap: 14px;
@@ -1715,22 +1728,30 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   object-fit: contain;
   display: block;
   flex-shrink: 0;
+  mix-blend-mode: normal; /* default: always visible */
 }
 #login .ll-logo-img {
   width: 52px;
   height: 52px;
-  mix-blend-mode: lighten;
 }
 .ip-logo {
-  mix-blend-mode: lighten;
+  /* blend mode intentionally normal — overridden per context below */
 }
+/* Sidebar is always dark — lighten makes the logo pop on dark bg */
 .sidebar .ip-logo {
   width: 32px;
   height: 32px;
+  mix-blend-mode: lighten;
 }
+/* Topbar: normal so logo is visible in both light and dark mode */
 .topbar .ip-logo {
   width: 28px;
   height: 28px;
+  mix-blend-mode: normal;
+}
+/* In dark mode topbar, lighten helps if logo is light-on-dark */
+[data-theme=dark] .topbar .ip-logo {
+  mix-blend-mode: lighten;
 }
 #login .ll-wordmark { display: flex; flex-direction: column; }
 #login .ll-wordmark-name {
