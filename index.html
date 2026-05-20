@@ -2217,6 +2217,290 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 }
 .pl-add-btn:hover { border-color: #6C3FF5; color: #6C3FF5; background: rgba(108,63,245,.04); }
 
+/* ═══════════════════════════════════════════════
+   ENHANCEMENT 1 — SKELETON LOADERS
+═══════════════════════════════════════════════ */
+@keyframes shimmer {
+  0%   { background-position: -800px 0; }
+  100% { background-position:  800px 0; }
+}
+.skel {
+  background: linear-gradient(90deg, var(--bd) 20%, var(--dv) 50%, var(--bd) 80%);
+  background-size: 1600px 100%;
+  animation: shimmer 1.6s infinite linear;
+  border-radius: 4px;
+  display: block;
+}
+[data-theme=dark] .skel {
+  background: linear-gradient(90deg, rgba(255,255,255,.05) 20%, rgba(255,255,255,.10) 50%, rgba(255,255,255,.05) 80%);
+  background-size: 1600px 100%;
+  animation: shimmer 1.6s infinite linear;
+}
+.skel-kpi {
+  background: var(--surf);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  box-shadow: var(--sh-sm);
+}
+.skel-card {
+  background: var(--surf);
+  border: 1px solid var(--bd);
+  border-radius: var(--r-xl);
+  padding: 20px;
+  box-shadow: var(--sh-sm);
+}
+.skel-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 13px 0;
+  border-bottom: 1px solid var(--dv);
+}
+.skel-row:last-child { border-bottom: none; }
+.skel-h-10 { height: 10px; }
+.skel-h-12 { height: 12px; }
+.skel-h-14 { height: 14px; }
+.skel-h-20 { height: 20px; }
+.skel-h-40 { height: 40px; }
+.skel-w-20 { width: 20%; }
+.skel-w-30 { width: 30%; }
+.skel-w-40 { width: 40%; }
+.skel-w-55 { width: 55%; }
+.skel-w-70 { width: 70%; }
+.skel-circle { border-radius: 50%; flex-shrink: 0; }
+.tbl-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 0 0 var(--r-xl) var(--r-xl); }
+
+/* ═══════════════════════════════════════════════
+   ENHANCEMENT 2 — EMPTY STATES
+═══════════════════════════════════════════════ */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 20px 48px;
+  text-align: center;
+}
+.empty-icon {
+  font-size: 54px;
+  margin-bottom: 18px;
+  animation: floatIcon 3.5s ease-in-out infinite;
+  line-height: 1;
+}
+@keyframes floatIcon {
+  0%, 100% { transform: translateY(0); }
+  50%       { transform: translateY(-7px); }
+}
+.empty-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--t);
+  margin-bottom: 8px;
+  font-family: 'Space Grotesk', sans-serif;
+}
+.empty-desc {
+  font-size: 13px;
+  color: var(--t2);
+  margin-bottom: 22px;
+  max-width: 300px;
+  line-height: 1.65;
+}
+.empty-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
+
+/* ═══════════════════════════════════════════════
+   ENHANCEMENT 3 — MICRO-ANIMATIONS
+═══════════════════════════════════════════════ */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeInScale {
+  from { opacity: 0; transform: scale(.95); }
+  to   { opacity: 1; transform: scale(1); }
+}
+@keyframes popIn {
+  0%   { transform: scale(.88) translateY(8px); opacity: 0; }
+  65%  { transform: scale(1.02) translateY(-1px); }
+  100% { transform: scale(1) translateY(0); opacity: 1; }
+}
+@keyframes kpiCountUp {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.page-anim  { animation: fadeInUp .30s cubic-bezier(.22,.68,0,1.18) both; }
+.card-anim  { animation: fadeInScale .28s ease both; }
+.modal-anim { animation: popIn .28s cubic-bezier(.175,.885,.32,1.275) both; }
+/* Staggered children */
+.stagger-children > * {
+  opacity: 0;
+  animation: fadeInUp .32s cubic-bezier(.22,.68,0,1.18) both;
+}
+.stagger-children > *:nth-child(1) { animation-delay: .03s; }
+.stagger-children > *:nth-child(2) { animation-delay: .07s; }
+.stagger-children > *:nth-child(3) { animation-delay: .11s; }
+.stagger-children > *:nth-child(4) { animation-delay: .15s; }
+.stagger-children > *:nth-child(5) { animation-delay: .19s; }
+.stagger-children > *:nth-child(6) { animation-delay: .23s; }
+.stagger-children > *:nth-child(7) { animation-delay: .27s; }
+.stagger-children > *:nth-child(8) { animation-delay: .31s; }
+/* KPI value animation */
+.kpi-val, .kpi-num, .gauge-val, .ww-stat-val {
+  animation: kpiCountUp .5s ease both;
+}
+/* Button hover lift — supplement existing */
+.btn:not(:disabled) { transition: transform .15s ease, box-shadow .15s ease, background .2s, border-color .2s, color .2s; }
+.btn-primary:not(:disabled):hover { transform: translateY(-2px); }
+.btn-outline:not(:disabled):hover { transform: translateY(-1px); }
+/* Sidebar item hover */
+.sbi { transition: all .18s ease; }
+/* Card hover */
+.card { transition: box-shadow .22s ease; }
+/* Status pulse on live badge */
+.live-dot { animation: livePulse 1.4s ease-in-out infinite; }
+/* Active status indicators */
+.tag-transit { position: relative; }
+
+/* ═══════════════════════════════════════════════
+   ENHANCEMENT 4 — MOBILE RESPONSIVENESS
+═══════════════════════════════════════════════ */
+/* Hamburger button */
+.hamburger-btn {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  padding: 9px 7px;
+  border-radius: 9px;
+  background: none;
+  border: 1.5px solid var(--bd);
+  margin-right: 8px;
+  flex-shrink: 0;
+  min-width: 40px;
+  min-height: 40px;
+  align-items: center;
+  justify-content: center;
+}
+.hamburger-btn span {
+  display: block;
+  width: 18px;
+  height: 2px;
+  background: var(--t2);
+  border-radius: 2px;
+  transition: transform .25s ease, opacity .2s ease;
+  pointer-events: none;
+}
+.hamburger-btn.hb-open span:nth-child(1) { transform: translateY(7px) rotate(45deg); }
+.hamburger-btn.hb-open span:nth-child(2) { opacity: 0; }
+.hamburger-btn.hb-open span:nth-child(3) { transform: translateY(-7px) rotate(-45deg); }
+/* Mobile overlay backdrop */
+#mob-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.48);
+  z-index: 9;
+  backdrop-filter: blur(3px);
+  animation: fadeInScale .2s ease both;
+}
+#mob-backdrop.show { display: block; }
+
+@media (max-width: 820px) {
+  :root { --sidebar-w: 220px; }
+  /* Sidebar slides off-canvas */
+  .sidebar {
+    position: fixed !important;
+    top: 0; left: 0; bottom: 0;
+    z-index: 10;
+    transform: translateX(calc(-1 * var(--sidebar-w) - 4px));
+    transition: transform .3s cubic-bezier(.4,0,.2,1), box-shadow .3s;
+    box-shadow: none;
+  }
+  [dir=rtl] .sidebar { left: auto; right: 0; transform: translateX(calc(var(--sidebar-w) + 4px)); }
+  .sidebar.mob-open { transform: translateX(0); box-shadow: 4px 0 32px rgba(0,0,0,.25); }
+  [dir=rtl] .sidebar.mob-open { transform: translateX(0); }
+
+  /* Show hamburger */
+  .hamburger-btn { display: flex; }
+
+  /* Main area: full width */
+  .main-area { width: 100%; min-width: 0; }
+
+  /* Topbar: compact */
+  .tb-brand-name { display: none; }
+  .tb-search { max-width: none; flex: 1; min-width: 0; }
+  .tb-profile-info { display: none; }
+  .tb-divider { display: none; }
+  .tb-theme-lbl { display: none; }
+
+  /* Page content padding */
+  .page-content { padding: 14px 12px; }
+
+  /* KPI row: 2 columns */
+  .kpi-row { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+  /* Dashboard main grid */
+  .dash-grid { grid-template-columns: 1fr; }
+
+  /* Trucks: 2 cols */
+  .trucks-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Modals: bottom-sheet style */
+  .moverlay { padding: 0; align-items: flex-end; }
+  .modal {
+    border-radius: var(--r-xl) var(--r-xl) 0 0;
+    width: 100%;
+    max-width: 100%;
+    max-height: 90dvh;
+    padding: 28px 20px 32px;
+  }
+  .modal::before {
+    content: '';
+    display: block;
+    width: 36px; height: 4px;
+    background: var(--bd);
+    border-radius: 2px;
+    margin: -8px auto 20px;
+  }
+
+  /* Side panel: full width */
+  .side-panel { width: 100% !important; border-left: none; border-top: 1px solid var(--bd); }
+
+  /* sbar: compact */
+  .sbar { padding: 10px 12px; gap: 6px; }
+  .sbar input, .sbar select { font-size: 12px; padding: 7px 10px; }
+
+  /* page-head: stack */
+  .page-head { flex-direction: column; gap: 10px; align-items: flex-start; }
+  .page-head > div:last-child { display: flex; flex-wrap: wrap; gap: 6px; }
+
+  /* g2: single column */
+  .g2 { grid-template-columns: 1fr; }
+
+  /* Minimum touch targets */
+  .btn { min-height: 42px; padding: 10px 16px; }
+  .btn-sm { min-height: 36px; }
+  .sbi { padding: 10px; }
+
+  /* frow: single col */
+  .frow { grid-template-columns: 1fr; }
+
+  /* Tabs: scrollable */
+  .tabs { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 480px) {
+  .trucks-grid { grid-template-columns: 1fr; }
+  .kpi-row { grid-template-columns: 1fr 1fr; }
+  .page-head h2 { font-size: 18px; }
+  .kpi-val, .kpi-num { font-size: 14px; }
+  .topbar { padding: 0 12px; }
+}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -2415,6 +2699,9 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   <div class="main-area">
     <!-- TOPBAR -->
     <div class="topbar">
+      <button class="hamburger-btn" id="hamburger-btn" onclick="_toggleMobileSidebar()" aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
       <div class="tb-brand">
         <img src="logo.png" alt="InstaPort" class="ip-logo"/>
         <span class="tb-brand-name" id="tb-tenant-name">InstaPort</span>
@@ -2452,6 +2739,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
     <div class="page-content" id="content"></div>
   </div>
 </div>
+<div id="mob-backdrop" onclick="_closeMobileSidebar()"></div>
 <div class="moverlay" id="moverlay" onclick="if(event.target===this)closeM()"><div class="modal" id="modal"></div></div>
 <div class="side-panel" id="side-panel">
   <div class="sp-hd">
@@ -2479,6 +2767,131 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 
 <div class="tosts" id="tosts"></div>
 <script>
+// ══════════════════════════════════════════════════
+// UI ENHANCEMENT HELPERS
+// ══════════════════════════════════════════════════
+
+/* --- EMPTY STATE HELPER --- */
+function _emptyState(icon,title,desc,actions){
+  return '<div class="empty-state">'+
+    '<div class="empty-icon">'+icon+'</div>'+
+    '<div class="empty-title">'+title+'</div>'+
+    '<div class="empty-desc">'+desc+'</div>'+
+    (actions?'<div class="empty-actions">'+actions+'</div>':'')+
+    '</div>';
+}
+
+/* --- SKELETON HELPERS --- */
+function _skelKPIRow(n){
+  n=n||4;
+  var h='<div class="kpi-row stagger-children">';
+  for(var i=0;i<n;i++){
+    h+='<div class="skel-kpi">'+
+      '<span class="skel skel-circle skel-h-40" style="width:40px;flex-shrink:0"></span>'+
+      '<div style="flex:1">'+
+        '<span class="skel skel-h-10 skel-w-55" style="margin-bottom:7px"></span>'+
+        '<span class="skel skel-h-20 skel-w-40"></span>'+
+      '</div></div>';
+  }
+  return h+'</div>';
+}
+function _skelTable(rows,cols){
+  rows=rows||5; cols=cols||5;
+  var h='<div class="skel-card">';
+  h+='<span class="skel skel-h-14 skel-w-30" style="margin-bottom:18px"></span>';
+  for(var r=0;r<rows;r++){
+    h+='<div class="skel-row">';
+    var widths=[35,15,15,20,15];
+    for(var c=0;c<cols;c++){
+      h+='<span class="skel skel-h-12" style="width:'+(widths[c%5])+'%;min-width:32px;flex-shrink:0"></span>';
+    }
+    h+='</div>';
+  }
+  return h+'</div>';
+}
+function _skelCards(n){
+  n=n||4;
+  var h='<div class="kpi-row stagger-children">';
+  for(var i=0;i<n;i++){
+    h+='<div class="skel-card">'+
+      '<span class="skel skel-h-14 skel-w-55" style="margin-bottom:12px"></span>'+
+      '<span class="skel skel-h-10 skel-w-70" style="margin-bottom:8px"></span>'+
+      '<span class="skel skel-h-10 skel-w-40"></span>'+
+    '</div>';
+  }
+  return h+'</div>';
+}
+
+/* --- COUNT-UP ANIMATION --- */
+function _countUp(el,target,duration){
+  if(!el)return;
+  var str=String(target).trim();
+  // Extract: optional non-digit prefix, digits, optional non-digit suffix
+  var m=str.match(/^([^0-9]*)([0-9][0-9,.]*)([^0-9]*)$/);
+  if(!m){el.textContent=target;return;}
+  var prefix=m[1],numStr=m[2].replace(/,/g,''),suffix=m[3];
+  var num=parseFloat(numStr);
+  if(isNaN(num)||num===0){el.textContent=target;return;}
+  var t0=null; duration=duration||900;
+  function step(ts){
+    if(!t0)t0=ts;
+    var p=Math.min((ts-t0)/duration,1);
+    var ease=1-Math.pow(1-p,3);
+    var cur=Math.round(ease*num);
+    el.textContent=prefix+cur.toLocaleString()+suffix;
+    if(p<1)requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
+}
+
+/* --- PAGE ENTRY ANIMATION --- */
+function _animatePage(){
+  var c=document.getElementById('content');
+  if(!c)return;
+  // Animate KPI numbers with count-up
+  setTimeout(function(){
+    c.querySelectorAll('.kpi-val,.kpi-num,.gauge-val,.ww-stat-val,.cmw-pct').forEach(function(el){
+      var original=el.textContent.trim();
+      _countUp(el,original,900);
+    });
+    // Wrap any bare .tbl in a scroll container
+    c.querySelectorAll('.tbl').forEach(function(tbl){
+      if(!tbl.parentElement.classList.contains('tbl-scroll')){
+        var w=document.createElement('div');
+        w.className='tbl-scroll';
+        tbl.parentNode.insertBefore(w,tbl);
+        w.appendChild(tbl);
+      }
+    });
+  },60);
+}
+
+/* --- MOBILE SIDEBAR --- */
+function _toggleMobileSidebar(){
+  var sb=document.getElementById('sidebar');
+  var hb=document.getElementById('hamburger-btn');
+  var bd=document.getElementById('mob-backdrop');
+  if(!sb)return;
+  var open=sb.classList.contains('mob-open');
+  if(open){
+    sb.classList.remove('mob-open');
+    if(hb)hb.classList.remove('hb-open');
+    if(bd)bd.classList.remove('show');
+  }else{
+    sb.classList.add('mob-open');
+    if(hb)hb.classList.add('hb-open');
+    if(bd)bd.classList.add('show');
+  }
+}
+function _closeMobileSidebar(){
+  var sb=document.getElementById('sidebar');
+  var hb=document.getElementById('hamburger-btn');
+  var bd=document.getElementById('mob-backdrop');
+  if(sb)sb.classList.remove('mob-open');
+  if(hb)hb.classList.remove('hb-open');
+  if(bd)bd.classList.remove('show');
+}
+
 // ══════════════════════════════════════════════════
 // ══════════════════════════════════════════════════
 // SECURITY LAYER — XSS sanitizer, brute-force guard, session timeout
@@ -3731,6 +4144,7 @@ function buildSB(){
 }
 function nav(page){
   _destroyDashMap();_destroyTripMap();
+  _closeMobileSidebar(); // close mobile sidebar on navigation
   // ── Navigation guard ──────────────────────────────
   // Admin always passes; others must have the page in their allowed list
   if(!can('all')&&page!=='dashboard'){
@@ -3740,7 +4154,7 @@ function nav(page){
       toast('🔒 Access denied — contact your admin','err');
       S.page='dashboard';buildSB();
       document.getElementById('content').innerHTML=
-        '<div class="card" style="text-align:center;padding:60px 20px;max-width:480px;margin:40px auto">'+
+        '<div class="card page-anim" style="text-align:center;padding:60px 20px;max-width:480px;margin:40px auto">'+
         '<div style="font-size:52px;margin-bottom:12px">🔒</div>'+
         '<div style="font-size:18px;font-weight:700;margin-bottom:6px">Access Restricted</div>'+
         '<div style="font-size:13px;color:var(--t2);margin-bottom:20px">You don\'t have permission to view <strong>'+page+'</strong>.<br>Ask your administrator to grant access.</div>'+
@@ -3748,7 +4162,11 @@ function nav(page){
       return;
     }
   }
-  S.page=page;buildSB();document.getElementById('content').innerHTML='';
+  S.page=page;buildSB();
+  // Show skeleton while page renders
+  var c=document.getElementById('content');
+  c.style.animation='none';c.offsetHeight;
+  c.innerHTML='';
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
@@ -3757,6 +4175,9 @@ function nav(page){
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR};
   (map[page]||rDash)();
+  // Animate page entry and KPI count-up
+  c.style.animation='fadeInUp .28s cubic-bezier(.22,.68,0,1.18) both';
+  _animatePage();
 }
 
 // ══════════════════════════════════════════════════
@@ -3766,7 +4187,13 @@ function stB(s){
   var m={awaiting_truck:'<span class="tag tag-pend">⏳ Awaiting Truck</span>',awaiting_quality:'<span class="tag tag-blue">🧪 Quality</span>',awaiting_ctrl:'<span class="tag tag-info">🎛️ Control Room</span>',awaiting_security:'<span class="tag tag-pend">🔒 Gate</span>',in_transit:'<span class="tag tag-ok">🚛 In Transit</span>',inbound_ctrl:'<span class="tag tag-info">📥 Inbound Ctrl</span>',inbound_security:'<span class="tag tag-pend">📥 Inbound Gate</span>',inbound_quality:'<span class="tag tag-blue">📥 Inbound QA</span>',completed:'<span class="tag tag-ok">✅ Completed</span>',cancelled:'<span class="tag tag-hold">❌ Cancelled</span>'};
   return m[s]||('<span class="tag tag-gray">'+s+'</span>');
 }
-function openM(h){document.getElementById('modal').innerHTML=h;document.getElementById('moverlay').classList.add('open');}
+function openM(h){
+  var m=document.getElementById('modal');
+  m.innerHTML=h;
+  m.style.animation='none';m.offsetHeight;
+  m.style.animation='popIn .28s cubic-bezier(.175,.885,.32,1.275) both';
+  document.getElementById('moverlay').classList.add('open');
+}
 function closeM(){document.getElementById('moverlay').classList.remove('open');}
 function toast(msg,t){t=t||'info';var w=document.getElementById('tosts'),d=document.createElement('div');d.className='tost tost-'+(t==='ok'?'ok':t==='err'?'err':'info');d.innerHTML='<span>'+(t==='ok'?'✅':t==='err'?'❌':'ℹ️')+'</span> '+msg;w.appendChild(d);setTimeout(function(){d.remove();},3500);}
 function notif(msg,type){
@@ -3998,7 +4425,7 @@ function rDash(){
     tripsSection='<div class="card"><div class="card-hd"><div class="card-title">📋 Recent Shipments</div>'+
       (can('trips_view')||can('all')?'<button class="btn btn-outline btn-sm" onclick="nav(\'trips\')">All →</button>':'')+
       '</div>'+
-      (tripList.length===0?'<div style="text-align:center;padding:28px;color:var(--t2)">No trips yet</div>':
+      (tripList.length===0?_emptyState('🚚','No Shipments Yet','Once trips are created, they\'ll appear here.',can('trips_view')||can('all')?'<button class="btn btn-primary" onclick="nav(\'trips\')">Go to Trips</button>':''):
       '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>ID</th><th>Customer</th><th>Type</th><th>Truck</th><th>KM</th>'+(canFinance?'<th>Cost</th>':'')+'<th>Status</th></tr></thead><tbody>'+
       tripList.slice(-6).reverse().map(function(t){
         return '<tr style="cursor:pointer" onclick="tripDet(\''+t.id+'\')">'+
@@ -7747,7 +8174,7 @@ function openTruckDetail(plateOrEl, TRUCKS_ARR) {
           +'<div style="font-size:12px;color:var(--t2)">'+tr.customer+' · '+tr.km+'km'+(tr.cost?' · EGP '+tr.cost:'')+'</div></div>'
           +stB(tr.status)+'</div>';
       }).join('')
-    :'<div style="text-align:center;padding:20px;color:var(--t2)">No trips yet</div>')
+    :_emptyState('🚚','No trips recorded','This truck has no trip history yet.',''))
     +(can('validation')||can('all')?
       '<div style="display:flex;gap:8px;margin-top:12px">'
       +(t.valid
@@ -8282,7 +8709,8 @@ function openCustomerActivity(cu){
           '<div style="font-size:11px;color:var(--t2)">'+t.type+' &bull; '+(t.from||'—')+' \u2192 '+(t.dests||'—')+' &bull; '+t.km+'km'+(t.cost?' &bull; EGP '+t.cost:'')+' &bull; '+t.pricePlan||'Default'+'</div>'+
           '</div>';
       }).join('') :
-      '<div style="text-align:center;padding:24px;color:var(--t2)">No trips yet</div>')+
+      _emptyState('🗺️','No Trips Assigned','You have no trips assigned to you yet. Check back soon.','')+
+    '')+
 
     // Activity log
     (acts.length>0?
@@ -10872,8 +11300,8 @@ function _renderInvoiceList(){
     '</div>'+
     // ── Table ──
     (shown.length===0?
-      '<div class="card" style="text-align:center;padding:56px;color:var(--t2)"><div style="font-size:48px">&#128196;</div><div style="margin-top:12px;font-size:15px;font-weight:700">No invoices in this view</div>'+
-      (can('finance_view')||can('all')?'<button class="btn btn-primary" style="margin-top:16px" onclick="openNewInvoice()">+ Create Invoice</button>':'')+'</div>':
+      '<div class="card">'+_emptyState('📄','No Invoices Here','No invoices match this filter. Create your first invoice to start tracking revenue.',
+        (can('finance_view')||can('all')?'<button class="btn btn-primary" onclick="openNewInvoice()">+ Create Invoice</button>':''))+'</div>':
       '<div class="card" style="padding:0;overflow:hidden"><table class="tbl"><thead><tr>'+
       '<th>Invoice #</th><th>Customer</th><th>Period</th><th>Trips</th><th>Subtotal</th><th>VAT</th><th>Total</th><th>Due</th><th>Status</th><th>Actions</th>'+
       '</tr></thead><tbody>'+
