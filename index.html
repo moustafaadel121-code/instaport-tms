@@ -1647,22 +1647,20 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   z-index: 2;
 }
 #login .login-left::after { display: none; }
-/* Content pinned to top-left — dark circle wraps logo + brand + headline */
+/* Content pinned to top-left — transparent wrapper */
 #login .ll-content {
   display: flex;
   flex-direction: column;
   position: absolute;
-  top: 18px;
-  left: 18px;
+  top: 14px;
+  left: 14px;
   z-index: 3;
   width: auto;
-  max-width: 310px;
-  background: rgba(14, 7, 36, 0.82);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(196,181,253,0.14);
-  border-radius: 36px;
-  padding: 22px 26px 26px 22px;
+  max-width: 360px;
+  background: none;
+  border: none;
+  border-radius: 0;
+  padding: 0;
 }
 /* Photo anchored to bottom of panel — natural width, auto height = no cropping */
 #login .ll-hero-wrap {
@@ -1700,8 +1698,16 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 #login .ll-brand {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 14px;
+  gap: 14px;
+  margin-bottom: 18px;
+  /* dark oval badge — logo + InstaPort + TMS only */
+  background: rgba(14, 7, 40, 0.88);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(196,181,253,0.16);
+  border-radius: 999px;
+  padding: 16px 28px 16px 16px;
+  width: fit-content;
 }
 #login .ll-logo-img,
 .ip-logo {
@@ -1742,11 +1748,12 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   font-size: 13px; color: rgba(196,181,253,.8); font-weight: 500; margin-top: 5px;
 }
 #login .ll-headline {
-  font-size: clamp(26px, 2.8vw, 36px); font-weight: 800; color: #FFFFFF;
-  letter-spacing: -1px; line-height: 1.15;
-  margin: 0; max-width: 100%;
+  font-size: clamp(30px, 3.2vw, 42px); font-weight: 800; color: #FFFFFF;
+  letter-spacing: -1.2px; line-height: 1.12;
+  margin: 0; max-width: 320px;
   font-family: 'Space Grotesk', sans-serif;
   flex-shrink: 0;
+  text-shadow: 0 2px 16px rgba(0,0,0,0.5);
 }
 #login .ll-headline span { color: #C4B5FD; }
 #login .ll-hero-spacer { flex: 1; min-height: 120px; }
@@ -10180,7 +10187,7 @@ rDash = function() {
 
     // TRUCK CAPACITY MINI WIDGET — real-trip based
     '<div class="cap-mini-widget" onclick="openCapSP()">' +
-    '<div class="cmw-truck" aria-hidden="true"><img src="truck.png" alt="" class="cmw-truck-img"/></div>' +
+    '<div class="cmw-truck" aria-hidden="true"><img src="truck-widget.png" alt="" class="cmw-truck-img"/></div>' +
     '<div class="cmw-content">' +
     '<div class="cmw-label">Fleet Utilization</div>' +
     '<div class="cmw-header">' +
