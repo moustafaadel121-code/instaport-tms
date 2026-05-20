@@ -10479,6 +10479,7 @@ function rBilling(){
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     (canCreate?'<button class="btn btn-primary" onclick="openNewInvoice()">+ New Invoice</button>':'')+
     (canCreate?'<button class="btn btn-outline btn-sm" onclick="autoGenerateInvoices()">⚡ Auto-Invoice</button>':'')+
+    (canCreate?'<button class="btn btn-outline btn-sm" onclick="openBulkInvoiceExport()">📥 Export All</button>':'')+
     (canCreate?'<button class="btn btn-outline btn-sm" onclick="exportVATBreakdown()">📊 VAT Breakdown</button>':'')+
     (canCreate?'<button class="btn btn-outline btn-sm" onclick="exportProfitMargins()">💹 Profit Margins</button>':'')+
     '</div>')+
@@ -10536,7 +10537,7 @@ function _renderInvoiceList(){
           (inv.status==='draft'?'<button class="btn btn-sm btn-primary" onclick="markInvSent(\''+inv.id+'\')">&#9993; Send</button>':'')+
           (inv.status==='sent'?'<button class="btn btn-sm btn-success" onclick="markInvPaid(\''+inv.id+'\')">&#10003; Paid</button>':'')+''+
           (inv.status==='sent'?'<button class="btn btn-sm btn-danger" onclick="markInvOverdue(\''+inv.id+'\')">&#8987;</button>':'')+
-          '<button class="btn btn-sm btn-outline" onclick="exportInvoiceCSV(\''+inv.id+'\')" title="Export CSV">&#128202;</button>'+
+          '<button class="btn btn-sm btn-outline" onclick="openInvoiceExport(\''+inv.id+'\')" title="Export Invoice">&#128196; Export</button>'+
           '</div></td></tr>';
       }).join('')+'</tbody></table></div>');
 }
@@ -10662,7 +10663,9 @@ function createInvoice(){
   S.invoices.unshift(inv);
   _saveInvoices();
   audit('INVOICE_CREATE',num+' — '+cu+' EGP '+(sub+tax),'');
-  closeM();toast('Invoice '+num+' created!','ok');rBilling();
+  rBilling();
+  // Auto-prompt export after creation
+  setTimeout(function(){openInvoiceExport(num,true);},200);
 }
 
 function viewInvoiceSP(id){
@@ -10695,7 +10698,7 @@ function viewInvoiceSP(id){
     (inv.status==='draft'?'<button class="btn btn-primary btn-sm" onclick="markInvSent(\''+id+'\');closeSP()">&#9993; Mark Sent</button>':'')+
     (inv.status==='sent'?'<button class="btn btn-success btn-sm" onclick="markInvPaid(\''+id+'\');closeSP()">&#10003; Mark Paid</button>':'')+
     (inv.status==='sent'?'<button class="btn btn-danger btn-sm" onclick="markInvOverdue(\''+id+'\');closeSP()">&#8987; Overdue</button>':'')+
-    '<button class="btn btn-outline btn-sm" onclick="exportInvoiceCSV(\''+id+'\')">&#128202; Export CSV</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openInvoiceExport(\''+id+'\')">&#128196; Export</button>'+
     '</div>'
   );
 }
@@ -10704,22 +10707,299 @@ function markInvSent(id){var inv=(S.invoices||[]).find(function(i){return i.id==
 function markInvPaid(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='paid';inv.paidAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_PAID',id,'');toast(id+' paid! ✅','ok');rBilling();}
 function markInvOverdue(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='overdue';_saveInvoices();audit('INVOICE_OVERDUE',id,'');toast(id+' marked overdue','err');rBilling();}
 
-function exportInvoiceCSV(id){
+// ══════════════════════════════════════════════════
+// INVOICE EXPORT ENGINE — PDF / Excel / CSV
+// ══════════════════════════════════════════════════
+function openInvoiceExport(id, justCreated){
   var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;
   var cfg=S.billingConfig||{};
-  var rows=[cfg.companyName||'InstaPort Logistics','VAT: '+(cfg.vatNo||''),'Bank: '+cfg.bankName+' | Acc: '+cfg.bankAccount+' | IBAN: '+cfg.iban,''];
-  rows.push('Invoice No,Customer,Period,Trip ID,Description,Amount (EGP)');
-  (inv.lineItems||[]).forEach(function(li){rows.push([inv.id,inv.customer,inv.period,li.tripId,'"'+li.desc+'"',li.amount].join(','));});
-  rows.push(',,,,Subtotal,'+inv.subtotal);
-  rows.push(',,,,VAT ('+inv.taxRate+'%),'+inv.tax);
-  rows.push(',,,,TOTAL,'+inv.total);
-  rows.push(',,,,Due Date,'+inv.dueDate);
-  rows.push(',,,,Status,'+inv.status);
-  if(inv.notes)rows.push(',,,,Notes,"'+inv.notes+'"');
+  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444',cancelled:'#64748B'};
+  var color=stC[inv.status]||'#64748B';
+  var lS='font-size:10px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;display:block;margin-bottom:6px';
+  openM(
+    '<div class="m-title">📄 Export Invoice</div>'+
+    // Invoice summary banner
+    '<div style="background:linear-gradient(135deg,#1E1453,#2D1B69);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center">'+
+    '<div>'+
+    '<div style="font-size:11px;color:rgba(255,255,255,.55);font-weight:700;letter-spacing:.8px">INVOICE</div>'+
+    '<div style="font-size:18px;font-weight:900;color:#fff;margin:2px 0">'+inv.id+'</div>'+
+    '<div style="font-size:12px;color:rgba(255,255,255,.65)">'+inv.customer+' · '+inv.period+'</div>'+
+    '</div>'+
+    '<div style="text-align:right">'+
+    '<div style="font-size:22px;font-weight:900;color:#fff">EGP '+(inv.total||0).toLocaleString()+'</div>'+
+    '<span style="background:'+color+'33;color:'+color+';border:1px solid '+color+';padding:3px 10px;border-radius:20px;font-size:10px;font-weight:800">'+inv.status.toUpperCase()+'</span>'+
+    '</div></div>'+
+    // Format selector
+    '<div style="margin-bottom:16px"><div style="'+lS+'">Select Format</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px">'+
+    [
+      ['pdf',   '📄', 'PDF',   'Professional invoice\nprint-ready layout'],
+      ['excel', '📋', 'Excel', 'Spreadsheet format\n.xls for accounting'],
+      ['csv',   '📊', 'CSV',   'Raw data format\nfor any BI tool'],
+    ].map(function(f,i){
+      var checked=i===0;
+      return '<label id="inv-fmt-lbl-'+f[0]+'" style="display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 8px;border:2px solid '+(checked?'#6C3FF5':'var(--border)')+';border-radius:10px;cursor:pointer;transition:all .15s;text-align:center" onclick="[\'pdf\',\'excel\',\'csv\'].forEach(function(x){document.getElementById(\'inv-fmt-lbl-\'+x).style.borderColor=x===\''+f[0]+'\'?\'#6C3FF5\':\'var(--border)\';document.getElementById(\'inv-fmt-lbl-\'+x).style.background=x===\''+f[0]+'\'?\'rgba(108,63,245,.06)\':\'\';})">'+
+        '<input type="radio" name="inv-fmt" value="'+f[0]+'"'+(checked?' checked':'')+' style="display:none"/>'+
+        '<div style="font-size:24px">'+f[1]+'</div>'+
+        '<div style="font-weight:800;font-size:13px;color:var(--t)">'+f[2]+'</div>'+
+        '<div style="font-size:10px;color:var(--t2);white-space:pre-line;line-height:1.4">'+f[3]+'</div>'+
+        '</label>';
+    }).join('')+'</div></div>'+
+    // Details row
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'+
+    [['Trips',inv.tripIds.length],['Due Date',inv.dueDate||'—'],['Created',inv.createdAt?inv.createdAt.slice(0,10):'—']].map(function(x){
+      return '<div style="background:var(--bg);border-radius:8px;padding:8px 10px;border:1px solid var(--bd)">'+
+        '<div style="font-size:10px;color:var(--t2);font-weight:600">'+x[0]+'</div>'+
+        '<div style="font-weight:800;color:var(--t);font-size:13px">'+x[1]+'</div></div>';
+    }).join('')+'</div>'+
+    (justCreated?'<div style="padding:10px 14px;background:rgba(16,185,129,.08);border:1px solid #10B981;border-radius:8px;font-size:12px;color:#10B981;margin-bottom:14px;font-weight:600">✅ Invoice created successfully! Download a copy below.</div>':'')+
+    '<div class="m-foot">'+
+    '<button class="btn btn-outline" onclick="closeM()">Close</button>'+
+    '<button class="btn btn-primary" style="min-width:130px" onclick="window._invExportId=\''+id+'\';_doInvoiceExport()">📄 Download</button>'+
+    '</div>'
+  );
+  // Pre-highlight PDF card
+  setTimeout(function(){
+    var lbl=document.getElementById('inv-fmt-lbl-pdf');
+    if(lbl)lbl.style.background='rgba(108,63,245,.06)';
+  },30);
+}
+
+function _doInvoiceExport(){
+  var fmt=(document.querySelector('input[name="inv-fmt"]:checked')||{}).value||'pdf';
+  var id=window._invExportId;
+  var inv=(S.invoices||[]).find(function(i){return i.id===id;});
+  if(!inv){toast('Invoice not found','err');return;}
+  closeM();
+  if(fmt==='pdf')      _exportInvoicePDF(inv);
+  else if(fmt==='excel') _exportInvoiceExcel(inv);
+  else                   _exportInvoiceCSV(inv);
+  audit('INVOICE_EXPORT',inv.id+' as '+fmt.toUpperCase(),'');
+}
+
+function _exportInvoicePDF(inv){
+  var cfg=S.billingConfig||{};
+  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444',cancelled:'#64748B'};
+  var statusColor=stC[inv.status]||'#64748B';
+  var w=window.open('','_blank','width=900,height=780');
+  if(!w){toast('Allow popups to export PDF','err');return;}
+  var items=(inv.lineItems||[]).map(function(li,i){
+    return '<tr style="'+(i%2?'background:#f8f7ff':'')+'">'
+      +'<td style="padding:7px 10px;font-size:11px;color:#6C3FF5;font-weight:700">'+li.tripId+'</td>'
+      +'<td style="padding:7px 10px;font-size:11px;color:#334155">'+li.desc+'</td>'
+      +'<td style="padding:7px 10px;text-align:right;font-weight:700;font-size:11px">EGP '+Number(li.amount||0).toLocaleString()+'</td>'
+      +'</tr>';
+  }).join('');
+  w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"/><title>'+inv.id+'</title>'
+    +'<style>'
+    +'*{margin:0;padding:0;box-sizing:border-box}'
+    +'body{font-family:Arial,sans-serif;font-size:12px;color:#1E293B;background:#fff;padding:0}'
+    +'.page{max-width:820px;margin:0 auto;padding:32px 36px}'
+    +'.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}'
+    +'.logo-block .company{font-size:22px;font-weight:900;color:#6C3FF5}'
+    +'.logo-block .meta{font-size:11px;color:#64748B;margin-top:4px;line-height:1.6}'
+    +'.inv-block{text-align:right}'
+    +'.inv-block .inv-label{font-size:11px;font-weight:700;color:#94A3B8;letter-spacing:1px;text-transform:uppercase}'
+    +'.inv-block .inv-num{font-size:24px;font-weight:900;color:#1E1453;margin:4px 0}'
+    +'.status-badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:800;border:2px solid '+statusColor+';color:'+statusColor+'}'
+    +'.divider{height:3px;background:linear-gradient(90deg,#6C3FF5,#10B981);border-radius:2px;margin:20px 0}'
+    +'.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}'
+    +'.info-box .label{font-size:10px;font-weight:700;color:#94A3B8;letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px}'
+    +'.info-box .value{font-size:13px;font-weight:700;color:#1E293B}'
+    +'table{width:100%;border-collapse:collapse;margin-bottom:20px}'
+    +'thead{background:#1E1453}'
+    +'thead th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#fff;letter-spacing:.5px;text-transform:uppercase}'
+    +'thead th:last-child{text-align:right}'
+    +'.totals{display:flex;justify-content:flex-end;margin-bottom:24px}'
+    +'.totals-box{background:#F8F7FF;border-radius:10px;padding:16px 20px;min-width:260px}'
+    +'.totals-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:#475569}'
+    +'.totals-row.final{font-size:16px;font-weight:900;color:#6C3FF5;border-top:2px solid #E2E8F0;margin-top:8px;padding-top:10px}'
+    +'.bank-box{background:#F1F5F9;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:11px;color:#475569;line-height:1.8}'
+    +'.bank-box strong{color:#1E293B}'
+    +'.notes-box{background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:12px 14px;font-size:11px;color:#92400E;margin-bottom:20px}'
+    +'.footer{text-align:center;font-size:10px;color:#94A3B8;border-top:1px solid #E2E8F0;padding-top:14px;margin-top:4px}'
+    +'@media print{.no-print{display:none}body{padding:0}.page{padding:20px 24px}}'
+    +'</style></head><body>'
+    +'<div class="page">'
+    // Header
+    +'<div class="header">'
+    +'<div class="logo-block">'
+    +'<div class="company">📦 '+(cfg.companyName||'InstaPort Logistics')+'</div>'
+    +'<div class="meta">'+(cfg.companyAddress?cfg.companyAddress+'<br>':'')+'VAT No: '+(cfg.vatNo||'—')+'</div>'
+    +'</div>'
+    +'<div class="inv-block">'
+    +'<div class="inv-label">Tax Invoice</div>'
+    +'<div class="inv-num">'+inv.id+'</div>'
+    +'<div class="status-badge">'+inv.status.toUpperCase()+'</div>'
+    +'</div>'
+    +'</div>'
+    +'<div class="divider"></div>'
+    // Info grid
+    +'<div class="info-grid">'
+    +'<div><div class="info-box"><div class="label">Bill To</div><div class="value" style="font-size:16px;color:#1E1453">'+inv.customer+'</div></div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'
+    +'<div class="info-box"><div class="label">Invoice Date</div><div class="value">'+(inv.createdAt?inv.createdAt.slice(0,10):'—')+'</div></div>'
+    +'<div class="info-box"><div class="label">Due Date</div><div class="value" style="color:#EF4444">'+( inv.dueDate||'—')+'</div></div>'
+    +'<div class="info-box"><div class="label">Period</div><div class="value">'+inv.period+'</div></div>'
+    +'<div class="info-box"><div class="label">Created By</div><div class="value">'+( inv.createdBy||'—')+'</div></div>'
+    +'</div>'
+    +'</div>'
+    // Line items table
+    +'<table><thead><tr>'
+    +'<th style="width:120px">Trip ID</th>'
+    +'<th>Description</th>'
+    +'<th style="width:130px;text-align:right">Amount (EGP)</th>'
+    +'</tr></thead><tbody>'+items+'</tbody></table>'
+    // Totals
+    +'<div class="totals"><div class="totals-box">'
+    +'<div class="totals-row"><span>Subtotal</span><span>EGP '+(inv.subtotal||0).toLocaleString()+'</span></div>'
+    +'<div class="totals-row"><span>VAT ('+(inv.taxRate||14)+'%)</span><span>EGP '+(inv.tax||0).toLocaleString()+'</span></div>'
+    +'<div class="totals-row final"><span>TOTAL DUE</span><span>EGP '+(inv.total||0).toLocaleString()+'</span></div>'
+    +'</div></div>'
+    // Bank details
+    +(cfg.bankName||cfg.bankAccount||cfg.iban?
+      '<div class="bank-box">🏦 <strong>Payment Details:</strong> &nbsp;'
+      +(cfg.bankName?'Bank: <strong>'+cfg.bankName+'</strong> &nbsp;':'')
+      +(cfg.bankAccount?'Account: <strong>'+cfg.bankAccount+'</strong> &nbsp;':'')
+      +(cfg.iban?'IBAN: <strong>'+cfg.iban+'</strong>':'')
+      +'</div>':'')
+    // Notes
+    +(inv.notes?'<div class="notes-box">📝 <strong>Notes:</strong> '+inv.notes+'</div>':'')
+    // Footer
+    +'<div class="footer">'+( cfg.companyName||'InstaPort Logistics')+' &bull; Generated '+new Date().toLocaleString('en-GB')+' &bull; '+inv.id+'</div>'
+    +'<div class="no-print" style="text-align:center;margin-top:20px">'
+    +'<button onclick="window.print()" style="background:#6C3FF5;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Print / Save as PDF</button>'
+    +'</div>'
+    +'</div>'
+    +'</body></html>');
+  w.document.close();
+  toast('PDF invoice opened — use Print to save','ok');
+}
+
+function _exportInvoiceExcel(inv){
+  var cfg=S.billingConfig||{};
+  var lines=[
+    [cfg.companyName||'InstaPort Logistics','','','VAT: '+(cfg.vatNo||'')],
+    ['Tax Invoice','','','Invoice No: '+inv.id],
+    ['Customer:',inv.customer,'','Period: '+inv.period],
+    ['Due Date:',inv.dueDate||'—','','Status: '+inv.status.toUpperCase()],
+    [],
+    ['Trip ID','Description','Qty','Rate (EGP)','Amount (EGP)']
+  ];
+  (inv.lineItems||[]).forEach(function(li){
+    lines.push([li.tripId,li.desc,1,li.rate||li.amount,li.amount]);
+  });
+  lines.push([]);
+  lines.push(['','','','Subtotal',inv.subtotal||0]);
+  lines.push(['','','','VAT ('+(inv.taxRate||14)+'%)',inv.tax||0]);
+  lines.push(['','','','TOTAL DUE',inv.total||0]);
+  if(inv.notes)lines.push([],[' Notes:',inv.notes]);
+  if(cfg.bankName)lines.push([],[' Bank:',cfg.bankName,'Account:',cfg.bankAccount||'','IBAN:',cfg.iban||'']);
+  var tsv=lines.map(function(r){return(r||[]).map(function(v){return'"'+(v+'').replace(/"/g,'""')+'"';}).join('\t');}).join('\n');
   var a=document.createElement('a');
-  a.href='data:text/csv;charset=utf-8,'+encodeURIComponent(rows.join('\n'));
-  a.download=inv.id+'_'+inv.customer+'.csv';a.click();
-  toast('Invoice exported!','ok');
+  a.href=URL.createObjectURL(new Blob([tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
+  a.download=inv.id+'_'+inv.customer.replace(/\s+/g,'_')+'.xls';
+  a.click();toast('Excel exported ✅','ok');
+}
+
+function _exportInvoiceCSV(inv){
+  var cfg=S.billingConfig||{};
+  var rows=[
+    ['# '+(cfg.companyName||'InstaPort Logistics')],
+    ['# VAT No: '+(cfg.vatNo||'—')],
+    ['# Invoice: '+inv.id+' | Customer: '+inv.customer+' | Period: '+inv.period],
+    ['# Status: '+inv.status.toUpperCase()+' | Due: '+(inv.dueDate||'—')],
+    [''],
+    ['Trip ID','Description','Qty','Rate (EGP)','Amount (EGP)']
+  ];
+  (inv.lineItems||[]).forEach(function(li){
+    rows.push([li.tripId,li.desc,1,li.rate||li.amount,li.amount]);
+  });
+  rows.push(['']);
+  rows.push(['','','','Subtotal',inv.subtotal||0]);
+  rows.push(['','','','VAT ('+(inv.taxRate||14)+'%)',inv.tax||0]);
+  rows.push(['','','','TOTAL DUE',inv.total||0]);
+  if(inv.notes)rows.push(['','','','Notes',inv.notes]);
+  var csv=rows.map(function(r){return r.map(function(v){return'"'+(v+'').replace(/"/g,'""')+'"';}).join(',');}).join('\n');
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8;'}));
+  a.download=inv.id+'_'+inv.customer.replace(/\s+/g,'_')+'.csv';
+  a.click();toast('CSV exported ✅','ok');
+}
+
+// ── Bulk Invoice Export ────────────────────────────────────────
+function openBulkInvoiceExport(){
+  var invs=S.invoices||[];
+  var today=new Date().toISOString().slice(0,10);
+  var firstOfYear=new Date().getFullYear()+'-01-01';
+  var lS='font-size:10px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;display:block;margin-bottom:6px';
+  var inpS='padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:12px;color:var(--t);background:var(--bg);width:100%';
+  var cuOpts='<option value="">All Customers</option>'+[...new Set(invs.map(function(i){return i.customer;}))].sort().map(function(c){return'<option>'+c+'</option>';}).join('');
+  openM(
+    '<div class="m-title">📥 Bulk Invoice Export</div>'+
+    '<div style="margin-bottom:14px"><div style="'+lS+'">Format</div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">'+
+    [['pdf','📄','PDF'],['excel','📋','Excel'],['csv','📊','CSV']].map(function(f,i){
+      return '<label id="bulk-fmt-lbl-'+f[0]+'" style="display:flex;align-items:center;gap:7px;padding:9px 12px;border:2px solid '+(i===0?'#6C3FF5':'var(--border)')+';border-radius:8px;cursor:pointer;font-size:12px;font-weight:700;transition:all .15s" onclick="[\'pdf\',\'excel\',\'csv\'].forEach(function(x){var l=document.getElementById(\'bulk-fmt-lbl-\'+x);l.style.borderColor=x===\''+f[0]+'\'?\'#6C3FF5\':\'var(--border)\';l.style.background=x===\''+f[0]+'\'?\'rgba(108,63,245,.06)\':\'\';})">'+
+        '<input type="radio" name="bulk-inv-fmt" value="'+f[0]+'"'+(i===0?' checked':'')+' style="accent-color:#6C3FF5"/>'+f[1]+' '+f[2]+'</label>';
+    }).join('')+'</div></div>'+
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">'+
+    '<div><span style="'+lS+'">Customer</span><select id="bulk-inv-cu" onchange="_bulkInvCount()" style="'+inpS+'">'+cuOpts+'</select></div>'+
+    '<div><span style="'+lS+'">Status</span><select id="bulk-inv-st" onchange="_bulkInvCount()" style="'+inpS+'">'+
+    '<option value="">All Statuses</option>'+
+    ['draft','sent','paid','overdue','cancelled'].map(function(s){return'<option>'+s+'</option>';}).join('')+'</select></div>'+
+    '<div><span style="'+lS+'">Due From</span><input type="date" id="bulk-inv-from" value="'+firstOfYear+'" onchange="_bulkInvCount()" style="'+inpS+'"/></div>'+
+    '<div><span style="'+lS+'">Due To</span><input type="date" id="bulk-inv-to" value="'+today+'" onchange="_bulkInvCount()" style="'+inpS+'"/></div>'+
+    '</div>'+
+    '<div id="bulk-inv-count" style="padding:10px 14px;background:var(--bg);border-radius:8px;font-size:12px;margin-bottom:14px;border:1px solid var(--bd)">'+
+    '📦 <span id="bulk-inv-n" style="font-weight:800;color:#6C3FF5">'+invs.length+'</span> invoices selected</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_doBulkInvoiceExport()">📥 Export</button></div>'
+  );
+  setTimeout(function(){var l=document.getElementById('bulk-fmt-lbl-pdf');if(l)l.style.background='rgba(108,63,245,.06)';},30);
+  setTimeout(_bulkInvCount,50);
+}
+
+function _bulkInvCount(){
+  var cu=(document.getElementById('bulk-inv-cu')||{}).value||'';
+  var st=(document.getElementById('bulk-inv-st')||{}).value||'';
+  var fr=(document.getElementById('bulk-inv-from')||{}).value||'';
+  var to=(document.getElementById('bulk-inv-to')||{}).value||'';
+  var n=(S.invoices||[]).filter(function(i){
+    if(cu&&i.customer!==cu)return false;
+    if(st&&i.status!==st)return false;
+    if(fr&&i.dueDate&&i.dueDate<fr)return false;
+    if(to&&i.dueDate&&i.dueDate>to)return false;
+    return true;
+  }).length;
+  var el=document.getElementById('bulk-inv-n');
+  if(el)el.textContent=n;
+}
+
+function _doBulkInvoiceExport(){
+  var fmt=(document.querySelector('input[name="bulk-inv-fmt"]:checked')||{}).value||'csv';
+  var cu=(document.getElementById('bulk-inv-cu')||{}).value||'';
+  var st=(document.getElementById('bulk-inv-st')||{}).value||'';
+  var fr=(document.getElementById('bulk-inv-from')||{}).value||'';
+  var to=(document.getElementById('bulk-inv-to')||{}).value||'';
+  var invs=(S.invoices||[]).filter(function(i){
+    if(cu&&i.customer!==cu)return false;
+    if(st&&i.status!==st)return false;
+    if(fr&&i.dueDate&&i.dueDate<fr)return false;
+    if(to&&i.dueDate&&i.dueDate>to)return false;
+    return true;
+  });
+  if(!invs.length){toast('No invoices match these filters','err');return;}
+  closeM();
+  var title='Invoice Export'+(cu?' — '+cu:'')+(st?' ('+st+')':'');
+  var hdrs=['Invoice No','Customer','Period','Trips','Subtotal (EGP)','VAT (EGP)','Total (EGP)','Due Date','Status','Created By','Created At'];
+  var rows=invs.map(function(i){
+    return[i.id,i.customer,i.period,(i.tripIds||[]).length,
+      i.subtotal||0,i.tax||0,i.total||0,
+      i.dueDate||'—',i.status.toUpperCase(),i.createdBy||'',i.createdAt||''];
+  });
+  uExportAll(fmt,title,hdrs,rows);
+  audit('INVOICE_BULK_EXPORT',fmt.toUpperCase()+' — '+invs.length+' invoices','');
 }
 
 // ══════════════════════════════════════════════════
