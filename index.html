@@ -10622,19 +10622,20 @@ function _renderBillingConfig(){
     :
       '<div style="display:flex;flex-direction:column;gap:8px">'+
       recipients.map(function(r,i){
+        var emails=_rcptEmails(r);
+        var phones=_rcptPhones(r);
         var badges=(r.methods||[]).map(function(m){
           if(m==='email')return '<span style="background:rgba(59,130,246,.12);color:#3B82F6;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">&#9993; EMAIL</span>';
           if(m==='whatsapp')return '<span style="background:rgba(37,211,102,.12);color:#25D366;border-radius:20px;padding:2px 8px;font-size:10px;font-weight:700">&#128172; WHATSAPP</span>';
           return '';
         }).join(' ');
-        return '<div style="display:flex;align-items:center;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px">'+
+        var emailList=emails.map(function(e){return'<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(59,130,246,.07);border-radius:6px;padding:2px 7px;font-size:11px;color:#3B82F6">&#9993; '+e+'</span>';}).join(' ');
+        var phoneList=phones.map(function(p){return'<span style="display:inline-flex;align-items:center;gap:4px;background:rgba(37,211,102,.07);border-radius:6px;padding:2px 7px;font-size:11px;color:#25D366">&#128172; '+p+'</span>';}).join(' ');
+        return '<div style="display:flex;align-items:flex-start;gap:10px;background:var(--bg);border-radius:10px;padding:10px 14px">'+
           '<div style="flex:1;min-width:0">'+
-          '<div style="font-weight:700;font-size:13px">'+r.label+'</div>'+
-          '<div style="font-size:11px;color:var(--t2);margin-top:2px">'+
-          (r.email?'&#9993; '+r.email+'&nbsp;&nbsp;':'')+
-          (r.phone?'&#128172; '+r.phone:'')+
-          '</div>'+
-          '<div style="margin-top:5px">'+badges+'</div>'+
+          '<div style="font-weight:700;font-size:13px;margin-bottom:5px">'+r.label+'</div>'+
+          '<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:5px">'+emailList+phoneList+'</div>'+
+          '<div>'+badges+'</div>'+
           '</div>'+
           '<div style="display:flex;gap:6px;flex-shrink:0">'+
           '<button class="btn btn-outline btn-sm" onclick="openEditRecipient('+i+')">&#9998; Edit</button>'+
@@ -10671,17 +10672,66 @@ function _saveRecipients(){
   if(!S.billingConfig)S.billingConfig={};
   try{localStorage.setItem('ip_billingcfg',JSON.stringify(S.billingConfig));}catch(e){}
 }
+// ── Backward-compat helpers ───────────────────────────────────
+function _rcptEmails(r){return r.emails||(r.email?[r.email]:[]);}
+function _rcptPhones(r){return r.phones||(r.phone?[r.phone]:[]);}
+
+// ── Dynamic row builders ──────────────────────────────────────
+function _rcptEmailRow(idx,val){
+  return '<div id="rcpt-er-'+idx+'" style="display:flex;gap:6px;align-items:center">'+
+    '<input type="email" id="rcpt-email-'+idx+'" placeholder="email@company.com" value="'+(val||'')+'" style="flex:1"/>'+
+    (idx>0?'<button type="button" onclick="document.getElementById(\'rcpt-er-'+idx+'\').remove()" style="flex-shrink:0;background:none;border:1px solid #EF4444;color:#EF4444;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:14px;line-height:1">&#215;</button>':'')+
+    '</div>';
+}
+function _rcptPhoneRow(idx,val){
+  return '<div id="rcpt-pr-'+idx+'" style="display:flex;gap:6px;align-items:center">'+
+    '<input id="rcpt-phone-'+idx+'" placeholder="+201234567890 (with country code)" value="'+(val||'')+'" style="flex:1"/>'+
+    (idx>0?'<button type="button" onclick="document.getElementById(\'rcpt-pr-'+idx+'\').remove()" style="flex-shrink:0;background:none;border:1px solid #EF4444;color:#EF4444;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:14px;line-height:1">&#215;</button>':'')+
+    '</div>';
+}
+function _addRcptEmail(){
+  window._rcptEC=(window._rcptEC||0)+1;
+  var w=document.getElementById('rcpt-emails-wrap');if(!w)return;
+  var d=document.createElement('div');d.innerHTML=_rcptEmailRow(window._rcptEC,'');w.appendChild(d.firstChild);
+}
+function _addRcptPhone(){
+  window._rcptPC=(window._rcptPC||0)+1;
+  var w=document.getElementById('rcpt-phones-wrap');if(!w)return;
+  var d=document.createElement('div');d.innerHTML=_rcptPhoneRow(window._rcptPC,'');w.appendChild(d.firstChild);
+}
+
 function _recipientForm(r){
   r=r||{};
   var mEmail=(r.methods||[]).indexOf('email')>=0;
   var mWA=(r.methods||[]).indexOf('whatsapp')>=0;
-  if(!r.methods)mEmail=true; // default email checked for new
-  return '<div style="display:flex;flex-direction:column;gap:10px">'+
-    '<div class="fg"><label>Name / Label *</label><input id="rcpt-label" placeholder="e.g. Finance Team, Customer ABC" value="'+(r.label||'')+'"/></div>'+
-    '<div class="fg"><label>&#9993; Email Address</label><input type="email" id="rcpt-email" placeholder="invoices@example.com" value="'+(r.email||'')+'"/></div>'+
-    '<div class="fg"><label>&#128172; WhatsApp Number</label><input id="rcpt-phone" placeholder="+201234567890 (with country code)" value="'+(r.phone||'')+'"/></div>'+
-    '<div class="fg"><label>Notify via</label>'+
-    '<div style="display:flex;gap:14px;margin-top:4px">'+
+  if(!r.methods)mEmail=true;
+  var emails=_rcptEmails(r);if(!emails.length)emails=[''];
+  var phones=_rcptPhones(r);if(!phones.length)phones=[''];
+  window._rcptEC=emails.length-1;
+  window._rcptPC=phones.length-1;
+  var lRow='display:flex;justify-content:space-between;align-items:center;margin-bottom:6px';
+  var lbl='font-size:12px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px';
+  return '<div style="display:flex;flex-direction:column;gap:14px">'+
+    // Name
+    '<div class="fg" style="margin:0"><label>Name / Label *</label>'+
+    '<input id="rcpt-label" placeholder="e.g. Finance Team, Customer ABC" value="'+(r.label||')'+'"/></div>'+
+    // Emails
+    '<div>'+
+    '<div style="'+lRow+'"><span style="'+lbl+'">&#9993; Email Address</span>'+
+    '<button type="button" class="btn btn-outline btn-sm" onclick="_addRcptEmail()">+ Add Email</button></div>'+
+    '<div id="rcpt-emails-wrap" style="display:flex;flex-direction:column;gap:6px">'+
+    emails.map(function(e,i){return _rcptEmailRow(i,e);}).join('')+
+    '</div></div>'+
+    // Phones
+    '<div>'+
+    '<div style="'+lRow+'"><span style="'+lbl+'">&#128172; WhatsApp Number</span>'+
+    '<button type="button" class="btn btn-outline btn-sm" onclick="_addRcptPhone()">+ Add Number</button></div>'+
+    '<div id="rcpt-phones-wrap" style="display:flex;flex-direction:column;gap:6px">'+
+    phones.map(function(p,i){return _rcptPhoneRow(i,p);}).join('')+
+    '</div></div>'+
+    // Notify via
+    '<div class="fg" style="margin:0"><label>Notify via</label>'+
+    '<div style="display:flex;gap:14px;margin-top:6px">'+
     '<label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer"><input type="checkbox" id="rcpt-memail"'+(mEmail?' checked':'')+'/> &#9993; Email</label>'+
     '<label style="display:flex;align-items:center;gap:6px;font-weight:400;font-size:13px;cursor:pointer"><input type="checkbox" id="rcpt-mwa"'+(mWA?' checked':'')+'/> &#128172; WhatsApp</label>'+
     '</div></div>'+
@@ -10711,15 +10761,21 @@ function openEditRecipient(idx){
 }
 function _readRecipientForm(){
   var label=(document.getElementById('rcpt-label')||{}).value||'';
-  var email=(document.getElementById('rcpt-email')||{}).value||'';
-  var phone=(document.getElementById('rcpt-phone')||{}).value||'';
   var mEmail=!!(document.getElementById('rcpt-memail')||{}).checked;
   var mWA=!!(document.getElementById('rcpt-mwa')||{}).checked;
   if(!label){toast('Enter a name/label','err');return null;}
-  if(!email&&!phone){toast('Enter email or phone','err');return null;}
   if(!mEmail&&!mWA){toast('Select at least one notification method','err');return null;}
+  // Collect all email rows
+  var emails=[];
+  var ew=document.getElementById('rcpt-emails-wrap');
+  if(ew){ew.querySelectorAll('input[type="email"],input[id^="rcpt-email-"]').forEach(function(inp){var v=(inp.value||'').trim();if(v)emails.push(v);});}
+  // Collect all phone rows
+  var phones=[];
+  var pw=document.getElementById('rcpt-phones-wrap');
+  if(pw){pw.querySelectorAll('input[id^="rcpt-phone-"]').forEach(function(inp){var v=(inp.value||'').trim();if(v)phones.push(v);});}
+  if(!emails.length&&!phones.length){toast('Enter at least one email or phone number','err');return null;}
   var methods=[];if(mEmail)methods.push('email');if(mWA)methods.push('whatsapp');
-  return{label:label,email:email,phone:phone,methods:methods};
+  return{label:label,emails:emails,phones:phones,methods:methods};
 }
 function _saveNewRecipient(){
   var r=_readRecipientForm();if(!r)return;
@@ -10781,20 +10837,27 @@ function openInvoiceShare(id){
   if(recipients.length>0){
     rcptRows='<div style="margin-bottom:16px">'+
     '<div style="font-size:11px;font-weight:700;color:var(--t2);letter-spacing:.6px;text-transform:uppercase;margin-bottom:8px">Saved Recipients</div>'+
-    '<div style="display:flex;flex-direction:column;gap:6px">'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
     recipients.map(function(r){
+      var emails=_rcptEmails(r);
+      var phones=_rcptPhones(r);
+      var wantsEmail=(r.methods||[]).indexOf('email')>=0;
+      var wantsWA=(r.methods||[]).indexOf('whatsapp')>=0;
       var btns='';
-      if((r.methods||[]).indexOf('email')>=0&&r.email){
-        var to=encodeURIComponent(r.email);
-        btns+='<a href="mailto:'+r.email+'?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none">&#9993; Email</a>';
+      if(wantsEmail){
+        emails.forEach(function(em){
+          if(em)btns+='<a href="mailto:'+em+'?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;font-size:11px">&#9993; '+em+'</a>';
+        });
       }
-      if((r.methods||[]).indexOf('whatsapp')>=0&&r.phone){
-        var ph=r.phone.replace(/[^\d+]/g,'');
-        btns+='<a href="https://wa.me/'+ph+'?text='+waText+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;background:rgba(37,211,102,.08);border-color:#25D366;color:#25D366">&#128172; WhatsApp</a>';
+      if(wantsWA){
+        phones.forEach(function(ph){
+          var p=ph.replace(/[^\d+]/g,'');
+          if(p)btns+='<a href="https://wa.me/'+p+'?text='+waText+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;background:rgba(37,211,102,.08);border-color:#25D366;color:#25D366;font-size:11px">&#128172; '+ph+'</a>';
+        });
       }
-      return '<div style="display:flex;align-items:center;justify-content:space-between;background:var(--bg);border-radius:9px;padding:8px 12px">'+
-        '<div style="font-size:13px;font-weight:700">'+r.label+'<br><span style="font-size:11px;color:var(--t2);font-weight:400">'+(r.email||r.phone)+'</span></div>'+
-        '<div style="display:flex;gap:6px">'+btns+'</div>'+
+      return '<div style="background:var(--bg);border-radius:9px;padding:10px 12px">'+
+        '<div style="font-size:13px;font-weight:700;margin-bottom:6px">'+r.label+'</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:5px">'+btns+'</div>'+
         '</div>';
     }).join('')+
     '</div></div>';
@@ -10854,14 +10917,23 @@ function _notifTripComplete(trip){
   var body=encodeURIComponent('Trip '+trip.id+' has been completed.\n\nCustomer: '+trip.customer+'\nTruck: '+trip.truck+'\nDriver: '+(trip.driver||'—')+'\nActual KM: '+trip.actualKm+'\nCost: EGP '+trip.cost+'\n\n'+company);
 
   var rcptLinks=recipients.map(function(r){
-    var btns='';
-    if((r.methods||[]).indexOf('email')>=0&&r.email){
-      btns+='<a href="mailto:'+r.email+'?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none">&#9993; Email '+r.label+'</a>';
+    var emails=_rcptEmails(r);
+    var phones=_rcptPhones(r);
+    var wantsEmail=(r.methods||[]).indexOf('email')>=0;
+    var wantsWA=(r.methods||[]).indexOf('whatsapp')>=0;
+    var btns='<div style="margin-bottom:4px"><span style="font-size:11px;font-weight:700;color:var(--t2)">'+r.label+'</span></div><div style="display:flex;flex-wrap:wrap;gap:5px;margin-bottom:8px">';
+    if(wantsEmail){
+      emails.forEach(function(em){
+        if(em)btns+='<a href="mailto:'+em+'?subject='+subj+'&body='+body+'" target="_blank" class="btn btn-primary btn-sm" style="text-decoration:none;font-size:11px">&#9993; '+em+'</a>';
+      });
     }
-    if((r.methods||[]).indexOf('whatsapp')>=0&&r.phone){
-      var ph=r.phone.replace(/[^\d+]/g,'');
-      btns+='<a href="https://wa.me/'+ph+'?text='+waText+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;border-color:#25D366;color:#25D366">&#128172; WA '+r.label+'</a>';
+    if(wantsWA){
+      phones.forEach(function(ph){
+        var p=ph.replace(/[^\d+]/g,'');
+        if(p)btns+='<a href="https://wa.me/'+p+'?text='+waText+'" target="_blank" class="btn btn-outline btn-sm" style="text-decoration:none;border-color:#25D366;color:#25D366;font-size:11px">&#128172; '+ph+'</a>';
+      });
     }
+    btns+='</div>';
     return btns;
   }).join('');
 
