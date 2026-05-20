@@ -1628,30 +1628,26 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  padding: 36px 0 0 44px;
+  padding: 0;
   position: relative;
   overflow: hidden;
+  /* Dark violet fallback — photo overlays on top */
   background: linear-gradient(150deg, #120B38 0%, #1E1055 35%, #2D1A7A 65%, #3D28A8 100%);
   border: none;
 }
-/* Top-right radial glow */
+/* Readability gradient — darkens left/top so white text pops on the photo */
 #login .login-left::before {
   content: '';
   position: absolute;
-  top: -120px; right: -80px;
-  width: 520px; height: 520px;
-  background: radial-gradient(circle, rgba(108,63,245,.28) 0%, transparent 65%);
-  pointer-events: none; z-index: 0;
+  inset: 0;
+  background:
+    linear-gradient(to right,  rgba(8,4,26,.72) 0%, rgba(8,4,26,.38) 52%, rgba(8,4,26,.04) 100%),
+    linear-gradient(to bottom, rgba(8,4,26,.55) 0%, rgba(8,4,26,.0)  40%);
+  pointer-events: none;
+  z-index: 2;
 }
-/* Bottom-left accent glow */
-#login .login-left::after {
-  content: '';
-  position: absolute;
-  bottom: -80px; left: -60px;
-  width: 400px; height: 400px;
-  background: radial-gradient(circle, rgba(249,115,22,.14) 0%, transparent 65%);
-  pointer-events: none; z-index: 0;
-}
+#login .login-left::after { display: none; }
+/* Content sits on top of photo + overlay */
 #login .ll-content {
   display: flex;
   flex-direction: column;
@@ -1660,53 +1656,40 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   flex-shrink: 0;
   width: 100%;
   max-width: 520px;
-  padding-right: 44px;
+  padding: 36px 44px 0 44px;
 }
+/* Photo fills the entire left panel absolutely */
 #login .ll-hero-wrap {
-  flex: 1;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  position: relative;
-  min-height: 0;
-  /* Stretch to both panel edges — negate the 44px left padding */
-  width: calc(100% + 44px);
-  margin: 8px 0 0 -44px;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
   padding: 0;
-  border: none;
-  background: transparent;
+  z-index: 0;
   overflow: hidden;
+  display: block;
 }
 #login .ll-hero-wrap::before { display: none; }
-#login .ll-hero-wrap::after { display: none; }
+#login .ll-hero-wrap::after  { display: none; }
 #login .ll-truck-stage {
-  position: relative;
   width: 100%;
+  height: 100%;
   max-width: none;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  z-index: 1;
+  display: block;
 }
 #login .ll-truck-stage::after { display: none; }
 #login .ll-hero-bg {
-  position: relative;
   width: 100%;
-  height: min(78vh, 680px);
-  max-height: none;
-  min-height: 360px;
+  height: 100%;
   object-fit: cover;
-  object-position: center bottom;
+  object-position: center center;
   display: block;
   pointer-events: none;
-  z-index: 1;
-  border: none;
-  outline: none;
-  box-shadow: none;
-  /* screen blend: dark parts of the image vanish into the dark panel */
-  mix-blend-mode: screen;
-  filter: contrast(1.05) saturate(1.1) brightness(1.08);
-  /* No mask — show full image with clean edges */
+  border: none; outline: none; box-shadow: none;
+  /* normal: show the full photo as-is on top of dark bg */
+  mix-blend-mode: normal;
+  filter: contrast(1.06) saturate(1.12) brightness(0.94);
   -webkit-mask-image: none;
   mask-image: none;
 }
@@ -1764,22 +1747,15 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 [data-theme=dark] #login {
   background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
 }
+[data-theme=dark] #login {
+  background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
+}
 [data-theme=dark] #login .login-left {
   background: linear-gradient(150deg, #0A0520 0%, #140C40 35%, #1E1060 65%, #2A1880 100%);
 }
-[data-theme=dark] #login .ll-hero-wrap::before { display: none; }
-[data-theme=dark] #login .ll-hero-wrap::after { display: none; }
-[data-theme=dark] #login .ll-truck-stage::after {
-  background: radial-gradient(ellipse at center bottom, rgba(108,63,245,.35) 0%, transparent 70%);
-}
-[data-theme=dark] #login .ll-wordmark-name,
-[data-theme=dark] #login .ll-headline { color: #FFFFFF; }
-[data-theme=dark] #login .ll-headline span { color: #C4B5FD; }
-[data-theme=dark] #login .ll-wordmark-sub { color: rgba(196,181,253,.75); }
 [data-theme=dark] #login .ll-hero-bg {
-  mix-blend-mode: screen;
-  opacity: 1;
-  filter: contrast(1.05) saturate(1.1) brightness(1.08);
+  mix-blend-mode: normal;
+  filter: contrast(1.06) saturate(1.12) brightness(0.88);
   -webkit-mask-image: none;
   mask-image: none;
 }
