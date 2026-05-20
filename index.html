@@ -10503,22 +10503,42 @@ function _renderInvoiceList(){
   var pendAmt=invs.filter(function(i){return i.status==='sent';}).reduce(function(s,i){return s+(i.total||0);},0);
   var overdue=invs.filter(function(i){return i.status==='overdue';});
   var shown=invs.filter(function(i){return filter==='all'||i.status===filter;});
-  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444',cancelled:'#64748B'};
-  var stB={draft:'rgba(148,163,184,.12)',sent:'rgba(249,115,22,.12)',paid:'rgba(16,185,129,.12)',overdue:'rgba(239,68,68,.12)',cancelled:'rgba(100,116,139,.1)'};
+  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444',delayed:'#EF4444',finished:'#6366F1',cancelled:'#64748B'};
+  var stB={draft:'rgba(148,163,184,.12)',sent:'rgba(249,115,22,.12)',paid:'rgba(16,185,129,.12)',overdue:'rgba(239,68,68,.12)',delayed:'rgba(239,68,68,.12)',finished:'rgba(99,102,241,.12)',cancelled:'rgba(100,116,139,.1)'};
+  var stLabel={draft:'Draft',sent:'Sent',paid:'Paid ✓',overdue:'Overdue ⚠',delayed:'Delayed ⚠',finished:'Finished ✔',cancelled:'Cancelled'};
+  var finished=invs.filter(function(i){return i.status==='finished';});
 
   el.innerHTML=
+    // ── KPI row ──
     '<div class="kpi-row">'+
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:var(--c1)">&#128196;</div><div class="kpi-body"><div class="kpi-label">Total Invoices</div><div class="kpi-val">'+invs.length+'</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#9200;</div><div class="kpi-body"><div class="kpi-label">Pending</div><div class="kpi-val">EGP '+Math.round(pendAmt/1000)+'K</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(239,68,68,.1);color:#EF4444">&#9888;</div><div class="kpi-body"><div class="kpi-label">Overdue / Delayed</div><div class="kpi-val">'+overdue.length+'</div></div></div>'+
     '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#10003;</div><div class="kpi-body"><div class="kpi-label">Collected</div><div class="kpi-val">EGP '+Math.round(paid/1000)+'K</div></div></div>'+
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(249,115,22,.1);color:#F97316">&#9993;</div><div class="kpi-body"><div class="kpi-label">Pending</div><div class="kpi-val">EGP '+Math.round(pendAmt/1000)+'K</div></div></div>'+
-    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(239,68,68,.1);color:#EF4444">&#128308;</div><div class="kpi-body"><div class="kpi-label">Overdue</div><div class="kpi-val">'+overdue.length+'</div></div></div>'+
+    '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(99,102,241,.1);color:#6366F1">&#9989;</div><div class="kpi-body"><div class="kpi-label">Finished</div><div class="kpi-val">'+finished.length+'</div></div></div>'+
     '</div>'+
+    // ── Workflow legend ──
+    '<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:12px;padding:10px 14px;background:var(--bg);border-radius:10px;font-size:11px">'+
+    '<span style="font-weight:700;color:var(--t2);margin-right:4px">Workflow:</span>'+
+    '<span style="background:rgba(148,163,184,.15);color:#94A3B8;padding:3px 9px;border-radius:20px;font-weight:700">Draft</span>'+
+    '<span style="color:var(--t2)">&#8594;</span>'+
+    '<span style="background:rgba(249,115,22,.12);color:#F97316;padding:3px 9px;border-radius:20px;font-weight:700">Sent</span>'+
+    '<span style="color:var(--t2)">&#8594;</span>'+
+    '<span style="background:rgba(239,68,68,.12);color:#EF4444;padding:3px 9px;border-radius:20px;font-weight:700">Overdue / Delayed</span>'+
+    '<span style="color:var(--t2)">&#8594;</span>'+
+    '<span style="background:rgba(16,185,129,.12);color:#10B981;padding:3px 9px;border-radius:20px;font-weight:700">Paid ✓</span>'+
+    '<span style="color:var(--t2)">&#8594;</span>'+
+    '<span style="background:rgba(99,102,241,.12);color:#6366F1;padding:3px 9px;border-radius:20px;font-weight:700">Finished ✔</span>'+
+    '</div>'+
+    // ── Filter tabs ──
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px">'+
-    ['all','draft','sent','paid','overdue'].map(function(f){
+    ['all','draft','sent','paid','overdue','delayed','finished'].map(function(f){
       var cnt=f==='all'?invs.length:invs.filter(function(i){return i.status===f;}).length;
-      return '<div class="tcp-filter'+(filter===f?' on':'')+'" onclick="S._invFilter=\''+f+'\';_renderInvoiceList()" style="cursor:pointer">'+f.charAt(0).toUpperCase()+f.slice(1)+' ('+cnt+')</div>';
+      var lbl=f==='all'?'All':(stLabel[f]||f.charAt(0).toUpperCase()+f.slice(1));
+      return '<div class="tcp-filter'+(filter===f?' on':'')+'" onclick="S._invFilter=\''+f+'\';_renderInvoiceList()" style="cursor:pointer">'+lbl+' ('+cnt+')</div>';
     }).join('')+
     '</div>'+
+    // ── Table ──
     (shown.length===0?
       '<div class="card" style="text-align:center;padding:56px;color:var(--t2)"><div style="font-size:48px">&#128196;</div><div style="margin-top:12px;font-size:15px;font-weight:700">No invoices in this view</div>'+
       (can('finance_view')||can('all')?'<button class="btn btn-primary" style="margin-top:16px" onclick="openNewInvoice()">+ Create Invoice</button>':'')+'</div>':
@@ -10526,6 +10546,11 @@ function _renderInvoiceList(){
       '<th>Invoice #</th><th>Customer</th><th>Period</th><th>Trips</th><th>Subtotal</th><th>VAT</th><th>Total</th><th>Due</th><th>Status</th><th>Actions</th>'+
       '</tr></thead><tbody>'+
       shown.map(function(inv){
+        var isDraft=inv.status==='draft';
+        var isSent=inv.status==='sent';
+        var isPaid=inv.status==='paid';
+        var isOverdue=inv.status==='overdue'||inv.status==='delayed';
+        var isFinished=inv.status==='finished';
         return '<tr>'+
           '<td style="font-weight:800;color:var(--c1)">'+inv.id+'</td>'+
           '<td style="font-weight:600">'+inv.customer+'</td>'+
@@ -10535,14 +10560,23 @@ function _renderInvoiceList(){
           '<td style="font-size:12px;color:var(--t2)">EGP '+(inv.tax||0).toLocaleString()+'</td>'+
           '<td style="font-weight:900;color:var(--c1)">EGP '+(inv.total||0).toLocaleString()+'</td>'+
           '<td style="font-size:12px">'+(inv.dueDate||'—')+'</td>'+
-          '<td><span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:'+(stB[inv.status]||'rgba(100,116,139,.1)')+';color:'+(stC[inv.status]||'#64748B')+'">'+inv.status.toUpperCase()+'</span></td>'+
-          '<td><div style="display:flex;gap:4px">'+
+          '<td><span style="display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700;background:'+(stB[inv.status]||'rgba(100,116,139,.1)')+';color:'+(stC[inv.status]||'#64748B')+'">'+(stLabel[inv.status]||inv.status.toUpperCase())+'</span></td>'+
+          '<td><div style="display:flex;gap:4px;flex-wrap:wrap">'+
           '<button class="btn btn-sm btn-outline" onclick="viewInvoiceSP(\''+inv.id+'\')">&#8250; View</button>'+
-          (inv.status==='draft'?'<button class="btn btn-sm btn-primary" onclick="markInvSent(\''+inv.id+'\')">&#9993; Send</button>':'')+
-          (inv.status==='sent'?'<button class="btn btn-sm btn-success" onclick="markInvPaid(\''+inv.id+'\')">&#10003; Paid</button>':'')+''+
-          (inv.status==='sent'?'<button class="btn btn-sm btn-danger" onclick="markInvOverdue(\''+inv.id+'\')">&#8987;</button>':'')+
-          '<button class="btn btn-sm btn-outline" onclick="openInvoiceExport(\''+inv.id+'\')" title="Export Invoice">&#128196; Export</button>'+
-          '<button class="btn btn-sm btn-outline" onclick="openInvoiceShare(\''+inv.id+'\')" title="Share Invoice" style="border-color:#25D366;color:#25D366">&#128172; Share</button>'+
+          // Draft → Send
+          (isDraft?'<button class="btn btn-sm btn-primary" onclick="markInvSent(\''+inv.id+'\')">&#9993; Send</button>':'')+
+          // Sent → Paid or Overdue or Delayed
+          (isSent?'<button class="btn btn-sm btn-success" onclick="markInvPaid(\''+inv.id+'\')">&#10003; Paid</button>':'')+
+          (isSent?'<button class="btn btn-sm btn-danger" onclick="markInvOverdue(\''+inv.id+'\')">&#9888; Overdue</button>':'')+
+          (isSent?'<button class="btn btn-sm btn-outline" onclick="markInvDelayed(\''+inv.id+'\')" style="border-color:#EF4444;color:#EF4444">&#8987; Delayed</button>':'')+
+          // Overdue/Delayed → still can be Paid
+          (isOverdue?'<button class="btn btn-sm btn-success" onclick="markInvPaid(\''+inv.id+'\')">&#10003; Paid</button>':'')+
+          // Paid → Finished
+          (isPaid?'<button class="btn btn-sm btn-outline" onclick="markInvFinished(\''+inv.id+'\')" style="border-color:#6366F1;color:#6366F1">&#9989; Finish</button>':'')+
+          // Finished — read only badge, no more actions
+          (isFinished?'<span style="font-size:11px;color:#6366F1;font-weight:700;padding:0 4px">&#9989; Closed</span>':'')+
+          '<button class="btn btn-sm btn-outline" onclick="openInvoiceExport(\''+inv.id+'\')" title="Export">&#128196;</button>'+
+          '<button class="btn btn-sm btn-outline" onclick="openInvoiceShare(\''+inv.id+'\')" title="Share" style="border-color:#25D366;color:#25D366">&#128172;</button>'+
           '</div></td></tr>';
       }).join('')+'</tbody></table></div>');
 }
@@ -10935,7 +10969,8 @@ function createInvoice(){
 
 function viewInvoiceSP(id){
   var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;
-  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444'};
+  var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444',delayed:'#EF4444',finished:'#6366F1',cancelled:'#64748B'};
+  var stLabel={draft:'Draft',sent:'Sent',paid:'Paid ✓',overdue:'Overdue ⚠',delayed:'Delayed ⚠',finished:'Finished ✔',cancelled:'Cancelled'};
   openSP('&#128196; '+inv.id,
     '<div style="background:linear-gradient(135deg,var(--c1),var(--c1-dark,#4F1FD4));border-radius:14px;padding:18px;color:white;margin-bottom:16px">'+
     '<div style="font-size:10px;font-weight:700;opacity:.7;letter-spacing:1px;text-transform:uppercase">INVOICE</div>'+
@@ -10943,10 +10978,10 @@ function viewInvoiceSP(id){
     '<div style="font-size:13px;opacity:.8">'+inv.customer+' &bull; '+inv.period+'</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:12px">'+
     '<div><div style="font-size:10px;opacity:.6">TOTAL DUE</div><div style="font-size:26px;font-weight:900">EGP '+(inv.total||0).toLocaleString()+'</div></div>'+
-    '<span style="background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700">'+inv.status.toUpperCase()+'</span>'+
+    '<span style="background:rgba(255,255,255,.2);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:700">'+(stLabel[inv.status]||inv.status.toUpperCase())+'</span>'+
     '</div></div>'+
     '<div class="ig" style="margin-bottom:14px">'+
-    [['Bill To',inv.customer],['Period',inv.period],['Due Date',inv.dueDate||'—'],['Created By',inv.createdBy],['Created',inv.createdAt]].map(function(x){return'<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+
+    [['Bill To',inv.customer],['Period',inv.period],['Due Date',inv.dueDate||'—'],['Status',(stLabel[inv.status]||inv.status)],['Created',inv.createdAt],['Created By',inv.createdBy],(inv.sentAt?['Sent',inv.sentAt]:null),(inv.paidAt?['Paid On',inv.paidAt]:null),(inv.delayedAt?['Delayed On',inv.delayedAt]:null),(inv.overdueAt?['Overdue On',inv.overdueAt]:null),(inv.finishedAt?['Closed On',inv.finishedAt]:null)].filter(Boolean).map(function(x){return'<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+
     '</div>'+
     '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Line Items ('+inv.tripIds.length+' trips)</div>'+
     '<table class="tbl" style="margin-bottom:12px"><thead><tr><th>Trip</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+
@@ -10962,7 +10997,11 @@ function viewInvoiceSP(id){
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     (inv.status==='draft'?'<button class="btn btn-primary btn-sm" onclick="markInvSent(\''+id+'\');closeSP()">&#9993; Mark Sent</button>':'')+
     (inv.status==='sent'?'<button class="btn btn-success btn-sm" onclick="markInvPaid(\''+id+'\');closeSP()">&#10003; Mark Paid</button>':'')+
-    (inv.status==='sent'?'<button class="btn btn-danger btn-sm" onclick="markInvOverdue(\''+id+'\');closeSP()">&#8987; Overdue</button>':'')+
+    (inv.status==='sent'?'<button class="btn btn-danger btn-sm" onclick="markInvOverdue(\''+id+'\');closeSP()">&#9888; Overdue</button>':'')+
+    (inv.status==='sent'?'<button class="btn btn-outline btn-sm" onclick="markInvDelayed(\''+id+'\');closeSP()" style="border-color:#EF4444;color:#EF4444">&#8987; Delayed</button>':'')+
+    ((inv.status==='overdue'||inv.status==='delayed')?'<button class="btn btn-success btn-sm" onclick="markInvPaid(\''+id+'\');closeSP()">&#10003; Mark Paid</button>':'')+
+    (inv.status==='paid'?'<button class="btn btn-outline btn-sm" onclick="markInvFinished(\''+id+'\');closeSP()" style="border-color:#6366F1;color:#6366F1">&#9989; Mark Finished</button>':'')+
+    (inv.status==='finished'?'<span style="padding:6px 12px;background:rgba(99,102,241,.1);color:#6366F1;border-radius:8px;font-size:12px;font-weight:700">&#9989; Invoice Closed</span>':'')+
     '<button class="btn btn-outline btn-sm" onclick="openInvoiceExport(\''+id+'\')">&#128196; Export</button>'+
     '<button class="btn btn-outline btn-sm" onclick="openInvoiceShare(\''+id+'\')" style="border-color:#25D366;color:#25D366">&#128172; Share</button>'+
     '</div>'
@@ -10970,8 +11009,10 @@ function viewInvoiceSP(id){
 }
 
 function markInvSent(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='sent';inv.sentAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_SENT',id,'');toast(id+' marked as sent','ok');rBilling();}
-function markInvPaid(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='paid';inv.paidAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_PAID',id,'');toast(id+' paid! ✅','ok');rBilling();}
-function markInvOverdue(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='overdue';_saveInvoices();audit('INVOICE_OVERDUE',id,'');toast(id+' marked overdue','err');rBilling();}
+function markInvPaid(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='paid';inv.paidAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_PAID',id,'');toast(id+' — Payment received ✅','ok');rBilling();}
+function markInvOverdue(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='overdue';inv.overdueAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_OVERDUE',id,'');toast(id+' marked overdue ⚠','err');rBilling();}
+function markInvDelayed(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='delayed';inv.delayedAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_DELAYED',id,'');toast(id+' marked as delayed ⏳','err');rBilling();}
+function markInvFinished(id){var inv=(S.invoices||[]).find(function(i){return i.id===id;});if(!inv)return;inv.status='finished';inv.finishedAt=new Date().toLocaleString('en-GB');_saveInvoices();audit('INVOICE_FINISHED',id,'');toast(id+' — Invoice closed ✔','ok');rBilling();}
 
 // ══════════════════════════════════════════════════
 // INVOICE EXPORT ENGINE — PDF / Excel / CSV
