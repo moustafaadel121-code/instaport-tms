@@ -1,0 +1,21 @@
+{
+  "name": "instaport-tms",
+  "version": "1.0.0",
+  "description": "InstaPort Transportation Management System",
+  "main": "server.js",
+  "scripts": {
+    "start":   "node server.js",
+    "dev":     "node server.js --dev",
+    "build":   "node build.js",
+    "release": "node build.js && node server.js"
+  },
+  "devDependencies": {
+    "clean-css": "^5.3.3",
+    "pptxgenjs": "^4.0.1",
+    "terser": "^5.47.1"
+  },
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}

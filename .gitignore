@@ -1,0 +1,15 @@
+# SECRETS — never commit these
+.env
+.env.local
+.env.production
+
+# Build output
+dist/
+
+# Dependencies
+node_modules/
+
+# Misc
+*.log
+.DS_Store
+Thumbs.db

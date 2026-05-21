@@ -3183,17 +3183,14 @@ let _tenantId='',_tenantName='InstaPort',_tenantPlan='starter';
 let _tenantUsers=[]; // populated by _loadTenant() — USERS not yet defined at this point
 try{_sb=supabase.createClient(_SUPA_URL,_SUPA_KEY);}catch(e){console.warn('Supabase unavailable',e);}
 
-/* ── Super-Admin master account (app owner only) ── */
-const _SA_USERS=[
-  {id:'SA01',pin:'IP@Master2026!',name:'Super Admin',role:'superadmin',email:'owner@instaport.com',active:true}
-];
-
 /* ── Load tenant + its users from Supabase ── */
 async function _loadTenant(orgCode){
-  // ── SUPER ADMIN: master org code known only to the app owner ──
+  // ── SUPER ADMIN: validated server-side via /api/sa-auth (credentials in .env) ──
   if(orgCode==='ip-master'){
+    // Credentials checked by server — we just set the tenant metadata here
+    // Actual PIN validation happens in doLogin() via _saServerAuth()
     _tenantId='ip-master';_tenantName='InstaPort HQ';_tenantPlan='enterprise';
-    _tenantUsers=_SA_USERS.slice();
+    _tenantUsers=[]; // populated after server confirms auth
     return true;
   }
   // instaport ALWAYS uses built-in local users — no Supabase needed for auth
@@ -4347,7 +4344,23 @@ async function doLogin(){
   try{
     var ok=await _loadTenant(orgCode);
     if(!ok){lerr.textContent='Organization "'+orgCode+'" not found. Please register first.';lerr.style.display='block';return;}
-    var u=_tenantUsers.find(function(x){return String(x.id)===uid&&String(x.pin)===pin&&x.active!==false;});
+    // ── SA org: validate server-side (credentials never in browser) ──
+    var u=null;
+    if(orgCode==='ip-master'){
+      try{
+        var saRes=await fetch('/api/sa-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
+        var saData=await saRes.json();
+        if(!saData.ok){
+          _secRecordFail(lockKey);
+          lerr.textContent=saData.error||'Invalid credentials.';lerr.style.display='block';return;
+        }
+        u={id:uid,pin:'[server]',name:saData.name,role:'superadmin',email:'',active:true};
+      }catch(e){
+        lerr.textContent='Could not reach auth server. Is server.js running?';lerr.style.display='block';return;
+      }
+    } else {
+      u=_tenantUsers.find(function(x){return String(x.id)===uid&&String(x.pin)===pin&&x.active!==false;});
+    }
     if(!u){
       _secRecordFail(lockKey);
       var rem=_SEC.MAX_ATTEMPTS-(_SEC.attempts[lockKey]||0);
