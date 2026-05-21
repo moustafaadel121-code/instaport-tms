@@ -107,27 +107,29 @@ class SensorManager extends EventEmitter {
       sensorId:    raw.sensor_id   || raw.sensorId   || raw.id       || 'unknown',
       truckId:     raw.truck_id    || raw.truckId     || raw.truck    || null,
       truckPlate:  raw.plate       || raw.truck_plate || raw.vehicle  || null,
-      temp:        parseFloat(raw.temperature ?? raw.temp ?? raw.t ?? null),
-      humidity:    parseFloat(raw.humidity     ?? raw.hum  ?? raw.h ?? null),
+      temperature: parseFloat(raw.temperature ?? raw.temp ?? raw.t ?? NaN),
+      humidity:    parseFloat(raw.humidity     ?? raw.hum  ?? raw.h ?? NaN),
       location:    raw.location    || raw.gps    || null,
       battery:     raw.battery     || raw.bat    || null,
       ts:          raw.timestamp   || raw.ts     || new Date().toISOString(),
-      raw,
     };
+    // Remove NaN fields so undefined sensors don't pollute dashboard
+    if (isNaN(reading.temperature)) reading.temperature = null;
+    if (isNaN(reading.humidity))    reading.humidity    = null;
 
     this.readings[reading.sensorId] = reading;
     this.emit('reading', reading);
 
     // ── Check thresholds and emit alerts ───────────────────────────
     const limits = this._getLimits(reading);
-    if (!isNaN(reading.temp)) {
-      if (reading.temp > limits.tempMax) {
-        this._alert('TEMP_HIGH', reading, `Temperature ${reading.temp}°C exceeds max ${limits.tempMax}°C`);
-      } else if (reading.temp < limits.tempMin) {
-        this._alert('TEMP_LOW', reading, `Temperature ${reading.temp}°C below min ${limits.tempMin}°C`);
+    if (reading.temperature !== null) {
+      if (reading.temperature > limits.tempMax) {
+        this._alert('TEMP_HIGH', reading, `Temperature ${reading.temperature}°C exceeds max ${limits.tempMax}°C`);
+      } else if (reading.temperature < limits.tempMin) {
+        this._alert('TEMP_LOW', reading, `Temperature ${reading.temperature}°C below min ${limits.tempMin}°C`);
       }
     }
-    if (!isNaN(reading.humidity)) {
+    if (reading.humidity !== null) {
       if (reading.humidity > limits.humMax) {
         this._alert('HUM_HIGH', reading, `Humidity ${reading.humidity}% exceeds max ${limits.humMax}%`);
       }
@@ -155,7 +157,7 @@ class SensorManager extends EventEmitter {
   // ── Get current snapshot for API/dashboard ──────────────────────
   getSnapshot() {
     return {
-      sensors:   Object.values(this.readings),
+      sensors:   this.readings,          // { sensorId: reading } — keyed object for easy lookup
       alerts:    this.alerts.slice(0, 20),
       connected: this.connected,
       count:     Object.keys(this.readings).length,

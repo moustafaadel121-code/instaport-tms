@@ -4302,6 +4302,7 @@ const PAGES={
     {id:'sa_invites',   icon:'🔑', l:'Invite Codes'},
     {id:'sa_revenue',   icon:'💰', l:'Revenue'},
     {id:'sa_features',  icon:'🎛️', l:'Feature Gates'},
+    {id:'sa_sensors',   icon:'🌡️', l:'Sensors'},
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
@@ -4574,7 +4575,7 @@ function nav(page){
     invite_mgmt:rInviteMgmt,exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
-    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features};
+    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features,sa_sensors:rSA_Sensors};
   (map[page]||rDash)();
   // Animate page entry and KPI count-up
   c.style.animation='fadeInUp .28s cubic-bezier(.22,.68,0,1.18) both';
@@ -4813,10 +4814,19 @@ function rDash(){
       ['Sat','Sun','Mon','Tue','Wed','Thu','Fri'].map(function(d,i){
         return '<div class="bar-wrap"><div class="bar" style="height:'+bh[i]+'%;background:'+(i===3?'var(--c2)':'var(--c1l)')+(i===3?';':'border:1px solid var(--border);')+'"></div><div class="bar-label">'+d+'</div></div>';
       }).join('')+'</div></div>'+
-      '<div class="card"><div class="card-hd"><div class="card-title">🌡️ Live Temperature</div><span class="live"><span class="live-dot"></span>Live</span></div>'+
-      '<div class="gauge"><div class="gauge-val g-ok" id="dt">--</div><div style="font-size:12px;color:var(--t2);margin-top:4px">Fleet Monitor</div>'+
+      '<div class="card"><div class="card-hd"><div class="card-title">🌡️ Live Sensors</div><span class="live"><span class="live-dot"></span><span id="sensor-src-badge" style="font-size:11px;color:#6C3FF5">🔵 Simulated</span></span></div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">'+
+      '<div><div style="font-size:11px;color:var(--t3);margin-bottom:4px;font-weight:600;letter-spacing:.5px">TEMPERATURE</div>'+
+      '<div class="gauge-val g-ok" id="dt" style="font-size:clamp(22px,3vw,32px)">--</div>'+
+      '<div style="font-size:11px;color:var(--t2);margin-top:2px;margin-bottom:6px">Range: 2–8°C</div>'+
       '<div class="gauge-bar"><div class="gauge-fill" id="db" style="width:50%;background:var(--c4)"></div></div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3)"><span>-20°C</span><span>2-8°C</span><span>+25°C</span></div></div></div></div>';
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3)"><span>-20°C</span><span>+25°C</span></div></div>'+
+      '<div><div style="font-size:11px;color:var(--t3);margin-bottom:4px;font-weight:600;letter-spacing:.5px">HUMIDITY</div>'+
+      '<div class="gauge-val g-ok" id="dh" style="font-size:clamp(22px,3vw,32px)">--</div>'+
+      '<div style="font-size:11px;color:var(--t2);margin-top:2px;margin-bottom:6px">Max: 85%</div>'+
+      '<div class="gauge-bar"><div class="gauge-fill" id="dhb" style="width:62%;background:#06B6D4"></div></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:10px;color:var(--t3)"><span>0%</span><span>100%</span></div></div>'+
+      '</div></div></div>';
   }
   // ── Recent shipments table ─────────────────────
   var tripsSection='';
@@ -7479,8 +7489,17 @@ function rSA_Overview(){
       '<div class="kpi-card"><div class="kpi-val" style="color:#6C3FF5" id="sa-pro">—</div><div class="kpi-lab">Professional</div></div>'+
       '<div class="kpi-card"><div class="kpi-val" style="color:#F59E0B" id="sa-ent">—</div><div class="kpi-lab">Enterprise</div></div>'+
     '</div>'+
+    '<div class="card" style="margin-bottom:16px"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
+    '<div style="font-weight:700">🌡️ Live Sensor Feed</div>'+
+    '<span style="font-size:11px;color:var(--t2)" id="sa-sensor-ts">—</span></div>'+
+    '<div id="sa-sensor-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">'+
+    '<div style="text-align:center;padding:20px;color:var(--t3);font-size:13px">Connecting to sensor stream…</div>'+
+    '</div></div>'+
     '<div class="card"><div style="font-weight:700;margin-bottom:16px">Recent Organizations</div>'+
     '<div id="sa-recent-list">Loading…</div></div>';
+  // Load sensor snapshot and subscribe to SSE
+  _saLoadSensors();
+  _saWatchSensors();
   _saAllTenants().then(function(rows){
     document.getElementById('sa-total').textContent=rows.length;
     document.getElementById('sa-active').textContent=rows.filter(function(r){return r.active;}).length;
@@ -8126,6 +8145,152 @@ async function confirmCSVImport(type){
   }
 }
 
+// ══════════════════════════════════════════════════
+// SA SENSORS PAGE — Live IoT / RMS monitor
+// ══════════════════════════════════════════════════
+var _saSSEWatch=null;
+
+function _saLoadSensors(){
+  fetch('/api/sensors').then(function(r){return r.json();}).then(function(snap){
+    _saRenderSensorGrid(snap,document.getElementById('sa-sensor-grid'));
+    var ts=document.getElementById('sa-sensor-ts');
+    if(ts)ts.textContent='Snapshot · '+new Date().toLocaleTimeString();
+  }).catch(function(){
+    var g=document.getElementById('sa-sensor-grid');
+    if(g)g.innerHTML='<div style="color:var(--t3);font-size:13px;text-align:center;padding:20px">Server offline or no sensors configured</div>';
+  });
+}
+
+function _saWatchSensors(){
+  // Reuse the global SSE connection — just listen for sensor events on the page
+  if(!_sseConn) return;
+  // Sensors page specific listener — re-render grid on new reading
+  var listener=function(e){
+    try{
+      var snap=JSON.parse(e.data)||{};
+      var g=document.getElementById('sa-sensor-grid');
+      if(g) _saRenderSensorGrid({sensors:{}},g); // refresh from API for simplicity
+      _saLoadSensors();
+    }catch(ex){}
+  };
+  _sseConn.addEventListener('sensor_reading',listener);
+}
+
+function _saRenderSensorGrid(snap,container){
+  if(!container)return;
+  var sensors=snap&&snap.sensors?snap.sensors:{};
+  var keys=Object.keys(sensors);
+  if(keys.length===0){
+    container.innerHTML='<div style="text-align:center;padding:24px;color:var(--t3);font-size:13px">'+
+      (snap&&snap.connected===false?'🔌 Not connected to MQTT broker':'No sensors reporting yet')+'</div>';
+    return;
+  }
+  container.innerHTML=keys.map(function(k){
+    var s=sensors[k];
+    var temp=s.temperature!=null?s.temperature.toFixed(1):null;
+    var hum=s.humidity!=null?s.humidity.toFixed(0):null;
+    var tOk=temp!=null&&temp>=2&&temp<=8;
+    var tCol=temp==null?'var(--t3)':tOk?'#10B981':'var(--c5)';
+    var hOk=hum==null||hum<=85;
+    var ts=s.ts?new Date(s.ts).toLocaleTimeString():'—';
+    return '<div style="background:var(--bg2);border-radius:var(--r-md);padding:14px;border:1px solid var(--bd)">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">'+
+      '<div style="font-weight:700;font-size:13px">'+k+'</div>'+
+      (s.truckPlate?'<span style="font-size:10px;background:var(--c1l);color:var(--c1);padding:2px 6px;border-radius:10px">'+s.truckPlate+'</span>':'')+'</div>'+
+      (temp!=null?'<div style="font-size:28px;font-weight:800;color:'+tCol+';font-family:Space Grotesk,sans-serif">'+temp+'°C</div>':'<div style="color:var(--t3);font-size:13px">No temp data</div>')+
+      (hum!=null?'<div style="font-size:13px;color:'+(hOk?'#06B6D4':'var(--c5)')+';margin-top:2px">💧 '+hum+'% RH</div>':'')+
+      '<div style="font-size:10px;color:var(--t3);margin-top:8px">'+ts+'</div>'+
+      '</div>';
+  }).join('');
+}
+
+function rSA_Sensors(){
+  var c=document.getElementById('content');
+  c.innerHTML='<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">'+
+    '<div style="font-size:36px">🌡️</div>'+
+    '<div><div style="font-size:22px;font-weight:800;font-family:Space Grotesk,sans-serif">Sensor Monitor</div>'+
+    '<div style="font-size:13px;color:var(--t2)">Live IoT / RMS temperature & humidity readings</div></div></div>'+
+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:20px">'+
+      '<div class="kpi-card"><div class="kpi-val" id="ss-temp" style="color:#10B981">—</div><div class="kpi-lab">Temperature</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val" id="ss-hum" style="color:#06B6D4">—</div><div class="kpi-lab">Humidity</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val" id="ss-count" style="color:#6C3FF5">—</div><div class="kpi-lab">Sensors</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val" id="ss-alerts" style="color:#F59E0B">—</div><div class="kpi-lab">Active Alerts</div></div>'+
+    '</div>'+
+
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
+        '<div style="font-weight:700">Sensor Grid</div>'+
+        '<div style="display:flex;align-items:center;gap:10px">'+
+          '<span id="ss-src" style="font-size:11px;color:var(--t2)">—</span>'+
+          '<button class="btn btn-sm btn-outline" onclick="_ssRefresh()">↺ Refresh</button>'+
+        '</div>'+
+      '</div>'+
+      '<div id="ss-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px">'+
+        '<div style="text-align:center;padding:24px;color:var(--t3)">Loading…</div>'+
+      '</div>'+
+    '</div>'+
+
+    '<div class="card">'+
+      '<div style="font-weight:700;margin-bottom:12px">Recent Alerts</div>'+
+      '<div id="ss-alert-list"><div style="color:var(--t3);font-size:13px">Loading…</div></div>'+
+    '</div>';
+
+  _ssRefresh();
+  // Live update from SSE
+  if(_sseConn){
+    var fn=function(){_ssRefresh();};
+    _sseConn.addEventListener('sensor_reading',fn);
+    _sseConn.addEventListener('sensor_alert',fn);
+  }
+}
+
+function _ssRefresh(){
+  fetch('/api/sensors').then(function(r){return r.json();}).then(function(snap){
+    // KPIs
+    var keys=Object.keys(snap.sensors||{});
+    var temps=keys.map(function(k){return snap.sensors[k].temperature;}).filter(function(t){return t!=null;});
+    var hums=keys.map(function(k){return snap.sensors[k].humidity;}).filter(function(h){return h!=null;});
+    var avgT=temps.length?temps.reduce(function(a,b){return a+b;},0)/temps.length:null;
+    var avgH=hums.length?hums.reduce(function(a,b){return a+b;},0)/hums.length:null;
+    var ael=document.getElementById('ss-alerts');
+    if(ael)ael.textContent=(snap.alerts||[]).length;
+    var cel=document.getElementById('ss-count');
+    if(cel)cel.textContent=snap.count||keys.length;
+    var tel=document.getElementById('ss-temp');
+    if(tel)tel.textContent=avgT!=null?avgT.toFixed(1)+'°C':'—';
+    var hel=document.getElementById('ss-hum');
+    if(hel)hel.textContent=avgH!=null?avgH.toFixed(0)+'%':'—';
+    var sel=document.getElementById('ss-src');
+    if(sel)sel.textContent=(snap.connected?'🟢 MQTT Connected':'🔵 '+(_sensorSource==='live'?'HTTP/Push':'Simulated'))+' · '+new Date().toLocaleTimeString();
+
+    // Grid
+    var g=document.getElementById('ss-grid');
+    if(g)_saRenderSensorGrid(snap,g);
+
+    // Alerts list
+    var al=document.getElementById('ss-alert-list');
+    if(al){
+      var alerts=snap.alerts||[];
+      if(!alerts.length){al.innerHTML='<div style="color:var(--t3);font-size:13px;text-align:center;padding:16px">✅ No active alerts</div>';}
+      else{
+        al.innerHTML=alerts.slice(0,10).map(function(a){
+          return '<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 0;border-bottom:1px solid var(--bd)">'+
+            '<span style="font-size:20px">'+(a.type==='TEMP_HIGH'||a.type==='TEMP_LOW'?'🌡️':'💧')+'</span>'+
+            '<div><div style="font-weight:600;font-size:13px">'+a.message+'</div>'+
+            '<div style="font-size:11px;color:var(--t2);margin-top:2px">'+
+              (a.reading?'Sensor: '+(a.reading.sensorId||'—')+' · Truck: '+(a.reading.truckPlate||'—'):'')+'</div>'+
+            '<div style="font-size:10px;color:var(--t3);margin-top:2px">'+(a.ts?new Date(a.ts).toLocaleString():'')+'</div>'+
+            '</div></div>';
+        }).join('');
+      }
+    }
+  }).catch(function(){
+    var g=document.getElementById('ss-grid');
+    if(g)g.innerHTML='<div style="color:var(--t3);text-align:center;padding:24px;font-size:13px">Could not reach server · <code style="font-size:11px">GET /api/sensors</code></div>';
+  });
+}
+
 // ── USERS ──
 function rAdminUsers(){
   var el=document.getElementById('admin-content');if(!el)return;
@@ -8521,35 +8686,128 @@ function _sbThemeInit() {
 }
 
 // ══════════════════════════════════════════════════
-// TEMPERATURE SIMULATION + TIMESTAMPS
+// TEMPERATURE / HUMIDITY — LIVE SENSOR + SIMULATION
 // ══════════════════════════════════════════════════
-var _tb=3.5;
+var _tb=3.5;   // live temperature (°C)
+var _hb=62;    // live humidity (%)
+var _sensorLive=false;        // true when real SSE data is flowing
+var _sensorSource='sim';      // 'live' | 'sim'
+var _sensorLastTs=null;       // ISO timestamp of last real reading
+var _sensorId=null;           // sensor ID of last reading
+var _sensorTruckPlate=null;   // truck plate of last reading
+var _sseConn=null;            // EventSource handle
 
-function startTemp(){
-  setInterval(function(){
-    _tb+=((Math.random()-.48)*.3);_tb=Math.max(-3,Math.min(13,_tb));
-    var now=new Date();
-    _tempData.push(+_tb.toFixed(2));
-    _tempTimestamps.push(now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'}));
-    if(_tempData.length>300){_tempData.shift();_tempTimestamps.shift();}
-    var pct=(_tb+20)/45*100,ok=_tb>=2&&_tb<=8,warn=(_tb<2&&_tb>-5)||(_tb>8&&_tb<12);
-    var col=ok?'var(--c4)':warn?'var(--c2)':'var(--c5)',cls=ok?'g-ok':warn?'g-warn':'g-exc',txt=_tb.toFixed(1)+'°C';
-    // Alert on excursion
-    if(!ok&&!warn){notif('🌡️ EXCURSION: Temperature '+txt+' at '+_tempTimestamps[_tempTimestamps.length-1],'alert');}
-    // Dashboard
-    var dv=document.getElementById('dt'),db=document.getElementById('db');
-    if(dv){dv.textContent=txt;dv.className='gauge-val '+cls;}
-    if(db){db.style.width=pct+'%';db.style.background=col;}
-    // Quality & transit trips
-    S.trips.filter(function(t){return ['awaiting_quality','in_transit'].includes(t.status);}).forEach(function(t){
-      var qv=document.getElementById('qt'+t.id),qb=document.getElementById('qb'+t.id);
-      if(qv){qv.textContent=txt;qv.className='gauge-val '+cls;}
-      if(qb){qb.style.width=pct+'%';qb.style.background=col;}
-      var lt=document.getElementById('lt'+t.id);if(lt){lt.textContent=txt;lt.style.color=col;}
-      var ctr=document.getElementById('ctr-'+t.id);if(ctr){ctr.textContent=txt;ctr.style.color=col;}
+// ── Apply one sensor reading to global state + DOM ──
+function _applySensorReading(temp,hum,ts,sensorId,truckPlate){
+  if(temp!=null) _tb=+parseFloat(temp).toFixed(2);
+  if(hum!=null)  _hb=+parseFloat(hum).toFixed(1);
+  _sensorLastTs=ts||new Date().toISOString();
+  if(sensorId)    _sensorId=sensorId;
+  if(truckPlate)  _sensorTruckPlate=truckPlate;
+
+  var now=new Date(_sensorLastTs);
+  var timeStr=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  _tempData.push(_tb);
+  _tempTimestamps.push(timeStr);
+  if(_tempData.length>300){_tempData.shift();_tempTimestamps.shift();}
+
+  var pct=(_tb+20)/45*100,ok=_tb>=2&&_tb<=8,warn=(_tb<2&&_tb>-5)||(_tb>8&&_tb<12);
+  var col=ok?'var(--c4)':warn?'var(--c2)':'var(--c5)',cls=ok?'g-ok':warn?'g-warn':'g-exc',txt=_tb.toFixed(1)+'°C';
+
+  // Alert on excursion
+  if(!ok&&!warn){notif('🌡️ EXCURSION: Temperature '+txt+' at '+timeStr,'alert');}
+
+  // Dashboard temp gauge
+  var dv=document.getElementById('dt'),db=document.getElementById('db');
+  if(dv){dv.textContent=txt;dv.className='gauge-val '+cls;}
+  if(db){db.style.width=pct+'%';db.style.background=col;}
+
+  // Dashboard humidity gauge
+  var hv=document.getElementById('dh'),hb=document.getElementById('dhb');
+  var hOk=_hb<=85,hCol=hOk?'#06B6D4':'var(--c5)',hCls=hOk?'g-ok':'g-exc';
+  if(hv){hv.textContent=_hb.toFixed(0)+'%';hv.className='gauge-val '+hCls;}
+  if(hb){hb.style.width=Math.min(_hb,100)+'%';hb.style.background=hCol;}
+
+  // Sensor source badge
+  var sb=document.getElementById('sensor-src-badge');
+  if(sb){
+    sb.textContent=_sensorSource==='live'?('🟢 Live · '+(_sensorId||'')):'🔵 Simulated';
+    sb.style.color=_sensorSource==='live'?'#10B981':'#6C3FF5';
+  }
+
+  // KPI live temp update (if rendered)
+  var kpiTemp=document.getElementById('kpi-live-temp');
+  if(kpiTemp){kpiTemp.textContent=_tb.toFixed(1)+'°C';}
+
+  // Quality & transit trips
+  S.trips.filter(function(t){return ['awaiting_quality','in_transit'].includes(t.status);}).forEach(function(t){
+    var qv=document.getElementById('qt'+t.id),qb=document.getElementById('qb'+t.id);
+    if(qv){qv.textContent=txt;qv.className='gauge-val '+cls;}
+    if(qb){qb.style.width=pct+'%';qb.style.background=col;}
+    var lt=document.getElementById('lt'+t.id);if(lt){lt.textContent=txt;lt.style.color=col;}
+    var ctr=document.getElementById('ctr-'+t.id);if(ctr){ctr.textContent=txt;ctr.style.color=col;}
+  });
+
+  // Redraw graph periodically
+  if(_tempData.length%10===0){drawGraph();}
+}
+
+// ── Connect SSE stream from server ──
+function _connectSensorStream(){
+  if(_sseConn){try{_sseConn.close();}catch(e){}}
+  try{
+    var es=new EventSource('/api/stream');
+    _sseConn=es;
+    es.addEventListener('connected',function(){
+      console.log('[Sensor] SSE connected');
     });
-    // Redraw graphs
-    if(_tempData.length%10===0){drawGraph();}
+    es.addEventListener('sensors',function(e){
+      // Initial snapshot: pick first sensor with temp data
+      try{
+        var snap=JSON.parse(e.data);
+        var keys=Object.keys(snap.sensors||{});
+        if(keys.length>0){
+          var s=snap.sensors[keys[0]];
+          if(s&&s.temperature!=null){
+            _sensorSource='live';_sensorLive=true;
+            _applySensorReading(s.temperature,s.humidity,s.ts,s.sensorId,s.truckPlate);
+          }
+        }
+      }catch(ex){}
+    });
+    es.addEventListener('sensor_reading',function(e){
+      try{
+        var r=JSON.parse(e.data);
+        _sensorSource='live';_sensorLive=true;
+        _applySensorReading(r.temperature,r.humidity,r.ts,r.sensorId,r.truckPlate);
+      }catch(ex){}
+    });
+    es.addEventListener('sensor_alert',function(e){
+      try{
+        var a=JSON.parse(e.data);
+        notif('⚠️ Sensor: '+a.message,'alert');
+      }catch(ex){}
+    });
+    es.onerror=function(){
+      // SSE lost — fall back to simulation silently
+      _sensorLive=false;_sensorSource='sim';
+    };
+  }catch(ex){
+    _sensorLive=false;_sensorSource='sim';
+  }
+}
+
+// ── Simulation tick (runs always; ignored when live data flows) ──
+function startTemp(){
+  // Try to connect to real sensor stream
+  _connectSensorStream();
+
+  setInterval(function(){
+    if(_sensorLive){return;} // real data flowing — skip simulation
+    _tb+=((Math.random()-.48)*.3);_tb=Math.max(-3,Math.min(13,_tb));
+    _hb+=((Math.random()-.48)*1.2);_hb=Math.max(30,Math.min(99,_hb));
+    _sensorSource='sim';
+    _applySensorReading(_tb,_hb,new Date().toISOString(),null,null);
   },2000);
 }
 
@@ -9928,7 +10186,7 @@ rDash=function(){
   kpiBox('&#128230;','kpi-icon-green',inTr.length,'In Transit',inTr.length?'&#9679; Active':'')+
   kpiBox('&#9200;','kpi-icon-orange',pend.length,'Pending','')+
   (can('finance_view')||can('all')?kpiBox('&#128176;','kpi-icon-cyan','EGP '+Math.round(rev/1000)+'K','Revenue',comp.length+' trips'):'')  +
-  kpiBox('&#127777;','kpi-icon-orange',(_tb||3.5).toFixed(1)+'&deg;C','Live Temp',(_tb>=2&&_tb<=8?'&#9679; OK':'&#9888; Check'))+
+  '<div class="kpi-card"><div class="kpi-icon kpi-icon-orange">&#127777;</div><div class="kpi-body"><div class="kpi-val" id="kpi-live-temp">'+(_tb||3.5).toFixed(1)+'&deg;C</div><div class="kpi-label">Live Temp</div><div class="kpi-sub">'+(_tb>=2&&_tb<=8?'&#9679; OK':'&#9888; Check')+'</div></div></div>'+
   kpiBox('&#127807;','kpi-icon-green',co2.toFixed(0)+' kg','CO&#178;','')+
   '</div>'+
 
