@@ -4302,7 +4302,8 @@ const PAGES={
     {id:'sa_invites',   icon:'🔑', l:'Invite Codes'},
     {id:'sa_revenue',   icon:'💰', l:'Revenue'},
     {id:'sa_features',  icon:'🎛️', l:'Feature Gates'},
-    {id:'sa_sensors',   icon:'🌡️', l:'Sensors'},
+    {id:'sa_sensors',      icon:'🌡️', l:'Sensors'},
+    {id:'sa_integrations', icon:'🔌', l:'Integrations'},
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
@@ -4393,6 +4394,7 @@ async function doLogin(){
     nav(_startPage);
     initApp().then(function(){nav(_startPage);}).catch(function(){});
     startTemp();
+    _fetchGPSSnapshot();
     setTimeout(function(){
       try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}
       try{_loadInvoices();}catch(e){}
@@ -4575,7 +4577,7 @@ function nav(page){
     invite_mgmt:rInviteMgmt,exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
-    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features,sa_sensors:rSA_Sensors};
+    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features,sa_sensors:rSA_Sensors,sa_integrations:rSA_Integrations};
   (map[page]||rDash)();
   // Animate page entry and KPI count-up
   c.style.animation='fadeInUp .28s cubic-bezier(.22,.68,0,1.18) both';
@@ -8291,6 +8293,210 @@ function _ssRefresh(){
   });
 }
 
+// ══════════════════════════════════════════════════
+// SA INTEGRATIONS PAGE
+// ══════════════════════════════════════════════════
+function rSA_Integrations(){
+  var c=document.getElementById('content');
+  c.innerHTML=
+    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">'+
+      '<div style="font-size:36px">🔌</div>'+
+      '<div><div style="font-size:22px;font-weight:800;font-family:Space Grotesk,sans-serif">Integrations</div>'+
+      '<div style="font-size:13px;color:var(--t2)">Connect GPS, accounting, payments, notifications & ERP</div></div>'+
+    '</div>'+
+    '<div id="si-status" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:24px">'+
+      '<div class="kpi-card" style="opacity:.5">Loading status…</div></div>'+
+
+    // GPS
+    _siSection('📍','GPS / Telematics','Real-time truck position tracking','si-gps',[
+      _siRow('Traccar (self-hosted)','TRACCAR_URL','url','http://192.168.1.100:8082'),
+      _siRow('Samsara API Key','SAMSARA_API_KEY','password','sk-xxxxxxxx'),
+      _siRow('Wialon Token','WIALON_TOKEN','password','xxxxxxxx'),
+      _siRow('Generic GPS URL','GPS_POLL_URL','url','https://your-gps.com/api/positions'),
+      _siRow('GPS API Token','GPS_API_TOKEN','password','Bearer token if required'),
+    ])+
+
+    // Sensors / RMS
+    _siSection('🌡️','Sensors / RMS','Temperature & humidity IoT devices','si-sensors',[
+      _siRow('MQTT Broker URL','MQTT_BROKER_URL','url','mqtt://192.168.1.100:1883'),
+      _siRow('MQTT Username','MQTT_USER','text','username'),
+      _siRow('MQTT Password','MQTT_PASS','password','password'),
+      _siRow('HTTP Poll URL','SENSOR_POLL_URL','url','https://your-rms.com/api/readings'),
+      _siRow('Sensor API Key','SENSOR_API_KEY','password','api-key'),
+      _siRow('Temp Min (°C)','SENSOR_TEMP_MIN','number','-5'),
+      _siRow('Temp Max (°C)','SENSOR_TEMP_MAX','number','8'),
+      _siRow('Humidity Max (%)','SENSOR_HUM_MAX','number','85'),
+    ])+
+
+    // Notifications
+    _siSection('📱','Notifications','WhatsApp, SMS & Email alerts','si-notif',[
+      _siRow('Twilio SID','TWILIO_SID','password','ACxxxxxxxx'),
+      _siRow('Twilio Auth Token','TWILIO_TOKEN','password','xxxxxxxx'),
+      _siRow('Twilio Phone From','TWILIO_FROM','text','+15551234567'),
+      _siRow('WhatsApp From (Twilio)','TWILIO_WHATSAPP_FROM','text','+14155238886'),
+      _siRow('Alert WhatsApp Number','ALERT_WHATSAPP','text','+201001234567'),
+      _siRow('Alert Email','ALERT_EMAIL','email','manager@company.com'),
+      '—',
+      _siRow('SendGrid API Key','SENDGRID_KEY','password','SG.xxxxxxxx'),
+      _siRow('SendGrid From Email','SENDGRID_FROM','email','noreply@company.com'),
+      '—',
+      _siRow('Mailgun API Key','MAILGUN_API_KEY','password','key-xxxxxxxx'),
+      _siRow('Mailgun Domain','MAILGUN_DOMAIN','text','mg.company.com'),
+    ])+
+
+    // Payments
+    _siSection('💳','Payments','Stripe & PayPal subscription billing','si-payments',[
+      _siRow('Stripe Secret Key','STRIPE_SECRET_KEY','password','sk_live_xxxxxxxx'),
+      _siRow('Stripe Webhook Secret','STRIPE_WEBHOOK_SECRET','password','whsec_xxxxxxxx'),
+      _siRow('Stripe Price — Starter','STRIPE_PRICE_STARTER','text','price_xxxxxxxx'),
+      _siRow('Stripe Price — Professional','STRIPE_PRICE_PROFESSIONAL','text','price_xxxxxxxx'),
+      _siRow('Stripe Price — Enterprise','STRIPE_PRICE_ENTERPRISE','text','price_xxxxxxxx'),
+      '—',
+      _siRow('PayPal Client ID','PAYPAL_CLIENT_ID','password','xxxxxxxx'),
+      _siRow('PayPal Client Secret','PAYPAL_CLIENT_SECRET','password','xxxxxxxx'),
+      _siRow('PayPal Mode','PAYPAL_MODE','text','sandbox'),
+      _siRow('PayPal Price — Starter ($)','PAYPAL_PRICE_STARTER','number','99'),
+      _siRow('PayPal Price — Professional ($)','PAYPAL_PRICE_PROFESSIONAL','number','299'),
+    ])+
+
+    // Accounting
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div style="font-weight:700;font-size:15px;margin-bottom:4px">💼 Accounting (OAuth)</div>'+
+      '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">QuickBooks & Xero use OAuth — click Connect to authorise</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px" id="si-acct-grid">'+
+        _siOAuthCard('QuickBooks Online','QB_CLIENT_ID','quickbooks','💼')+
+        _siOAuthCard('Xero','XERO_CLIENT_ID','xero','📊')+
+        _siSageCard()+
+      '</div></div>'+
+
+    // ERP / WMS
+    _siSection('🔗','ERP / WMS','SAP, Oracle, Dynamics, warehouse systems','si-erp',[
+      _siRow('ERP Endpoint URL','ERP_ENDPOINT','url','https://your-erp.com/api/inbound'),
+      _siRow('ERP Bearer Token','ERP_TOKEN','password','xxxxxxxx'),
+      _siRow('ERP API Key','ERP_API_KEY','password','if required'),
+      '—',
+      _siRow('WMS Endpoint URL','WMS_ENDPOINT','url','https://your-wms.com/api/events'),
+      _siRow('WMS Bearer Token','WMS_TOKEN','password','xxxxxxxx'),
+    ])+
+
+    '<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:var(--r-md);padding:16px;font-size:13px;color:var(--t2)">'+
+      '<b style="color:var(--fg)">ℹ️ How to apply changes:</b> These values map to your <code style="font-size:11px;background:var(--bg2);padding:1px 4px;border-radius:3px">.env</code> file. '+
+      'Copy the generated snippet below into your <code style="font-size:11px">.env</code> file and restart the server (<code style="font-size:11px">npm run dev</code>).'+
+      '<br><br><button class="btn btn-primary btn-sm" onclick="_siGenerateEnv()">📋 Generate .env Snippet</button>'+
+      '<pre id="si-env-out" style="display:none;margin-top:12px;background:var(--bg2);padding:12px;border-radius:var(--r-md);font-size:11px;overflow-x:auto;white-space:pre-wrap"></pre>'+
+    '</div>';
+
+  // Load live status
+  _siLoadStatus();
+}
+
+function _siSection(icon,title,sub,id,rows){
+  return '<div class="card" style="margin-bottom:16px">'+
+    '<div style="font-weight:700;font-size:15px;margin-bottom:2px">'+icon+' '+title+'</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">'+sub+'</div>'+
+    '<div id="'+id+'" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">'+
+      rows.filter(function(r){return r!=='—';}).map(function(row){return row;}).join('')+
+    '</div></div>';
+}
+
+function _siRow(label,envKey,type,placeholder){
+  return '<div><label style="font-size:11px;color:var(--t3);font-weight:600;letter-spacing:.4px;display:block;margin-bottom:3px">'+label.toUpperCase()+'</label>'+
+    '<input class="form-input" type="'+(type||'text')+'" id="si-'+envKey+'" placeholder="'+placeholder+'" style="width:100%;font-size:12px;font-family:monospace" autocomplete="off">'+
+    '</div>';
+}
+
+function _siOAuthCard(name,envKey,provider,icon){
+  return '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px">'+
+    '<div style="font-size:20px;margin-bottom:6px">'+icon+'</div>'+
+    '<div style="font-weight:700;margin-bottom:4px">'+name+'</div>'+
+    '<div style="font-size:11px;color:var(--t2);margin-bottom:10px">Client ID needed in .env: <code style="font-size:10px">'+envKey+'</code></div>'+
+    '<div id="si-'+provider+'-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">Checking…</div>'+
+    '<a href="/api/oauth/'+provider+'" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-block">Connect '+name+' →</a>'+
+    '</div>';
+}
+
+function _siSageCard(){
+  return '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px">'+
+    '<div style="font-size:20px;margin-bottom:6px">📗</div>'+
+    '<div style="font-weight:700;margin-bottom:4px">Sage Accounting</div>'+
+    '<div style="font-size:11px;color:var(--t2);margin-bottom:10px">API key based — no OAuth required</div>'+
+    '<div id="si-sage-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">Checking…</div>'+
+    '<input class="form-input" type="password" id="si-SAGE_API_KEY" placeholder="Sage API Key" style="width:100%;font-size:12px;font-family:monospace;margin-bottom:6px">'+
+    '<input class="form-input" type="text" id="si-SAGE_COMPANY_ID" placeholder="Company ID" style="width:100%;font-size:12px;font-family:monospace">'+
+    '</div>';
+}
+
+function _siLoadStatus(){
+  var saToken=localStorage.getItem('ip_sa_token')||process.env.SA_API_TOKEN||'';
+  fetch('/api/integrations/status',{headers:{'x-sa-token':saToken}})
+    .then(function(r){return r.json();})
+    .then(function(s){
+      var grid=document.getElementById('si-status');
+      if(!grid)return;
+      var items=[
+        {icon:'📍',label:'GPS',ok:s.gps&&s.gps.connected,sub:s.gps&&s.gps.provider||'—'},
+        {icon:'🌡️',label:'Sensors',ok:s.sensors&&s.sensors.connected,sub:(s.sensors&&s.sensors.count||0)+' active'},
+        {icon:'📱',label:'WhatsApp',ok:s.notifications&&s.notifications.whatsapp,sub:'Twilio'},
+        {icon:'📧',label:'Email',ok:s.notifications&&(s.notifications.sendgrid||s.notifications.mailgun),sub:s.notifications&&s.notifications.sendgrid?'SendGrid':s.notifications&&s.notifications.mailgun?'Mailgun':'—'},
+        {icon:'💳',label:'Stripe',ok:s.payments&&s.payments.stripe,sub:'Payments'},
+        {icon:'💰',label:'PayPal',ok:s.payments&&s.payments.paypal,sub:s.payments&&s.payments.mode||'sandbox'},
+        {icon:'💼',label:'QuickBooks',ok:s.accounting&&s.accounting.quickbooks&&s.accounting.quickbooks.connected,sub:s.accounting&&s.accounting.quickbooks&&s.accounting.quickbooks.configured?'Configured':'Not set'},
+        {icon:'📊',label:'Xero',ok:s.accounting&&s.accounting.xero&&s.accounting.xero.connected,sub:s.accounting&&s.accounting.xero&&s.accounting.xero.configured?'Configured':'Not set'},
+        {icon:'📗',label:'Sage',ok:s.accounting&&s.accounting.sage&&s.accounting.sage.connected,sub:'API Key'},
+        {icon:'🔗',label:'ERP',ok:s.erp&&s.erp.endpoint,sub:'Push'},
+        {icon:'📦',label:'WMS',ok:s.erp&&s.erp.wms,sub:'Webhook'},
+        {icon:'🔑',label:'REST API',ok:s.api&&s.api.enabled,sub:'v1'},
+      ];
+      grid.innerHTML=items.map(function(x){
+        return '<div class="kpi-card" style="padding:10px 12px">'+
+          '<div style="font-size:18px">'+x.icon+'</div>'+
+          '<div style="font-size:13px;font-weight:700;margin-top:4px">'+x.label+'</div>'+
+          '<div style="font-size:11px;margin-top:2px;color:'+(x.ok?'#10B981':'#EF4444')+'">'+
+            (x.ok?'✅ Connected':'❌ Not set')+'</div>'+
+          '<div style="font-size:10px;color:var(--t3);margin-top:1px">'+x.sub+'</div>'+
+          '</div>';
+      }).join('');
+      // OAuth card status
+      if(s.accounting){
+        var qbEl=document.getElementById('si-quickbooks-status');
+        var xEl=document.getElementById('si-xero-status');
+        var sgEl=document.getElementById('si-sage-status');
+        if(qbEl)qbEl.innerHTML=s.accounting.quickbooks.connected?'<span style="color:#10B981">✅ Connected (realm: '+s.accounting.quickbooks.realmId+')</span>':(s.accounting.quickbooks.configured?'<span style="color:#F59E0B">⚠️ Not authorised yet</span>':'<span style="color:#EF4444">❌ QB_CLIENT_ID not in .env</span>');
+        if(xEl)xEl.innerHTML=s.accounting.xero.connected?'<span style="color:#10B981">✅ Connected</span>':(s.accounting.xero.configured?'<span style="color:#F59E0B">⚠️ Not authorised yet</span>':'<span style="color:#EF4444">❌ XERO_CLIENT_ID not in .env</span>');
+        if(sgEl)sgEl.innerHTML=s.accounting.sage.connected?'<span style="color:#10B981">✅ SAGE_API_KEY set</span>':'<span style="color:#EF4444">❌ SAGE_API_KEY not set</span>';
+      }
+    })
+    .catch(function(){
+      var grid=document.getElementById('si-status');
+      if(grid)grid.innerHTML='<div style="color:var(--t3);font-size:13px">Server offline — start with <code>npm run dev</code></div>';
+    });
+}
+
+function _siGenerateEnv(){
+  var keys=['TRACCAR_URL','TRACCAR_USER','TRACCAR_PASS','SAMSARA_API_KEY','WIALON_TOKEN','GPS_POLL_URL','GPS_API_TOKEN',
+    'MQTT_BROKER_URL','MQTT_USER','MQTT_PASS','SENSOR_POLL_URL','SENSOR_API_KEY','SENSOR_TEMP_MIN','SENSOR_TEMP_MAX','SENSOR_HUM_MAX',
+    'TWILIO_SID','TWILIO_TOKEN','TWILIO_FROM','TWILIO_WHATSAPP_FROM','ALERT_WHATSAPP','ALERT_EMAIL',
+    'SENDGRID_KEY','SENDGRID_FROM','MAILGUN_API_KEY','MAILGUN_DOMAIN',
+    'STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_PRICE_STARTER','STRIPE_PRICE_PROFESSIONAL','STRIPE_PRICE_ENTERPRISE',
+    'PAYPAL_CLIENT_ID','PAYPAL_CLIENT_SECRET','PAYPAL_MODE','PAYPAL_PRICE_STARTER','PAYPAL_PRICE_PROFESSIONAL',
+    'ERP_ENDPOINT','ERP_TOKEN','ERP_API_KEY','WMS_ENDPOINT','WMS_TOKEN',
+    'SAGE_API_KEY','SAGE_COMPANY_ID'];
+  var lines=['# InstaPort TMS — Generated .env snippet','# Paste into your .env file and restart server',''];
+  var hasValue=false;
+  keys.forEach(function(k){
+    var el=document.getElementById('si-'+k);
+    if(el&&el.value.trim()){
+      lines.push(k+'='+el.value.trim());
+      hasValue=true;
+    }
+  });
+  var out=document.getElementById('si-env-out');
+  if(out){
+    out.style.display='block';
+    out.textContent=hasValue?lines.join('\n'):'# Fill in the fields above first';
+  }
+}
+
 // ── USERS ──
 function rAdminUsers(){
   var el=document.getElementById('admin-content');if(!el)return;
@@ -8752,6 +8958,56 @@ function _applySensorReading(temp,hum,ts,sensorId,truckPlate){
   if(_tempData.length%10===0){drawGraph();}
 }
 
+// ══════════════════════════════════════════════════
+// GPS / TELEMATICS — live position tracking
+// ══════════════════════════════════════════════════
+var _gpsPositions={};      // {plate: {lat,lng,speed,ignition,ts}}
+var _gpsMarkers={};        // Leaflet markers keyed by plate
+
+function _applyGPSSnapshot(positions){
+  Object.keys(positions||{}).forEach(function(plate){
+    _applyGPSPosition(positions[plate]);
+  });
+}
+
+function _applyGPSPosition(pos){
+  if(!pos||!pos.lat||!pos.lng)return;
+  _gpsPositions[pos.truckPlate]=pos;
+
+  // Update fleet list row GPS badge
+  var badge=document.getElementById('gps-'+pos.truckPlate);
+  if(badge){
+    var spd=pos.speed!=null?pos.speed+'km/h':'—';
+    var ign=pos.ignition?'🟢':'🔴';
+    badge.innerHTML=ign+' '+spd;
+    badge.title='Last update: '+new Date(pos.ts).toLocaleTimeString();
+  }
+
+  // Update Leaflet map marker
+  if(typeof L!=='undefined'&&_dashMap){
+    var truckIcon=L.divIcon({
+      className:'',
+      html:'<div style="background:#6C3FF5;color:#fff;padding:2px 5px;border-radius:6px;font-size:10px;font-weight:700;white-space:nowrap;box-shadow:0 2px 6px rgba(0,0,0,.3)">🚛 '+pos.truckPlate+(pos.speed!=null?' · '+pos.speed+'km/h':'')+'</div>',
+      iconAnchor:[0,0]
+    });
+    if(_gpsMarkers[pos.truckPlate]){
+      _gpsMarkers[pos.truckPlate].setLatLng([pos.lat,pos.lng]);
+      _gpsMarkers[pos.truckPlate].setIcon(truckIcon);
+    }else{
+      var m=L.marker([pos.lat,pos.lng],{icon:truckIcon,zIndexOffset:2000}).addTo(_dashMap);
+      m.bindPopup('<b>🚛 '+pos.truckPlate+'</b><br>Speed: '+(pos.speed!=null?pos.speed+' km/h':'—')+'<br>Ignition: '+(pos.ignition?'On':'Off')+'<br><small>'+new Date(pos.ts).toLocaleTimeString()+'</small>');
+      _gpsMarkers[pos.truckPlate]=m;
+    }
+  }
+}
+
+// Fetch initial GPS snapshot from server
+function _fetchGPSSnapshot(){
+  fetch('/api/gps').then(function(r){return r.json();}).then(function(snap){
+    if(snap&&snap.positions)_applyGPSSnapshot(snap.positions);
+  }).catch(function(){});
+}
+
 // ── Connect SSE stream from server ──
 function _connectSensorStream(){
   if(_sseConn){try{_sseConn.close();}catch(e){}}
@@ -8788,8 +9044,35 @@ function _connectSensorStream(){
         notif('⚠️ Sensor: '+a.message,'alert');
       }catch(ex){}
     });
+    // GPS position updates
+    es.addEventListener('gps',function(e){
+      try{
+        var snap=JSON.parse(e.data);
+        if(snap&&snap.positions) _applyGPSSnapshot(snap.positions);
+      }catch(ex){}
+    });
+    es.addEventListener('gps_position',function(e){
+      try{
+        var p=JSON.parse(e.data);
+        _applyGPSPosition(p);
+      }catch(ex){}
+    });
+    es.addEventListener('gps_geofence',function(e){
+      try{
+        var ev=JSON.parse(e.data);
+        notif('📍 '+ev.truck+' '+ev.type.toLowerCase()+' '+ev.geofence,'info');
+      }catch(ex){}
+    });
+    es.addEventListener('plan_upgraded',function(e){
+      try{
+        var r=JSON.parse(e.data);
+        if(r.orgId===_tenantId){
+          notif('🎉 Plan upgraded to '+r.plan+'!','ok');
+          _tenantPlan=r.plan;
+        }
+      }catch(ex){}
+    });
     es.onerror=function(){
-      // SSE lost — fall back to simulation silently
       _sensorLive=false;_sensorSource='sim';
     };
   }catch(ex){

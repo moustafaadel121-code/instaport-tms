@@ -1,10 +1,11 @@
 /**
  * integrations/notifications.js
- * WhatsApp (Twilio), SMS (Twilio), Email (SendGrid)
+ * WhatsApp (Twilio), SMS (Twilio), Email (SendGrid / Mailgun)
  */
 
 const twilio   = require('twilio');
 const sgMail   = require('@sendgrid/mail');
+const axios    = require('axios');
 
 // Lazy-init clients
 let _twilioClient = null;
@@ -55,23 +56,61 @@ async function sendSMS(to, message) {
   }
 }
 
-// ── Email ─────────────────────────────────────────────────────────
-async function sendEmail({ to, subject, html, text }) {
-  if (!process.env.SENDGRID_KEY) { console.warn('Email: SendGrid not configured'); return false; }
+// ── Email (SendGrid) ──────────────────────────────────────────────
+async function sendEmailSendGrid({ to, subject, html, text }) {
+  if (!process.env.SENDGRID_KEY) return false;
   try {
     await sgMail.send({
       to,
-      from: process.env.SENDGRID_FROM || 'noreply@instaport.app',
+      from:    process.env.SENDGRID_FROM || 'noreply@instaport.app',
       subject,
-      html: html || `<p>${text}</p>`,
-      text: text || subject,
+      html:    html || `<p>${text}</p>`,
+      text:    text || subject,
     });
-    console.log('  📧 Email sent to', to);
+    console.log('  📧 [SendGrid] Email sent to', to);
     return true;
   } catch (e) {
-    console.warn('  Email error:', e.message);
+    console.warn('  SendGrid error:', e.message);
     return false;
   }
+}
+
+// ── Email (Mailgun) ───────────────────────────────────────────────
+async function sendEmailMailgun({ to, subject, html, text }) {
+  const key    = process.env.MAILGUN_API_KEY;
+  const domain = process.env.MAILGUN_DOMAIN;
+  if (!key || !domain) return false;
+  try {
+    const form = new URLSearchParams({
+      from:    process.env.MAILGUN_FROM || `InstaPort <noreply@${domain}>`,
+      to,
+      subject,
+      html:    html || `<p>${text}</p>`,
+      text:    text || subject,
+    });
+    await axios.post(
+      `https://api.mailgun.net/v3/${domain}/messages`,
+      form.toString(),
+      {
+        auth:    { username: 'api', password: key },
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      }
+    );
+    console.log('  📧 [Mailgun] Email sent to', to);
+    return true;
+  } catch (e) {
+    console.warn('  Mailgun error:', e.message);
+    return false;
+  }
+}
+
+// ── Email — auto-pick provider ────────────────────────────────────
+async function sendEmail({ to, subject, html, text }) {
+  // SendGrid takes priority, then Mailgun
+  if (process.env.SENDGRID_KEY)   return sendEmailSendGrid({ to, subject, html, text });
+  if (process.env.MAILGUN_API_KEY) return sendEmailMailgun({ to, subject, html, text });
+  console.warn('Email: No provider configured (set SENDGRID_KEY or MAILGUN_API_KEY)');
+  return false;
 }
 
 // ── Trip event notifications ───────────────────────────────────────
