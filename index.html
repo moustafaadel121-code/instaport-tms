@@ -610,6 +610,29 @@ input, select, textarea { font-family: inherit; }
 .data-table tr:hover td { background:var(--surf2,rgba(108,63,245,.04)); }
 .btn-sm { padding:5px 12px; font-size:12px; }
 
+/* Feature Gate toggle switches */
+.fg-toggle {
+  position:relative; display:inline-block;
+  width:40px; height:22px; cursor:pointer;
+}
+.fg-toggle input { opacity:0; width:0; height:0; }
+.fg-slider {
+  position:absolute; inset:0;
+  background:#D1D5DB; border-radius:22px;
+  transition:background .2s;
+}
+.fg-slider::before {
+  content:''; position:absolute;
+  width:16px; height:16px; border-radius:50%;
+  background:#fff; left:3px; top:3px;
+  transition:transform .2s;
+  box-shadow:0 1px 3px rgba(0,0,0,.2);
+}
+.fg-toggle input:checked+.fg-slider { background:#6C3FF5; }
+.fg-toggle input:checked+.fg-slider::before { transform:translateX(18px); }
+.fg-toggle-locked .fg-slider { background:#F59E0B !important; opacity:.7; cursor:not-allowed; }
+.fg-toggle-locked input:checked+.fg-slider::before { transform:translateX(18px); }
+
 .sb-divider {
   height: 1px;
   background: rgba(255,255,255,.07);
@@ -4043,6 +4066,28 @@ const FEATURE_MIN_PLAN = {
   nr_trip:'enterprise',invite_mgmt:'enterprise',
 };
 
+/* Load saved feature-gate config from localStorage and merge into PLAN_FEATURES */
+function _loadFeatureGates(){
+  try{
+    var saved=localStorage.getItem('ip_feature_gates');
+    if(saved){
+      var cfg=JSON.parse(saved);
+      Object.keys(cfg).forEach(function(fid){
+        PLAN_FEATURES[fid]=cfg[fid];
+      });
+    }
+  }catch(e){}
+}
+/* Save current PLAN_FEATURES to localStorage */
+function _saveFeatureGates(){
+  try{localStorage.setItem('ip_feature_gates',JSON.stringify(PLAN_FEATURES));}catch(e){}
+}
+/* Reset to built-in defaults */
+function _resetFeatureGates(){
+  try{localStorage.removeItem('ip_feature_gates');}catch(e){}
+  location.reload();
+}
+
 /* Returns true if current tenant plan allows the feature */
 function planCan(featureId){
   var f=PLAN_FEATURES[featureId];
@@ -4255,10 +4300,11 @@ let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicke
 // ══════════════════════════════════════════════════
 const PAGES={
   superadmin:[
-    {id:'sa_overview', icon:'👑', l:'Overview'},
-    {id:'sa_orgs',     icon:'🏢', l:'Organizations'},
-    {id:'sa_invites',  icon:'🔑', l:'Invite Codes'},
-    {id:'sa_revenue',  icon:'💰', l:'Revenue'},
+    {id:'sa_overview',  icon:'👑', l:'Overview'},
+    {id:'sa_orgs',      icon:'🏢', l:'Organizations'},
+    {id:'sa_invites',   icon:'🔑', l:'Invite Codes'},
+    {id:'sa_revenue',   icon:'💰', l:'Revenue'},
+    {id:'sa_features',  icon:'🎛️', l:'Feature Gates'},
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
@@ -4327,6 +4373,7 @@ async function doLogin(){
     // Warn on weak PIN (first login hint)
     if(_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
     buildSB();
+    _loadFeatureGates(); // apply any saved custom feature-gate config
     var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
     // Show dashboard instantly, silently refresh data from Supabase in background
     nav(_startPage);
@@ -4514,7 +4561,7 @@ function nav(page){
     invite_mgmt:rInviteMgmt,exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
-    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue};
+    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features};
   (map[page]||rDash)();
   // Animate page entry and KPI count-up
   c.style.animation='fadeInUp .28s cubic-bezier(.22,.68,0,1.18) both';
@@ -7549,6 +7596,147 @@ function rSA_Revenue(){
       '<div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:12px;font-size:13px;color:var(--t2)">* Estimated based on active orgs × plan price. Enterprise billed as custom.</div>'+
     '</div>';
   });
+}
+
+/* ── SA Feature Gates Configurator ── */
+// Human-readable labels & categories for all features
+var _SA_FEATURE_META={
+  // Core — always available
+  dashboard:   {label:'Dashboard',       cat:'Core'},
+  fleet:       {label:'Fleet',           cat:'Core'},
+  trips:       {label:'Trips',           cat:'Core'},
+  dispatch:    {label:'Dispatch',        cat:'Core'},
+  quality:     {label:'Quality Control', cat:'Core'},
+  security:    {label:'Security / Gate', cat:'Core'},
+  maintenance: {label:'Maintenance',     cat:'Core'},
+  spare_parts: {label:'Spare Parts',     cat:'Core'},
+  validation:  {label:'Validation',      cat:'Core'},
+  billing:     {label:'Invoices',        cat:'Core'},
+  admin_mgmt:  {label:'Admin Panel',     cat:'Core'},
+  my_trips:    {label:'My Trips (Driver)',cat:'Core'},
+  // Professional
+  forecast:    {label:'Forecast / New Shipment', cat:'Professional'},
+  controlroom: {label:'Control Room',    cat:'Professional'},
+  finance:     {label:'Finance',         cat:'Professional'},
+  fuel:        {label:'Fuel Logs',       cat:'Professional'},
+  exceptions:  {label:'Exceptions',      cat:'Professional'},
+  analytics:   {label:'Analytics',       cat:'Professional'},
+  pm_schedule: {label:'PM Scheduler',    cat:'Professional'},
+  vendors:     {label:'Vendors',         cat:'Professional'},
+  esg:         {label:'ESG Report',      cat:'Professional'},
+  // Enterprise
+  ai:          {label:'AI Assistant',    cat:'Enterprise'},
+  hr:          {label:'HR & Compliance', cat:'Enterprise'},
+  audit:       {label:'Audit Trail',     cat:'Enterprise'},
+  nr_trip:     {label:'Non-Revenue Trips',cat:'Enterprise'},
+  invite_mgmt: {label:'Invite Management',cat:'Enterprise'},
+};
+
+function rSA_Features(){
+  var c=document.getElementById('content');
+  var cats=['Core','Professional','Enterprise'];
+  var catColors={Core:'#10B981',Professional:'#6C3FF5',Enterprise:'#F59E0B'};
+
+  var rows=Object.keys(_SA_FEATURE_META).map(function(fid){
+    var meta=_SA_FEATURE_META[fid];
+    var gates=PLAN_FEATURES[fid]||{starter:0,professional:0,enterprise:1};
+    return {fid:fid,meta:meta,gates:gates};
+  });
+
+  var tableRows=cats.map(function(cat){
+    var catRows=rows.filter(function(r){return r.meta.cat===cat;});
+    var header='<tr style="background:'+catColors[cat]+'18">'+
+      '<td colspan="4" style="font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.5px;color:'+catColors[cat]+';padding:8px 14px">'+cat+'</td></tr>';
+    var dataRows=catRows.map(function(r){
+      return '<tr>'+
+        '<td style="font-weight:600;padding:10px 14px">'+r.meta.label+
+          '<div style="font-size:11px;color:var(--t3);font-family:monospace">'+r.fid+'</div></td>'+
+        ['starter','professional','enterprise'].map(function(plan){
+          var checked=!!(r.gates[plan]);
+          var isEnt=plan==='enterprise';
+          return '<td style="text-align:center">'+
+            '<label class="fg-toggle '+(isEnt?'fg-toggle-locked':'')+'" title="'+(isEnt?'Enterprise always has access':'Toggle for '+plan)+'">'+
+              '<input type="checkbox" class="fg-cb" data-fid="'+r.fid+'" data-plan="'+plan+'"'+
+              (checked?' checked':'')+
+              (isEnt?' disabled':'')+
+              ' onchange="_saFgChange(this)"/>'+
+              '<span class="fg-slider"></span>'+
+            '</label>'+
+          '</td>';
+        }).join('')+
+      '</tr>';
+    }).join('');
+    return header+dataRows;
+  }).join('');
+
+  c.innerHTML=
+    '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:20px">'+
+      '<div>'+
+        '<div style="font-size:18px;font-weight:800">🎛️ Feature Gates</div>'+
+        '<div style="font-size:13px;color:var(--t2);margin-top:2px">Configure which features each plan can access. Changes apply on next login.</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:10px">'+
+        '<button class="btn btn-outline" onclick="_saFgReset()">↺ Reset Defaults</button>'+
+        '<button class="btn btn-primary" onclick="_saFgSave()">💾 Save Configuration</button>'+
+      '</div>'+
+    '</div>'+
+    '<div class="card" style="padding:0;overflow:hidden">'+
+      '<table class="data-table" style="margin:0">'+
+        '<thead><tr>'+
+          '<th style="padding:12px 14px">Feature</th>'+
+          '<th style="text-align:center;color:#64748B">🌱 Starter</th>'+
+          '<th style="text-align:center;color:#6C3FF5">⚡ Professional</th>'+
+          '<th style="text-align:center;color:#F59E0B">👑 Enterprise</th>'+
+        '</tr></thead>'+
+        '<tbody>'+tableRows+'</tbody>'+
+      '</table>'+
+    '</div>'+
+    '<div style="margin-top:16px;padding:14px 18px;background:rgba(108,63,245,.06);border:1px solid rgba(108,63,245,.15);border-radius:12px;font-size:13px;color:var(--t2)">'+
+      '💡 <strong>Tip:</strong> Enterprise plan always has access to everything. Starter is the entry-level. '+
+      'Professional sits in between. Changes save locally and apply when clients next log in.'+
+    '</div>';
+}
+
+/* Toggle handler — updates PLAN_FEATURES in memory */
+function _saFgChange(cb){
+  var fid=cb.dataset.fid, plan=cb.dataset.plan;
+  if(!PLAN_FEATURES[fid]) PLAN_FEATURES[fid]={starter:0,professional:0,enterprise:1};
+  PLAN_FEATURES[fid][plan]=cb.checked?1:0;
+  // If enabling for starter, also enable for professional (cascade up)
+  if(plan==='starter'&&cb.checked) PLAN_FEATURES[fid]['professional']=1;
+  // If disabling for professional, also disable for starter (cascade down)
+  if(plan==='professional'&&!cb.checked){
+    PLAN_FEATURES[fid]['starter']=0;
+    // update starter checkbox visually
+    var starterCb=document.querySelector('.fg-cb[data-fid="'+fid+'"][data-plan="starter"]');
+    if(starterCb) starterCb.checked=false;
+  }
+  // If enabling professional, reflect in UI
+  if(plan==='starter'&&cb.checked){
+    var proCb=document.querySelector('.fg-cb[data-fid="'+fid+'"][data-plan="professional"]');
+    if(proCb){proCb.checked=true;PLAN_FEATURES[fid]['professional']=1;}
+  }
+  // Update FEATURE_MIN_PLAN mapping
+  _saFgUpdateMinPlan(fid);
+}
+
+function _saFgUpdateMinPlan(fid){
+  var g=PLAN_FEATURES[fid]||{};
+  if(g.starter)      FEATURE_MIN_PLAN[fid]=undefined; // available to all, no lock
+  else if(g.professional) FEATURE_MIN_PLAN[fid]='professional';
+  else                    FEATURE_MIN_PLAN[fid]='enterprise';
+}
+
+function _saFgSave(){
+  _saveFeatureGates();
+  // Rebuild FEATURE_MIN_PLAN for all features
+  Object.keys(PLAN_FEATURES).forEach(function(fid){_saFgUpdateMinPlan(fid);});
+  toast('✅ Feature gate config saved — clients see changes on next login','ok');
+}
+
+function _saFgReset(){
+  if(!confirm('Reset all feature gates to built-in defaults?')) return;
+  _resetFeatureGates(); // reloads page
 }
 
 // INVITE CODES MANAGEMENT — Super Admin Only
