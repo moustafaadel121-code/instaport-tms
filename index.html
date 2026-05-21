@@ -525,6 +525,79 @@ input, select, textarea { font-family: inherit; }
   padding: 2px 6px;
   border-radius: 10px;
 }
+/* ── Plan Feature Gate UI ─────────────────────── */
+.sbi-locked {
+  opacity: 0.5;
+  cursor: pointer;
+}
+.sbi-locked:hover {
+  opacity: 0.75;
+  background: rgba(108,63,245,0.12) !important;
+}
+.sbi-lock {
+  margin-left: auto;
+  font-size: 11px;
+  opacity: 0.7;
+}
+/* Plan pill at bottom of sidebar */
+.sb-plan-pill {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 6px 10px;
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: rgba(108,63,245,0.18);
+  border: 1px solid rgba(108,63,245,0.3);
+  cursor: pointer;
+  transition: background .2s;
+}
+.sb-plan-pill:hover { background: rgba(108,63,245,0.3); }
+.sb-plan-icon { font-size: 15px; }
+.sb-plan-name { font-size: 12px; font-weight: 700; color: #C4B5FD; flex: 1; }
+.sb-plan-up { font-size: 10px; color: rgba(196,181,253,.6); white-space: nowrap; }
+
+/* Upgrade modal overlay */
+#upgrade-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(10,5,30,0.7);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: center; justify-content: center;
+  animation: fadeIn .18s ease;
+}
+.upgrade-modal {
+  background: var(--surf, #fff);
+  border-radius: 20px;
+  padding: 36px 32px 28px;
+  max-width: 680px; width: 92%;
+  box-shadow: 0 24px 80px rgba(0,0,0,.45);
+  text-align: center;
+  max-height: 90vh; overflow-y: auto;
+}
+[data-theme=dark] .upgrade-modal { background: #1A1736; }
+.upgrade-icon { font-size: 48px; margin-bottom: 10px; }
+.upgrade-title { font-size: 22px; font-weight: 800; color: var(--t); margin-bottom: 8px; font-family:'Space Grotesk',sans-serif; }
+.upgrade-sub { font-size: 14px; color: var(--t2); margin-bottom: 24px; line-height: 1.6; }
+.upgrade-plans { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; margin-bottom: 24px; }
+@media(max-width:600px){ .upgrade-plans{ grid-template-columns:1fr; } }
+.upc {
+  border: 1.5px solid var(--bd);
+  border-radius: 14px;
+  padding: 16px 14px;
+  text-align: left;
+  transition: border-color .2s;
+}
+.upc-current { border-color: #6C3FF5; background: rgba(108,63,245,.05); }
+.upc-has { border-color: #10B981; }
+.upc-head { font-size: 14px; font-weight: 800; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+.upc-badge { font-size: 9px; background: #6C3FF5; color: #fff; padding: 2px 7px; border-radius: 20px; margin-left: 4px; }
+.upc-price { font-size: 18px; font-weight: 800; color: var(--t); margin-bottom: 10px; }
+.upc-list { list-style: none; padding: 0; margin: 0 0 8px; font-size: 12px; color: var(--t2); display: flex; flex-direction: column; gap: 4px; }
+.upc-list li { display: flex; gap: 6px; }
+.upc-tick { font-size: 11px; color: #10B981; font-weight: 600; margin-top: 8px; }
+.upgrade-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+.upgrade-current { font-size: 12px; color: var(--t3); }
+
 .sb-divider {
   height: 1px;
   background: rgba(255,255,255,.07);
@@ -3898,6 +3971,114 @@ function can(action){
 }
 
 // ══════════════════════════════════════════════════
+// PLAN FEATURE GATES  (Starter / Professional / Enterprise)
+// ══════════════════════════════════════════════════
+const PLAN_FEATURES = {
+  // ── Starter: core operations ──────────────────
+  dashboard:   {starter:1,professional:1,enterprise:1},
+  fleet:       {starter:1,professional:1,enterprise:1},
+  trips:       {starter:1,professional:1,enterprise:1},
+  dispatch:    {starter:1,professional:1,enterprise:1},
+  quality:     {starter:1,professional:1,enterprise:1},
+  security:    {starter:1,professional:1,enterprise:1},
+  maintenance: {starter:1,professional:1,enterprise:1},
+  spare_parts: {starter:1,professional:1,enterprise:1},
+  validation:  {starter:1,professional:1,enterprise:1},
+  billing:     {starter:1,professional:1,enterprise:1},
+  admin_mgmt:  {starter:1,professional:1,enterprise:1},
+  my_trips:    {starter:1,professional:1,enterprise:1},
+  // ── Professional: extended operations ─────────
+  forecast:    {starter:0,professional:1,enterprise:1},
+  controlroom: {starter:0,professional:1,enterprise:1},
+  finance:     {starter:0,professional:1,enterprise:1},
+  fuel:        {starter:0,professional:1,enterprise:1},
+  exceptions:  {starter:0,professional:1,enterprise:1},
+  analytics:   {starter:0,professional:1,enterprise:1},
+  pm_schedule: {starter:0,professional:1,enterprise:1},
+  vendors:     {starter:0,professional:1,enterprise:1},
+  esg:         {starter:0,professional:1,enterprise:1},
+  // ── Enterprise: full suite ─────────────────────
+  ai:          {starter:0,professional:0,enterprise:1},
+  hr:          {starter:0,professional:0,enterprise:1},
+  audit:       {starter:0,professional:0,enterprise:1},
+  nr_trip:     {starter:0,professional:0,enterprise:1},
+  invite_mgmt: {starter:0,professional:0,enterprise:1},
+};
+
+const PLAN_META = {
+  starter:      {name:'Starter',      color:'#64748B',icon:'🌱',price:'$99/mo'},
+  professional: {name:'Professional', color:'#6C3FF5',icon:'⚡',price:'$299/mo'},
+  enterprise:   {name:'Enterprise',   color:'#F59E0B',icon:'👑',price:'Custom'},
+};
+
+const FEATURE_MIN_PLAN = {
+  forecast:'professional',controlroom:'professional',finance:'professional',
+  fuel:'professional',exceptions:'professional',analytics:'professional',
+  pm_schedule:'professional',vendors:'professional',esg:'professional',
+  ai:'enterprise',hr:'enterprise',audit:'enterprise',
+  nr_trip:'enterprise',invite_mgmt:'enterprise',
+};
+
+/* Returns true if current tenant plan allows the feature */
+function planCan(featureId){
+  var f=PLAN_FEATURES[featureId];
+  if(!f) return true; // unknown features pass through
+  return !!(f[_tenantPlan]);
+}
+
+/* Show upgrade modal when a locked feature is clicked */
+function showUpgradeModal(featureId, requiredPlan){
+  var req=PLAN_META[requiredPlan]||PLAN_META.professional;
+  var cur=PLAN_META[_tenantPlan]||PLAN_META.starter;
+  var fname=featureId.replace(/_/g,' ').replace(/\b\w/g,function(c){return c.toUpperCase();});
+  var ol=document.getElementById('upgrade-overlay');
+  if(!ol){
+    ol=document.createElement('div');ol.id='upgrade-overlay';
+    document.body.appendChild(ol);
+  }
+  ol.innerHTML=
+    '<div class="upgrade-modal" onclick="event.stopPropagation()">' +
+      '<div class="upgrade-icon">'+req.icon+'</div>' +
+      '<div class="upgrade-title">Upgrade to '+req.name+'</div>' +
+      '<div class="upgrade-sub"><strong>'+fname+'</strong> is available on the <strong style="color:'+req.color+'">'+req.name+'</strong> plan and above.</div>' +
+      '<div class="upgrade-plans">' +
+        _upgradePlanCard('starter',    featureId) +
+        _upgradePlanCard('professional',featureId) +
+        _upgradePlanCard('enterprise', featureId) +
+      '</div>' +
+      '<div class="upgrade-actions">' +
+        '<button class="btn" onclick="document.getElementById(\'upgrade-overlay\').style.display=\'none\'">Maybe Later</button>' +
+        '<button class="btn btn-primary" onclick="document.getElementById(\'upgrade-overlay\').style.display=\'none\';toast(\'📧 Our team will contact you shortly to upgrade your plan!\',\'ok\')">Contact Sales ↗</button>' +
+      '</div>' +
+      '<div class="upgrade-current">You are on the <strong style="color:'+cur.color+'">'+cur.icon+' '+cur.name+'</strong> plan</div>' +
+    '</div>';
+  ol.style.display='flex';
+  ol.onclick=function(){ol.style.display='none';};
+}
+
+function _upgradePlanCard(planId, featureId){
+  var m=PLAN_META[planId];
+  var has=!!(PLAN_FEATURES[featureId]&&PLAN_FEATURES[featureId][planId]);
+  var isCur=planId===_tenantPlan;
+  var feats={
+    starter:['Core fleet & trips','Dispatch & quality','Maintenance','Billing','10 users'],
+    professional:['Everything in Starter','Finance & control room','Analytics & fuel','PM scheduler & vendors','ESG reporting','50 users'],
+    enterprise:['Everything in Professional','AI assistant','HR & compliance','Full audit trail','Non-revenue trips','Unlimited users'],
+  };
+  return '<div class="upc'+(isCur?' upc-current':'')+(has?' upc-has':'')+'">' +
+    '<div class="upc-head" style="color:'+m.color+'">' +
+      m.icon+' '+m.name+
+      (isCur?'<span class="upc-badge">Current</span>':'') +
+    '</div>' +
+    '<div class="upc-price">'+m.price+'</div>' +
+    '<ul class="upc-list">'+(feats[planId]||[]).map(function(f){
+      return '<li>'+(has||feats[planId].indexOf(f)>=0?'✓':'–')+' '+f+'</li>';
+    }).join('')+'</ul>' +
+    (has?'<div class="upc-tick">✅ Includes '+featureId.replace(/_/g,' ')+'</div>':'') +
+  '</div>';
+}
+
+// ══════════════════════════════════════════════════
 // USERS & ROLES
 // ══════════════════════════════════════════════════
 const USERS=[
@@ -4240,15 +4421,42 @@ function _loadRolePages(){
 function buildSB(){
   var pp=_getRolePages(S.role);
   var pnd=S.trips.filter(function(t){return t.status==='awaiting_truck'&&t.type!=='Non-Revenue';}).length;
-  document.getElementById('sidebar').innerHTML='<div class="sb-section">Menu</div>'+
-    pp.map(function(p){return '<div class="sbi'+(S.page===p.id?' active':'')+'" onclick="nav(\''+p.id+'\')"><span class="sbi-icon">'+p.icon+'</span>'+p.l+(p.id==='dispatch'&&pnd>0?'<span class="sbi-badge">'+pnd+'</span>':'')+'</div>';}).join('')+
-    '<div class="sb-bottom"><div class="sbi" onclick="toggleDark()"><span class="sbi-icon">🌙</span>Dark Mode</div><div class="sbi" onclick="logout()"><span class="sbi-icon">🚪</span>Log Out</div></div>';
+  var pl=PLAN_META[_tenantPlan]||PLAN_META.starter;
+  var navHtml=pp.map(function(p){
+    var locked=!planCan(p.id);
+    var reqPlan=FEATURE_MIN_PLAN[p.id]||'';
+    var reqLabel=PLAN_META[reqPlan]?PLAN_META[reqPlan].name:'';
+    return '<div class="sbi'+(S.page===p.id?' active':'')+(locked?' sbi-locked':'')+'" '+
+      'onclick="'+(locked?'showUpgradeModal(\''+p.id+'\',\''+reqPlan+'\')':'nav(\''+p.id+'\')')+'" '+
+      'title="'+(locked?'Requires '+reqLabel+' plan — click to upgrade':p.l)+'">'+
+      '<span class="sbi-icon">'+p.icon+'</span>'+p.l+
+      (locked?'<span class="sbi-lock">🔒</span>':'')+
+      (p.id==='dispatch'&&pnd>0&&!locked?'<span class="sbi-badge">'+pnd+'</span>':'')+
+    '</div>';
+  }).join('');
+  document.getElementById('sidebar').innerHTML=
+    '<div class="sb-section">Menu</div>'+navHtml+
+    '<div class="sb-plan-pill" onclick="showUpgradeModal(\'analytics\',\'professional\')" title="Your plan — click to see options">'+
+      '<span class="sb-plan-icon">'+pl.icon+'</span>'+
+      '<span class="sb-plan-name">'+pl.name+'</span>'+
+      (pl.name!=='Enterprise'?'<span class="sb-plan-up">Upgrade ↗</span>':'')+
+    '</div>'+
+    '<div class="sb-bottom">'+
+      '<div class="sbi" onclick="toggleDark()"><span class="sbi-icon">🌙</span>Dark Mode</div>'+
+      '<div class="sbi" onclick="logout()"><span class="sbi-icon">🚪</span>Log Out</div>'+
+    '</div>';
 }
 function nav(page){
   _destroyDashMap();_destroyTripMap();
   _closeMobileSidebar(); // close mobile sidebar on navigation
   // ── Navigation guard ──────────────────────────────
   // Admin always passes; others must have the page in their allowed list
+  // ── Plan gate: check tenant plan before role ──
+  if(!planCan(page)){
+    var reqP=FEATURE_MIN_PLAN[page]||'professional';
+    showUpgradeModal(page,reqP);
+    return;
+  }
   if(!can('all')&&page!=='dashboard'){
     var allowed=_getRolePages(S.role);
     var pageOk=allowed.some(function(p){return p.id===page;});
