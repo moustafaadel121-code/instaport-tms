@@ -4357,6 +4357,9 @@ async function doLogin(){
           lerr.textContent=saData.error||'Invalid credentials.';lerr.style.display='block';return;
         }
         u={id:uid,pin:'[server]',name:saData.name,role:'superadmin',email:'',active:true};
+        // Prompt SA to enter their SA_API_TOKEN for integrations panel
+        // (stored in browser only, never sent to index.html)
+        _siSaToken='';
       }catch(e){
         lerr.textContent='Could not reach auth server. Is server.js running?';lerr.style.display='block';return;
       }
@@ -8296,205 +8299,286 @@ function _ssRefresh(){
 // ══════════════════════════════════════════════════
 // SA INTEGRATIONS PAGE
 // ══════════════════════════════════════════════════
+// ── SA Integrations page helpers ─────────────────────────────────
+var _siSaToken='';
+
 function rSA_Integrations(){
+  _siSaToken=localStorage.getItem('ip_sa_token')||'';
   var c=document.getElementById('content');
   c.innerHTML=
-    '<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">'+
-      '<div style="font-size:36px">🔌</div>'+
-      '<div><div style="font-size:22px;font-weight:800;font-family:Space Grotesk,sans-serif">Integrations</div>'+
-      '<div style="font-size:13px;color:var(--t2)">Connect GPS, accounting, payments, notifications & ERP</div></div>'+
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'+
+      '<div style="display:flex;align-items:center;gap:12px">'+
+        '<div style="font-size:36px">🔌</div>'+
+        '<div><div style="font-size:22px;font-weight:800;font-family:Space Grotesk,sans-serif">Integrations</div>'+
+        '<div style="font-size:13px;color:var(--t2)">Enter credentials below — saved directly to server, no file editing needed</div></div>'+
+      '</div>'+
+      '<button class="btn btn-outline btn-sm" onclick="_siLoadStatus()">↺ Refresh Status</button>'+
     '</div>'+
-    '<div id="si-status" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;margin-bottom:24px">'+
-      '<div class="kpi-card" style="opacity:.5">Loading status…</div></div>'+
 
-    // GPS
-    _siSection('📍','GPS / Telematics','Real-time truck position tracking','si-gps',[
-      _siRow('Traccar (self-hosted)','TRACCAR_URL','url','http://192.168.1.100:8082'),
-      _siRow('Samsara API Key','SAMSARA_API_KEY','password','sk-xxxxxxxx'),
-      _siRow('Wialon Token','WIALON_TOKEN','password','xxxxxxxx'),
-      _siRow('Generic GPS URL','GPS_POLL_URL','url','https://your-gps.com/api/positions'),
-      _siRow('GPS API Token','GPS_API_TOKEN','password','Bearer token if required'),
-    ])+
+    // Status grid
+    '<div id="si-status" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:24px">'+
+      '<div class="kpi-card" style="opacity:.5;font-size:12px">Loading…</div></div>'+
 
-    // Sensors / RMS
-    _siSection('🌡️','Sensors / RMS','Temperature & humidity IoT devices','si-sensors',[
-      _siRow('MQTT Broker URL','MQTT_BROKER_URL','url','mqtt://192.168.1.100:1883'),
-      _siRow('MQTT Username','MQTT_USER','text','username'),
-      _siRow('MQTT Password','MQTT_PASS','password','password'),
-      _siRow('HTTP Poll URL','SENSOR_POLL_URL','url','https://your-rms.com/api/readings'),
-      _siRow('Sensor API Key','SENSOR_API_KEY','password','api-key'),
-      _siRow('Temp Min (°C)','SENSOR_TEMP_MIN','number','-5'),
-      _siRow('Temp Max (°C)','SENSOR_TEMP_MAX','number','8'),
-      _siRow('Humidity Max (%)','SENSOR_HUM_MAX','number','85'),
-    ])+
+    // SA API Token (needed to save)
+    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.3);border-radius:var(--r-md);padding:14px;margin-bottom:20px;display:flex;align-items:center;gap:12px">'+
+      '<span style="font-size:22px">🔐</span>'+
+      '<div style="flex:1"><div style="font-weight:700;font-size:13px;margin-bottom:4px">SA API Token required to save</div>'+
+      '<input class="form-input" type="password" id="si-sa-tok" placeholder="SA_API_TOKEN value from your .env" style="width:100%;max-width:400px;font-size:12px;font-family:monospace" oninput="_siSaToken=this.value"></div>'+
+    '</div>'+
 
-    // Notifications
-    _siSection('📱','Notifications','WhatsApp, SMS & Email alerts','si-notif',[
-      _siRow('Twilio SID','TWILIO_SID','password','ACxxxxxxxx'),
-      _siRow('Twilio Auth Token','TWILIO_TOKEN','password','xxxxxxxx'),
-      _siRow('Twilio Phone From','TWILIO_FROM','text','+15551234567'),
-      _siRow('WhatsApp From (Twilio)','TWILIO_WHATSAPP_FROM','text','+14155238886'),
-      _siRow('Alert WhatsApp Number','ALERT_WHATSAPP','text','+201001234567'),
-      _siRow('Alert Email','ALERT_EMAIL','email','manager@company.com'),
-      '—',
-      _siRow('SendGrid API Key','SENDGRID_KEY','password','SG.xxxxxxxx'),
-      _siRow('SendGrid From Email','SENDGRID_FROM','email','noreply@company.com'),
-      '—',
-      _siRow('Mailgun API Key','MAILGUN_API_KEY','password','key-xxxxxxxx'),
-      _siRow('Mailgun Domain','MAILGUN_DOMAIN','text','mg.company.com'),
-    ])+
+    _siSection('📍','GPS / Telematics','Real-time truck tracking — fill in ONE provider','si-gps',
+      ['TRACCAR_URL|Traccar Server URL|url|http://192.168.1.100:8082',
+       'TRACCAR_USER|Traccar Username|text|admin',
+       'TRACCAR_PASS|Traccar Password|password|password',
+       'SAMSARA_API_KEY|Samsara API Key|password|samsara_api_xxxxxxxx',
+       'WIALON_TOKEN|Wialon Token|password|xxxxxxxx',
+       'GPS_POLL_URL|Generic GPS API URL|url|https://your-gps.com/api/vehicles',
+       'GPS_API_TOKEN|Generic GPS API Token|password|bearer-token'])+
 
-    // Payments
-    _siSection('💳','Payments','Stripe & PayPal subscription billing','si-payments',[
-      _siRow('Stripe Secret Key','STRIPE_SECRET_KEY','password','sk_live_xxxxxxxx'),
-      _siRow('Stripe Webhook Secret','STRIPE_WEBHOOK_SECRET','password','whsec_xxxxxxxx'),
-      _siRow('Stripe Price — Starter','STRIPE_PRICE_STARTER','text','price_xxxxxxxx'),
-      _siRow('Stripe Price — Professional','STRIPE_PRICE_PROFESSIONAL','text','price_xxxxxxxx'),
-      _siRow('Stripe Price — Enterprise','STRIPE_PRICE_ENTERPRISE','text','price_xxxxxxxx'),
-      '—',
-      _siRow('PayPal Client ID','PAYPAL_CLIENT_ID','password','xxxxxxxx'),
-      _siRow('PayPal Client Secret','PAYPAL_CLIENT_SECRET','password','xxxxxxxx'),
-      _siRow('PayPal Mode','PAYPAL_MODE','text','sandbox'),
-      _siRow('PayPal Price — Starter ($)','PAYPAL_PRICE_STARTER','number','99'),
-      _siRow('PayPal Price — Professional ($)','PAYPAL_PRICE_PROFESSIONAL','number','299'),
-    ])+
+    _siSection('🌡️','Sensors / RMS','Temperature & humidity IoT','si-sensors',
+      ['MQTT_BROKER_URL|MQTT Broker URL|url|mqtt://192.168.1.100:1883',
+       'MQTT_USER|MQTT Username|text|username',
+       'MQTT_PASS|MQTT Password|password|password',
+       'SENSOR_POLL_URL|HTTP Poll URL|url|https://your-rms.com/api/readings',
+       'SENSOR_API_KEY|Sensor API Key|password|api-key',
+       'SENSOR_TEMP_MIN|Temp Min °C|number|-5',
+       'SENSOR_TEMP_MAX|Temp Max °C|number|8',
+       'SENSOR_HUM_MAX|Humidity Max %|number|85'])+
 
-    // Accounting
+    _siSection('📱','WhatsApp & SMS','Twilio credentials','si-whatsapp',
+      ['TWILIO_SID|Account SID|password|ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+       'TWILIO_TOKEN|Auth Token|password|xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+       'TWILIO_FROM|Phone Number (From)|text|+15551234567',
+       'TWILIO_WHATSAPP_FROM|WhatsApp Number (From)|text|+14155238886',
+       'ALERT_WHATSAPP|Alert WhatsApp (To)|text|+201001234567',
+       'ALERT_SMS|Alert SMS (To)|text|+201001234567',
+       'ALERT_ORG_NAME|Organisation Name|text|InstaPort'])+
+
+    _siSection('📧','Email','SendGrid or Mailgun (server picks whichever is set)','si-email',
+      ['SENDGRID_KEY|SendGrid API Key|password|SG.xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+       'SENDGRID_FROM|SendGrid From Email|email|noreply@company.com',
+       'ALERT_EMAIL|Alert Email (To)|email|manager@company.com',
+       'MAILGUN_API_KEY|Mailgun API Key|password|key-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+       'MAILGUN_DOMAIN|Mailgun Domain|text|mg.yourcompany.com',
+       'MAILGUN_FROM|Mailgun From Email|email|noreply@yourcompany.com'])+
+
+    _siSection('💳','Stripe','Payment subscription billing','si-stripe',
+      ['STRIPE_SECRET_KEY|Secret Key|password|sk_live_xxxxxxxx',
+       'STRIPE_WEBHOOK_SECRET|Webhook Signing Secret|password|whsec_xxxxxxxx',
+       'STRIPE_PRICE_STARTER|Price ID — Starter|text|price_xxxxxxxx',
+       'STRIPE_PRICE_PROFESSIONAL|Price ID — Professional|text|price_xxxxxxxx',
+       'STRIPE_PRICE_ENTERPRISE|Price ID — Enterprise|text|price_xxxxxxxx',
+       'STRIPE_SUCCESS_URL|Success Redirect URL|url|https://yourapp.com/?upgraded=1',
+       'STRIPE_CANCEL_URL|Cancel Redirect URL|url|https://yourapp.com/?cancelled=1'])+
+
+    _siSection('💰','PayPal','Alternative payment provider','si-paypal',
+      ['PAYPAL_CLIENT_ID|Client ID|password|AXxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+       'PAYPAL_CLIENT_SECRET|Client Secret|password|EKxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+       'PAYPAL_MODE|Mode|text|sandbox',
+       'PAYPAL_PRICE_STARTER|Starter Price USD|number|99',
+       'PAYPAL_PRICE_PROFESSIONAL|Professional Price USD|number|299',
+       'PAYPAL_PRICE_ENTERPRISE|Enterprise Price USD|number|999',
+       'PAYPAL_SUCCESS_URL|Success URL|url|https://yourapp.com/?upgraded=1'])+
+
+    // Accounting — OAuth section
     '<div class="card" style="margin-bottom:16px">'+
-      '<div style="font-weight:700;font-size:15px;margin-bottom:4px">💼 Accounting (OAuth)</div>'+
-      '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">QuickBooks & Xero use OAuth — click Connect to authorise</div>'+
-      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:12px" id="si-acct-grid">'+
-        _siOAuthCard('QuickBooks Online','QB_CLIENT_ID','quickbooks','💼')+
-        _siOAuthCard('Xero','XERO_CLIENT_ID','xero','📊')+
-        _siSageCard()+
-      '</div></div>'+
+      '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'+
+        '<div style="font-weight:700;font-size:15px">💼 Accounting</div>'+
+        '<button class="btn btn-sm" onclick="_siSaveSection([\'QB_CLIENT_ID\',\'QB_CLIENT_SECRET\',\'XERO_CLIENT_ID\',\'XERO_CLIENT_SECRET\',\'SAGE_API_KEY\',\'SAGE_COMPANY_ID\',\'SAGE_LEDGER_ID\'],\'acct-save\')">💾 Save Accounting</button>'+
+      '</div>'+
+      '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Enter Client ID & Secret below, then click Save — then click Connect to authorise with OAuth</div>'+
+      '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px">'+
 
-    // ERP / WMS
-    _siSection('🔗','ERP / WMS','SAP, Oracle, Dynamics, warehouse systems','si-erp',[
-      _siRow('ERP Endpoint URL','ERP_ENDPOINT','url','https://your-erp.com/api/inbound'),
-      _siRow('ERP Bearer Token','ERP_TOKEN','password','xxxxxxxx'),
-      _siRow('ERP API Key','ERP_API_KEY','password','if required'),
-      '—',
-      _siRow('WMS Endpoint URL','WMS_ENDPOINT','url','https://your-wms.com/api/events'),
-      _siRow('WMS Bearer Token','WMS_TOKEN','password','xxxxxxxx'),
-    ])+
+        // QuickBooks
+        '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px">'+
+          '<div style="font-size:20px;margin-bottom:6px">💼</div>'+
+          '<div style="font-weight:700;margin-bottom:8px">QuickBooks Online</div>'+
+          '<div id="si-quickbooks-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">—</div>'+
+          _siInput('QB_CLIENT_ID','Client ID','password','ABxxxxxxxxxxxxxxxxxxxxxxxx')+
+          _siInput('QB_CLIENT_SECRET','Client Secret','password','xxxxxxxxxxxxxxxxxxxxxxxx')+
+          '<a href="/api/oauth/quickbooks" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-block;margin-top:8px">🔗 Connect QuickBooks →</a>'+
+        '</div>'+
 
-    '<div style="background:rgba(99,102,241,.06);border:1px solid rgba(99,102,241,.2);border-radius:var(--r-md);padding:16px;font-size:13px;color:var(--t2)">'+
-      '<b style="color:var(--fg)">ℹ️ How to apply changes:</b> These values map to your <code style="font-size:11px;background:var(--bg2);padding:1px 4px;border-radius:3px">.env</code> file. '+
-      'Copy the generated snippet below into your <code style="font-size:11px">.env</code> file and restart the server (<code style="font-size:11px">npm run dev</code>).'+
-      '<br><br><button class="btn btn-primary btn-sm" onclick="_siGenerateEnv()">📋 Generate .env Snippet</button>'+
-      '<pre id="si-env-out" style="display:none;margin-top:12px;background:var(--bg2);padding:12px;border-radius:var(--r-md);font-size:11px;overflow-x:auto;white-space:pre-wrap"></pre>'+
+        // Xero
+        '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px">'+
+          '<div style="font-size:20px;margin-bottom:6px">📊</div>'+
+          '<div style="font-weight:700;margin-bottom:8px">Xero</div>'+
+          '<div id="si-xero-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">—</div>'+
+          _siInput('XERO_CLIENT_ID','Client ID','password','xxxxxxxxxxxxxxxxxxxxxxxx')+
+          _siInput('XERO_CLIENT_SECRET','Client Secret','password','xxxxxxxxxxxxxxxxxxxxxxxx')+
+          '<a href="/api/oauth/xero" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-block;margin-top:8px">🔗 Connect Xero →</a>'+
+        '</div>'+
+
+        // Sage
+        '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px">'+
+          '<div style="font-size:20px;margin-bottom:6px">📗</div>'+
+          '<div style="font-weight:700;margin-bottom:8px">Sage Accounting</div>'+
+          '<div id="si-sage-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">—</div>'+
+          _siInput('SAGE_API_KEY','API Key','password','xxxxxxxxxxxxxxxxxxxxxxxx')+
+          _siInput('SAGE_COMPANY_ID','Company ID','text','your-company-id')+
+          _siInput('SAGE_LEDGER_ID','Ledger Account ID','text','200')+
+          '<div style="font-size:11px;color:var(--t2);margin-top:6px">No OAuth — saved credentials work immediately</div>'+
+        '</div>'+
+      '</div>'+
+      '<div id="acct-save" style="margin-top:10px"></div>'+
+    '</div>'+
+
+    _siSection('🔗','ERP & WMS','SAP, Oracle, Dynamics, warehouse systems','si-erp',
+      ['ERP_ENDPOINT|ERP Endpoint URL|url|https://your-erp.com/api/inbound',
+       'ERP_TOKEN|ERP Bearer Token|password|xxxxxxxx',
+       'ERP_API_KEY|ERP API Key|password|if required by your ERP',
+       'WMS_ENDPOINT|WMS Endpoint URL|url|https://your-wms.com/api/events',
+       'WMS_TOKEN|WMS Bearer Token|password|xxxxxxxx'])+
+
+    // Test panel
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div style="font-weight:700;font-size:15px;margin-bottom:12px">🧪 Test Integrations</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:8px">'+
+        '<button class="btn btn-outline btn-sm" onclick="_siTest(\'whatsapp\')">📱 Test WhatsApp</button>'+
+        '<button class="btn btn-outline btn-sm" onclick="_siTest(\'sms\')">💬 Test SMS</button>'+
+        '<button class="btn btn-outline btn-sm" onclick="_siTest(\'email\')">📧 Test Email</button>'+
+        '<button class="btn btn-outline btn-sm" onclick="_siTest(\'sensor\')">🌡️ Test Sensors</button>'+
+        '<button class="btn btn-outline btn-sm" onclick="_siTest(\'gps\')">📍 Test GPS</button>'+
+      '</div>'+
+      '<div id="si-test-result" style="margin-top:10px;font-size:13px"></div>'+
     '</div>';
 
-  // Load live status
   _siLoadStatus();
+  _siLoadSavedValues();
 }
 
 function _siSection(icon,title,sub,id,rows){
+  var keys=rows.map(function(r){return r.split('|')[0];});
   return '<div class="card" style="margin-bottom:16px">'+
-    '<div style="font-weight:700;font-size:15px;margin-bottom:2px">'+icon+' '+title+'</div>'+
-    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">'+sub+'</div>'+
-    '<div id="'+id+'" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px">'+
-      rows.filter(function(r){return r!=='—';}).map(function(row){return row;}).join('')+
-    '</div></div>';
+    '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">'+
+      '<div style="font-weight:700;font-size:15px">'+icon+' '+title+'</div>'+
+      '<button class="btn btn-sm" onclick="_siSaveSection('+JSON.stringify(keys)+',\'save-'+id+'\')">💾 Save</button>'+
+    '</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">'+sub+'</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:10px">'+
+      rows.map(function(r){
+        var p=r.split('|');
+        return _siInput(p[0],p[1],p[2]||'text',p[3]||'');
+      }).join('')+
+    '</div>'+
+    '<div id="save-'+id+'" style="margin-top:8px"></div>'+
+  '</div>';
 }
 
-function _siRow(label,envKey,type,placeholder){
+function _siInput(key,label,type,placeholder){
   return '<div><label style="font-size:11px;color:var(--t3);font-weight:600;letter-spacing:.4px;display:block;margin-bottom:3px">'+label.toUpperCase()+'</label>'+
-    '<input class="form-input" type="'+(type||'text')+'" id="si-'+envKey+'" placeholder="'+placeholder+'" style="width:100%;font-size:12px;font-family:monospace" autocomplete="off">'+
-    '</div>';
+    '<input class="form-input" type="'+(type||'text')+'" id="si-'+key+'" placeholder="'+placeholder+'" style="width:100%;font-size:12px;font-family:monospace" autocomplete="off"></div>';
 }
 
-function _siOAuthCard(name,envKey,provider,icon){
-  return '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px">'+
-    '<div style="font-size:20px;margin-bottom:6px">'+icon+'</div>'+
-    '<div style="font-weight:700;margin-bottom:4px">'+name+'</div>'+
-    '<div style="font-size:11px;color:var(--t2);margin-bottom:10px">Client ID needed in .env: <code style="font-size:10px">'+envKey+'</code></div>'+
-    '<div id="si-'+provider+'-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">Checking…</div>'+
-    '<a href="/api/oauth/'+provider+'" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-block">Connect '+name+' →</a>'+
-    '</div>';
+// Save a group of keys to server
+function _siSaveSection(keys,feedbackId){
+  var tok=_siSaToken||(document.getElementById('si-sa-tok')||{}).value||'';
+  if(!tok){
+    _siFeedback(feedbackId,'⚠️ Enter your SA API Token at the top first','warn');
+    return;
+  }
+  var values={};
+  var count=0;
+  keys.forEach(function(k){
+    var el=document.getElementById('si-'+k);
+    if(el&&el.value.trim()){values[k]=el.value.trim();count++;}
+  });
+  if(!count){_siFeedback(feedbackId,'No values filled in','warn');return;}
+  _siFeedback(feedbackId,'Saving…','info');
+  fetch('/api/integrations/config',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-sa-token':tok},
+    body:JSON.stringify({values:values})
+  }).then(function(r){return r.json();})
+  .then(function(res){
+    if(res.ok){
+      _siFeedback(feedbackId,'✅ Saved '+res.saved+' value(s) — active immediately'+(res.reinit&&(res.reinit.gps||res.reinit.sensors)?' · Integration restarted':''),'ok');
+      setTimeout(_siLoadStatus,1500);
+    }else{
+      _siFeedback(feedbackId,'❌ '+( res.error||'Failed'),'err');
+    }
+  }).catch(function(){_siFeedback(feedbackId,'❌ Cannot reach server — is npm run dev running?','err');});
 }
 
-function _siSageCard(){
-  return '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:var(--r-md);padding:14px">'+
-    '<div style="font-size:20px;margin-bottom:6px">📗</div>'+
-    '<div style="font-weight:700;margin-bottom:4px">Sage Accounting</div>'+
-    '<div style="font-size:11px;color:var(--t2);margin-bottom:10px">API key based — no OAuth required</div>'+
-    '<div id="si-sage-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">Checking…</div>'+
-    '<input class="form-input" type="password" id="si-SAGE_API_KEY" placeholder="Sage API Key" style="width:100%;font-size:12px;font-family:monospace;margin-bottom:6px">'+
-    '<input class="form-input" type="text" id="si-SAGE_COMPANY_ID" placeholder="Company ID" style="width:100%;font-size:12px;font-family:monospace">'+
-    '</div>';
+function _siFeedback(id,msg,type){
+  var el=document.getElementById(id);if(!el)return;
+  var col=type==='ok'?'#10B981':type==='warn'?'#F59E0B':type==='err'?'#EF4444':'var(--t2)';
+  el.innerHTML='<span style="font-size:12px;color:'+col+'">'+msg+'</span>';
+}
+
+// Load already-saved values back into fields (redacted)
+function _siLoadSavedValues(){
+  var tok=_siSaToken||(document.getElementById('si-sa-tok')||{}).value||'';
+  if(!tok)return;
+  fetch('/api/integrations/config',{headers:{'x-sa-token':tok}})
+    .then(function(r){return r.json();})
+    .then(function(res){
+      if(!res.ok)return;
+      Object.keys(res.config||{}).forEach(function(k){
+        var el=document.getElementById('si-'+k);
+        if(el&&res.config[k]){el.placeholder=res.config[k];el.style.color='var(--t2)';}
+      });
+    }).catch(function(){});
+}
+
+function _siTest(type){
+  var tok=_siSaToken||(document.getElementById('si-sa-tok')||{}).value||'';
+  if(!tok){document.getElementById('si-test-result').innerHTML='<span style="color:#F59E0B">⚠️ Enter SA API Token first</span>';return;}
+  document.getElementById('si-test-result').innerHTML='<span style="color:var(--t2)">Testing '+type+'…</span>';
+  fetch('/api/integrations/test',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-sa-token':tok},
+    body:JSON.stringify({type:type})
+  }).then(function(r){return r.json();})
+  .then(function(res){
+    var col=res.ok?'#10B981':'#EF4444';
+    document.getElementById('si-test-result').innerHTML='<span style="color:'+col+'">'+(res.ok?'✅':'❌')+' '+res.message+'</span>';
+  }).catch(function(){
+    document.getElementById('si-test-result').innerHTML='<span style="color:#EF4444">❌ Server not reachable</span>';
+  });
 }
 
 function _siLoadStatus(){
-  var saToken=localStorage.getItem('ip_sa_token')||process.env.SA_API_TOKEN||'';
-  fetch('/api/integrations/status',{headers:{'x-sa-token':saToken}})
+  var tok=_siSaToken||(document.getElementById('si-sa-tok')||{}).value||'';
+  fetch('/api/integrations/status',{headers:{'x-sa-token':tok}})
     .then(function(r){return r.json();})
     .then(function(s){
-      var grid=document.getElementById('si-status');
-      if(!grid)return;
+      var grid=document.getElementById('si-status');if(!grid)return;
       var items=[
         {icon:'📍',label:'GPS',ok:s.gps&&s.gps.connected,sub:s.gps&&s.gps.provider||'—'},
-        {icon:'🌡️',label:'Sensors',ok:s.sensors&&s.sensors.connected,sub:(s.sensors&&s.sensors.count||0)+' active'},
+        {icon:'🌡️',label:'Sensors',ok:s.sensors&&(s.sensors.connected||s.sensors.count>0),sub:(s.sensors&&s.sensors.count||0)+' active'},
         {icon:'📱',label:'WhatsApp',ok:s.notifications&&s.notifications.whatsapp,sub:'Twilio'},
-        {icon:'📧',label:'Email',ok:s.notifications&&(s.notifications.sendgrid||s.notifications.mailgun),sub:s.notifications&&s.notifications.sendgrid?'SendGrid':s.notifications&&s.notifications.mailgun?'Mailgun':'—'},
+        {icon:'💬',label:'SMS',ok:s.notifications&&s.notifications.sms,sub:'Twilio'},
+        {icon:'📧',label:'Email',ok:s.notifications&&(s.notifications.sendgrid||s.notifications.mailgun),sub:s.notifications&&s.notifications.sendgrid?'SendGrid':'Mailgun'},
         {icon:'💳',label:'Stripe',ok:s.payments&&s.payments.stripe,sub:'Payments'},
-        {icon:'💰',label:'PayPal',ok:s.payments&&s.payments.paypal,sub:s.payments&&s.payments.mode||'sandbox'},
-        {icon:'💼',label:'QuickBooks',ok:s.accounting&&s.accounting.quickbooks&&s.accounting.quickbooks.connected,sub:s.accounting&&s.accounting.quickbooks&&s.accounting.quickbooks.configured?'Configured':'Not set'},
-        {icon:'📊',label:'Xero',ok:s.accounting&&s.accounting.xero&&s.accounting.xero.connected,sub:s.accounting&&s.accounting.xero&&s.accounting.xero.configured?'Configured':'Not set'},
+        {icon:'💰',label:'PayPal',ok:s.payments&&s.payments.paypal,sub:(s.payments&&s.payments.mode)||'sandbox'},
+        {icon:'💼',label:'QuickBooks',ok:s.accounting&&s.accounting.quickbooks&&s.accounting.quickbooks.connected,sub:s.accounting&&s.accounting.quickbooks&&s.accounting.quickbooks.configured?'Configured':'—'},
+        {icon:'📊',label:'Xero',ok:s.accounting&&s.accounting.xero&&s.accounting.xero.connected,sub:s.accounting&&s.accounting.xero&&s.accounting.xero.configured?'Configured':'—'},
         {icon:'📗',label:'Sage',ok:s.accounting&&s.accounting.sage&&s.accounting.sage.connected,sub:'API Key'},
         {icon:'🔗',label:'ERP',ok:s.erp&&s.erp.endpoint,sub:'Push'},
         {icon:'📦',label:'WMS',ok:s.erp&&s.erp.wms,sub:'Webhook'},
-        {icon:'🔑',label:'REST API',ok:s.api&&s.api.enabled,sub:'v1'},
       ];
       grid.innerHTML=items.map(function(x){
-        return '<div class="kpi-card" style="padding:10px 12px">'+
-          '<div style="font-size:18px">'+x.icon+'</div>'+
-          '<div style="font-size:13px;font-weight:700;margin-top:4px">'+x.label+'</div>'+
-          '<div style="font-size:11px;margin-top:2px;color:'+(x.ok?'#10B981':'#EF4444')+'">'+
-            (x.ok?'✅ Connected':'❌ Not set')+'</div>'+
-          '<div style="font-size:10px;color:var(--t3);margin-top:1px">'+x.sub+'</div>'+
-          '</div>';
+        return '<div class="kpi-card" style="padding:10px 12px;cursor:default">'+
+          '<div style="font-size:16px">'+x.icon+'</div>'+
+          '<div style="font-size:12px;font-weight:700;margin-top:3px">'+x.label+'</div>'+
+          '<div style="font-size:10px;margin-top:2px;color:'+(x.ok?'#10B981':'#EF4444')+'">'+(x.ok?'✅ On':'❌ Off')+'</div>'+
+          '<div style="font-size:10px;color:var(--t3)">'+x.sub+'</div>'+
+        '</div>';
       }).join('');
-      // OAuth card status
       if(s.accounting){
-        var qbEl=document.getElementById('si-quickbooks-status');
-        var xEl=document.getElementById('si-xero-status');
-        var sgEl=document.getElementById('si-sage-status');
-        if(qbEl)qbEl.innerHTML=s.accounting.quickbooks.connected?'<span style="color:#10B981">✅ Connected (realm: '+s.accounting.quickbooks.realmId+')</span>':(s.accounting.quickbooks.configured?'<span style="color:#F59E0B">⚠️ Not authorised yet</span>':'<span style="color:#EF4444">❌ QB_CLIENT_ID not in .env</span>');
-        if(xEl)xEl.innerHTML=s.accounting.xero.connected?'<span style="color:#10B981">✅ Connected</span>':(s.accounting.xero.configured?'<span style="color:#F59E0B">⚠️ Not authorised yet</span>':'<span style="color:#EF4444">❌ XERO_CLIENT_ID not in .env</span>');
-        if(sgEl)sgEl.innerHTML=s.accounting.sage.connected?'<span style="color:#10B981">✅ SAGE_API_KEY set</span>':'<span style="color:#EF4444">❌ SAGE_API_KEY not set</span>';
+        var qb=document.getElementById('si-quickbooks-status');
+        var xe=document.getElementById('si-xero-status');
+        var sg=document.getElementById('si-sage-status');
+        if(qb)qb.innerHTML=s.accounting.quickbooks.connected?'<span style="color:#10B981">✅ Authorised</span>':s.accounting.quickbooks.configured?'<span style="color:#F59E0B">⚠️ Saved — click Connect to authorise</span>':'<span style="color:var(--t3)">Enter Client ID & Secret → Save → Connect</span>';
+        if(xe)xe.innerHTML=s.accounting.xero.connected?'<span style="color:#10B981">✅ Authorised</span>':s.accounting.xero.configured?'<span style="color:#F59E0B">⚠️ Saved — click Connect to authorise</span>':'<span style="color:var(--t3)">Enter Client ID & Secret → Save → Connect</span>';
+        if(sg)sg.innerHTML=s.accounting.sage.connected?'<span style="color:#10B981">✅ API Key active</span>':'<span style="color:var(--t3)">Enter API Key → Save</span>';
       }
     })
     .catch(function(){
       var grid=document.getElementById('si-status');
-      if(grid)grid.innerHTML='<div style="color:var(--t3);font-size:13px">Server offline — start with <code>npm run dev</code></div>';
+      if(grid)grid.innerHTML='<div style="color:var(--t3);font-size:12px;padding:8px">Server offline — run <code>npm run dev</code></div>';
     });
-}
-
-function _siGenerateEnv(){
-  var keys=['TRACCAR_URL','TRACCAR_USER','TRACCAR_PASS','SAMSARA_API_KEY','WIALON_TOKEN','GPS_POLL_URL','GPS_API_TOKEN',
-    'MQTT_BROKER_URL','MQTT_USER','MQTT_PASS','SENSOR_POLL_URL','SENSOR_API_KEY','SENSOR_TEMP_MIN','SENSOR_TEMP_MAX','SENSOR_HUM_MAX',
-    'TWILIO_SID','TWILIO_TOKEN','TWILIO_FROM','TWILIO_WHATSAPP_FROM','ALERT_WHATSAPP','ALERT_EMAIL',
-    'SENDGRID_KEY','SENDGRID_FROM','MAILGUN_API_KEY','MAILGUN_DOMAIN',
-    'STRIPE_SECRET_KEY','STRIPE_WEBHOOK_SECRET','STRIPE_PRICE_STARTER','STRIPE_PRICE_PROFESSIONAL','STRIPE_PRICE_ENTERPRISE',
-    'PAYPAL_CLIENT_ID','PAYPAL_CLIENT_SECRET','PAYPAL_MODE','PAYPAL_PRICE_STARTER','PAYPAL_PRICE_PROFESSIONAL',
-    'ERP_ENDPOINT','ERP_TOKEN','ERP_API_KEY','WMS_ENDPOINT','WMS_TOKEN',
-    'SAGE_API_KEY','SAGE_COMPANY_ID'];
-  var lines=['# InstaPort TMS — Generated .env snippet','# Paste into your .env file and restart server',''];
-  var hasValue=false;
-  keys.forEach(function(k){
-    var el=document.getElementById('si-'+k);
-    if(el&&el.value.trim()){
-      lines.push(k+'='+el.value.trim());
-      hasValue=true;
-    }
-  });
-  var out=document.getElementById('si-env-out');
-  if(out){
-    out.style.display='block';
-    out.textContent=hasValue?lines.join('\n'):'# Fill in the fields above first';
-  }
 }
 
 // ── USERS ──

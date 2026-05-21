@@ -12,6 +12,9 @@
  */
 
 require('dotenv').config();
+// Runtime config must load BEFORE other integrations so saved keys are in process.env
+const cfg = require('./integrations/config');
+
 const express = require('express');
 const path    = require('path');
 const crypto  = require('crypto');
@@ -361,6 +364,77 @@ app.get('/api/integrations/status', (req, res) => {
       demoKey:    !!(process.env.DEMO_API_KEY),
     },
   });
+});
+
+// ═══════════════════════════════════════════════════════
+// SA CONFIG — Save credentials from UI panel (no .env editing)
+// ═══════════════════════════════════════════════════════
+
+// Save config values posted from SA Integrations page
+app.post('/api/integrations/config', (req, res) => {
+  const saToken = req.headers['x-sa-token'];
+  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+
+  const { values, reinit } = req.body; // values = { KEY: 'value', ... }
+  if (!values || typeof values !== 'object') return res.status(400).json({ error: 'values object required' });
+
+  // Save to runtime store + process.env
+  cfg.set(values);
+
+  // Re-initialize affected integrations live (no restart needed)
+  const keys = Object.keys(values);
+  const touchesGPS     = keys.some(k => /TRACCAR|SAMSARA|WIALON|GPS_POLL/i.test(k));
+  const touchesSensors = keys.some(k => /MQTT|SENSOR_POLL/i.test(k));
+
+  if (reinit !== false) {
+    if (touchesGPS)     cfg.reinitGPS();
+    if (touchesSensors) cfg.reinitSensors();
+  }
+
+  console.log('  ⚙️  Config updated by SA:', keys.join(', '));
+  res.json({ ok: true, saved: keys.length, reinit: { gps: touchesGPS, sensors: touchesSensors } });
+});
+
+// Get current config (values redacted for display)
+app.get('/api/integrations/config', (req, res) => {
+  const saToken = req.headers['x-sa-token'];
+  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+  res.json({ ok: true, config: cfg.getAll(true) }); // redacted view
+});
+
+// Test a specific integration (send a test notification etc.)
+app.post('/api/integrations/test', async (req, res) => {
+  const saToken = req.headers['x-sa-token'];
+  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+
+  const { type } = req.body;
+  const notif = require('./integrations/notifications');
+
+  try {
+    if (type === 'whatsapp' && process.env.ALERT_WHATSAPP) {
+      const ok = await notif.sendWhatsApp(process.env.ALERT_WHATSAPP, '✅ InstaPort TMS — WhatsApp test successful!');
+      return res.json({ ok, message: ok ? 'WhatsApp sent to ' + process.env.ALERT_WHATSAPP : 'Failed — check Twilio credentials' });
+    }
+    if (type === 'email' && process.env.ALERT_EMAIL) {
+      const ok = await notif.sendEmail({ to: process.env.ALERT_EMAIL, subject: '✅ InstaPort TMS — Email test', text: 'Email integration working correctly.' });
+      return res.json({ ok, message: ok ? 'Email sent to ' + process.env.ALERT_EMAIL : 'Failed — check email provider credentials' });
+    }
+    if (type === 'sms' && process.env.ALERT_SMS) {
+      const ok = await notif.sendSMS(process.env.ALERT_SMS, '✅ InstaPort TMS — SMS test successful!');
+      return res.json({ ok, message: ok ? 'SMS sent to ' + process.env.ALERT_SMS : 'Failed — check Twilio credentials' });
+    }
+    if (type === 'sensor') {
+      const snap = require('./integrations/sensors').getSnapshot();
+      return res.json({ ok: true, message: snap.count + ' sensor(s) connected, ' + snap.alerts.length + ' alerts', data: snap });
+    }
+    if (type === 'gps') {
+      const snap = require('./integrations/gps').getSnapshot();
+      return res.json({ ok: snap.count > 0, message: snap.count + ' truck(s) tracked via ' + (snap.provider || 'none'), data: snap });
+    }
+    res.json({ ok: false, message: 'Unknown test type or missing alert destination in config' });
+  } catch (e) {
+    res.json({ ok: false, message: e.message });
+  }
 });
 
 // ═══════════════════════════════════════════════════════
