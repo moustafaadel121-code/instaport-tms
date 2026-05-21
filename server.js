@@ -441,7 +441,7 @@ app.post('/api/integrations/test', async (req, res) => {
 // STATIC FILES + SPA FALLBACK
 // ═══════════════════════════════════════════════════════
 app.use(express.static(ROOT));
-app.get('*', (req, res) => res.sendFile(path.join(ROOT, 'index.html')));
+app.get('/{*path}', (req, res) => res.sendFile(path.join(ROOT, 'index.html')));
 
 // ═══════════════════════════════════════════════════════
 // START
