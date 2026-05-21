@@ -2748,7 +2748,11 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
       <div class="l-input-row">
         <span class="l-input-ico">&#128100;</span>
         <input id="uid" type="text" placeholder="e.g. john.smith@instaport.com" autocomplete="off"
-               onkeydown="if(event.key==='Enter')document.getElementById('upin').focus()"/>
+               onkeydown="if(event.key==='Enter')document.getElementById('upin').focus()"
+               oninput="_loginAutoFill(this.value)"/>
+      </div>
+      <div id="sa-hint" style="display:none;background:rgba(108,63,245,.08);border:1px solid rgba(108,63,245,.2);border-radius:8px;padding:8px 12px;font-size:12px;color:var(--t2);margin-bottom:4px">
+        👑 <b style="color:var(--c1)">Super Admin detected</b> — Organization Code set to <code style="font-size:11px">ip-master</code> automatically
       </div>
       <label class="l-field-label">Password</label>
       <div class="l-input-row">
@@ -4331,6 +4335,19 @@ const PAGES={
 // ══════════════════════════════════════════════════
 // AUTH & PASSWORD VERIFICATION
 // ══════════════════════════════════════════════════
+// Auto-fill org code when SA user ID is detected
+function _loginAutoFill(uid){
+  var orgEl=document.getElementById('uorg');
+  var hint=document.getElementById('sa-hint');
+  var isSA=uid.trim().toUpperCase()==='SA01'||uid.trim().toLowerCase().startsWith('sa-');
+  if(isSA){
+    if(orgEl&&!orgEl.value){orgEl.value='ip-master';}
+    if(hint)hint.style.display='block';
+  }else{
+    if(hint)hint.style.display='none';
+  }
+}
+
 async function doLogin(){
   _secLoad(); // ensure lockout state is fresh
   var orgCode=(document.getElementById('uorg')||{value:'instaport'}).value.trim().toLowerCase()||'instaport';
@@ -4354,14 +4371,14 @@ async function doLogin(){
         var saData=await saRes.json();
         if(!saData.ok){
           _secRecordFail(lockKey);
-          lerr.textContent=saData.error||'Invalid credentials.';lerr.style.display='block';return;
+          lerr.innerHTML=(saData.error||'Invalid credentials.')+'<br><span style="font-size:11px;opacity:.8">Check SA_USER_ID and SA_PIN in your .env file</span>';
+          lerr.style.display='block';return;
         }
         u={id:uid,pin:'[server]',name:saData.name,role:'superadmin',email:'',active:true};
-        // Prompt SA to enter their SA_API_TOKEN for integrations panel
-        // (stored in browser only, never sent to index.html)
         _siSaToken='';
       }catch(e){
-        lerr.textContent='Could not reach auth server. Is server.js running?';lerr.style.display='block';return;
+        lerr.innerHTML='❌ Server not reachable — run <code style="font-size:11px">npm run dev</code> first<br><span style="font-size:11px;opacity:.8">Then reload this page</span>';
+        lerr.style.display='block';return;
       }
     } else {
       u=_tenantUsers.find(function(x){return String(x.id)===uid&&String(x.pin)===pin&&x.active!==false;});
