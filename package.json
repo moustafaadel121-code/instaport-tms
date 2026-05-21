@@ -4,9 +4,9 @@
   "description": "InstaPort Transportation Management System",
   "main": "server.js",
   "scripts": {
-    "start":   "node server.js",
-    "dev":     "node server.js --dev",
-    "build":   "node build.js",
+    "start": "node server.js",
+    "dev": "node server.js --dev",
+    "build": "node build.js",
     "release": "node build.js && node server.js"
   },
   "devDependencies": {
@@ -15,7 +15,16 @@
     "terser": "^5.47.1"
   },
   "dependencies": {
+    "@sendgrid/mail": "^8.1.6",
+    "axios": "^1.16.1",
+    "cors": "^2.8.6",
     "dotenv": "^17.4.2",
-    "express": "^5.2.1"
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.5.2",
+    "helmet": "^8.1.0",
+    "mqtt": "^5.15.1",
+    "stripe": "^22.1.1",
+    "twilio": "^6.0.2",
+    "uuid": "^14.0.0"
   }
 }
