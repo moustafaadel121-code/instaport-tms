@@ -598,6 +598,18 @@ input, select, textarea { font-family: inherit; }
 .upgrade-actions { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
 .upgrade-current { font-size: 12px; color: var(--t3); }
 
+/* ── Super Admin Panel ─────────────────────────── */
+/* Sidebar: gold highlight for SA role */
+[data-sa-role] .sbi { color: rgba(255,255,255,.85); }
+[data-sa-role] .sbi.active { background: linear-gradient(90deg,#F59E0B22,#F59E0B44); border-left-color: #F59E0B; }
+/* Data table used in SA pages */
+.data-table { width:100%; border-collapse:collapse; font-size:13px; }
+.data-table th { text-align:left; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.5px; color:var(--t2); padding:8px 12px; border-bottom:2px solid var(--bd); }
+.data-table td { padding:10px 12px; border-bottom:1px solid var(--bd); vertical-align:middle; }
+.data-table tr:last-child td { border-bottom:none; }
+.data-table tr:hover td { background:var(--surf2,rgba(108,63,245,.04)); }
+.btn-sm { padding:5px 12px; font-size:12px; }
+
 .sb-divider {
   height: 1px;
   background: rgba(255,255,255,.07);
@@ -3148,8 +3160,19 @@ let _tenantId='',_tenantName='InstaPort',_tenantPlan='starter';
 let _tenantUsers=[]; // populated by _loadTenant() — USERS not yet defined at this point
 try{_sb=supabase.createClient(_SUPA_URL,_SUPA_KEY);}catch(e){console.warn('Supabase unavailable',e);}
 
+/* ── Super-Admin master account (app owner only) ── */
+const _SA_USERS=[
+  {id:'SA01',pin:'IP@Master2026!',name:'Super Admin',role:'superadmin',email:'owner@instaport.com',active:true}
+];
+
 /* ── Load tenant + its users from Supabase ── */
 async function _loadTenant(orgCode){
+  // ── SUPER ADMIN: master org code known only to the app owner ──
+  if(orgCode==='ip-master'){
+    _tenantId='ip-master';_tenantName='InstaPort HQ';_tenantPlan='enterprise';
+    _tenantUsers=_SA_USERS.slice();
+    return true;
+  }
   // instaport ALWAYS uses built-in local users — no Supabase needed for auth
   if(orgCode==='instaport'||orgCode==='demo'){
     _tenantId='instaport';_tenantName='InstaPort Logistics';_tenantPlan='enterprise';
@@ -3949,6 +3972,7 @@ function openLicenseAlert(){
 // RBAC — Role-Based Access Control
 // ══════════════════════════════════════════════════
 const DEFAULT_PERMISSIONS = {
+  superadmin:    {all:true,superadmin:1},
   admin:         {all:true},
   supervisor:    {dashboard:1,fleet_view:1,trips_view:1,dispatch:1,nr_trip:1,assign_truck:1,assign_driver:1},
   quality:       {dashboard:1,trips_view:1,quality_approve:1,quality_reject:1,attachments:1},
@@ -4230,6 +4254,12 @@ let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicke
 // SIDEBAR PAGES
 // ══════════════════════════════════════════════════
 const PAGES={
+  superadmin:[
+    {id:'sa_overview', icon:'👑', l:'Overview'},
+    {id:'sa_orgs',     icon:'🏢', l:'Organizations'},
+    {id:'sa_invites',  icon:'🔑', l:'Invite Codes'},
+    {id:'sa_revenue',  icon:'💰', l:'Revenue'},
+  ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
     {id:'trips',icon:'📋',l:'Trips'},{id:'forecast',icon:'📅',l:'Forecast'},
@@ -4297,7 +4327,7 @@ async function doLogin(){
     // Warn on weak PIN (first login hint)
     if(_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
     buildSB();
-    var _startPage=u.role==='driver'?'my_trips':'dashboard';
+    var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
     // Show dashboard instantly, silently refresh data from Supabase in background
     nav(_startPage);
     initApp().then(function(){nav(_startPage);}).catch(function(){});
@@ -4451,8 +4481,8 @@ function nav(page){
   _closeMobileSidebar(); // close mobile sidebar on navigation
   // ── Navigation guard ──────────────────────────────
   // Admin always passes; others must have the page in their allowed list
-  // ── Plan gate: check tenant plan before role ──
-  if(!planCan(page)){
+  // ── Plan gate: skip for superadmin ──
+  if(S.role!=='superadmin'&&!planCan(page)){
     var reqP=FEATURE_MIN_PLAN[page]||'professional';
     showUpgradeModal(page,reqP);
     return;
@@ -4483,7 +4513,8 @@ function nav(page){
     nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     invite_mgmt:rInviteMgmt,exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
-    pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR};
+    pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
+    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue};
   (map[page]||rDash)();
   // Animate page entry and KPI count-up
   c.style.animation='fadeInUp .28s cubic-bezier(.22,.68,0,1.18) both';
@@ -7334,6 +7365,192 @@ function expAnalyticsFleet(){
 }
 function expAnalytics(){expAnalyticsCust();}
 // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════
+// SUPER ADMIN PANEL — app-owner only (org: ip-master)
+// Manages ALL client organizations, plans, invite codes
+// ══════════════════════════════════════════════════
+
+/* ── Supabase helpers for SA ── */
+async function _saAllTenants(){
+  if(!_sb) return [];
+  var r=await _sb.from('tenants').select('*').order('created_at',{ascending:false});
+  return (r.data||[]);
+}
+async function _saAllInvites(){
+  if(!_sb) return [];
+  var r=await _sb.from('invite_codes').select('*').order('created_at',{ascending:false});
+  return (r.data||[]);
+}
+async function _saUpdateTenant(id,fields){
+  if(!_sb) return false;
+  fields.updated_at=new Date().toISOString();
+  var r=await _sb.from('tenants').update(fields).eq('id',id);
+  return !r.error;
+}
+async function _saCreateInvite(code,note){
+  if(!_sb){toast('Supabase not connected','err');return;}
+  var r=await _sb.from('invite_codes').insert({id:code,note:note||'',active:true,used_by:'',created_at:new Date().toISOString()});
+  if(r.error) toast('Error: '+r.error.message,'err');
+  else{ toast('✅ Invite code created: '+code,'ok'); nav('sa_invites'); }
+}
+async function _saToggleInvite(code,active){
+  if(!_sb) return;
+  await _sb.from('invite_codes').update({active:active}).eq('id',code);
+  toast(active?'✅ Code activated':'🔴 Code deactivated','ok');
+  nav('sa_invites');
+}
+
+/* ── Plan badge pill ── */
+function _saPlanPill(plan){
+  var m=PLAN_META[plan]||{name:plan,color:'#64748B',icon:'?'};
+  return '<span style="display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700;background:'+m.color+'22;color:'+m.color+';border:1px solid '+m.color+'44">'+m.icon+' '+m.name+'</span>';
+}
+
+/* ── SA Overview ── */
+function rSA_Overview(){
+  var c=document.getElementById('content');
+  c.innerHTML='<div style="display:flex;align-items:center;gap:12px;margin-bottom:24px">'+
+    '<div style="font-size:36px">👑</div>'+
+    '<div><div style="font-size:22px;font-weight:800;font-family:Space Grotesk,sans-serif">Super Admin Panel</div>'+
+    '<div style="font-size:13px;color:var(--t2)">Manage all organizations, plans & invite codes</div></div></div>'+
+    '<div id="sa-stats" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:28px">'+
+      '<div class="kpi-card"><div class="kpi-val" id="sa-total">—</div><div class="kpi-lab">Total Orgs</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val" style="color:#10B981" id="sa-active">—</div><div class="kpi-lab">Active</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val" style="color:#6C3FF5" id="sa-pro">—</div><div class="kpi-lab">Professional</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val" style="color:#F59E0B" id="sa-ent">—</div><div class="kpi-lab">Enterprise</div></div>'+
+    '</div>'+
+    '<div class="card"><div style="font-weight:700;margin-bottom:16px">Recent Organizations</div>'+
+    '<div id="sa-recent-list">Loading…</div></div>';
+  _saAllTenants().then(function(rows){
+    document.getElementById('sa-total').textContent=rows.length;
+    document.getElementById('sa-active').textContent=rows.filter(function(r){return r.active;}).length;
+    document.getElementById('sa-pro').textContent=rows.filter(function(r){return r.plan==='professional';}).length;
+    document.getElementById('sa-ent').textContent=rows.filter(function(r){return r.plan==='enterprise';}).length;
+    var el=document.getElementById('sa-recent-list');
+    if(!rows.length){el.innerHTML='<div style="color:var(--t3);text-align:center;padding:24px">No organizations yet</div>';return;}
+    el.innerHTML='<table class="data-table"><thead><tr><th>Org ID</th><th>Name</th><th>Plan</th><th>Status</th><th>Created</th><th>Action</th></tr></thead><tbody>'+
+      rows.slice(0,8).map(function(r){
+        return '<tr>'+
+          '<td><code style="font-size:12px">'+r.id+'</code></td>'+
+          '<td style="font-weight:600">'+r.name+'</td>'+
+          '<td>'+_saPlanPill(r.plan||'starter')+'</td>'+
+          '<td>'+(r.active?'<span class="tag tag-ok">Active</span>':'<span class="tag tag-hold">Inactive</span>')+'</td>'+
+          '<td style="font-size:12px;color:var(--t2)">'+(r.created_at?r.created_at.slice(0,10):'—')+'</td>'+
+          '<td><button class="btn btn-sm" onclick="nav(\'sa_orgs\')">Manage</button></td>'+
+        '</tr>';
+      }).join('')+
+    '</tbody></table>';
+  }).catch(function(){ document.getElementById('sa-recent-list').innerHTML='<div style="color:var(--c5)">Could not load from Supabase</div>'; });
+}
+
+/* ── SA Organizations ── */
+function rSA_Orgs(){
+  var c=document.getElementById('content');
+  c.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'+
+    '<div style="font-size:18px;font-weight:800">🏢 Organizations</div>'+
+    '<button class="btn btn-primary" onclick="nav(\'sa_invites\')">+ New Invite Code</button></div>'+
+    '<div id="sa-orgs-body">Loading…</div>';
+  _saAllTenants().then(function(rows){
+    var el=document.getElementById('sa-orgs-body');
+    if(!rows.length){el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--t2)">No organizations registered yet.<br>Generate invite codes to onboard clients.</div>';return;}
+    el.innerHTML='<div style="display:flex;flex-direction:column;gap:12px">'+
+      rows.map(function(r){
+        return '<div class="card" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;padding:16px 20px">'+
+          '<div style="flex:1;min-width:160px">'+
+            '<div style="font-weight:700;font-size:15px">'+r.name+'</div>'+
+            '<div style="font-size:12px;color:var(--t2)">ID: <code>'+r.id+'</code> &nbsp;|&nbsp; '+r.admin_email+'</div>'+
+            '<div style="font-size:12px;color:var(--t3);margin-top:2px">Users: '+r.max_users+' &nbsp;|&nbsp; Trucks: '+r.max_trucks+'</div>'+
+          '</div>'+
+          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+            _saPlanPill(r.plan||'starter')+
+            '<select class="form-control" style="width:auto;font-size:12px" onchange="(async function(el,id){'+
+              'var ok=await _saUpdateTenant(id,{plan:el.value});'+
+              'if(ok){toast(\'✅ Plan updated to \'+el.value,\'ok\');}else{toast(\'Error saving\',\'err\');}'+
+            '})(this,\''+r.id+'\')">'+
+              ['starter','professional','enterprise'].map(function(p){
+                return '<option value="'+p+'"'+(r.plan===p?' selected':'')+'>'+PLAN_META[p].icon+' '+PLAN_META[p].name+'</option>';
+              }).join('')+
+            '</select>'+
+            '<button class="btn btn-sm '+(r.active?'btn-outline':'btn-primary')+'" onclick="(async function(id,cur){'+
+              'var ok=await _saUpdateTenant(id,{active:!cur});'+
+              'if(ok){toast(!cur?\'✅ Org activated\':\'🔴 Org deactivated\',\'ok\');nav(\'sa_orgs\');}'+
+            '})(\''+r.id+'\','+r.active+')">'+(r.active?'Deactivate':'Activate')+'</button>'+
+          '</div>'+
+        '</div>';
+      }).join('')+
+    '</div>';
+  }).catch(function(e){ document.getElementById('sa-orgs-body').innerHTML='<div class="card" style="color:var(--c5);padding:24px">Could not load orgs: '+e.message+'</div>'; });
+}
+
+/* ── SA Invite Codes ── */
+function rSA_Invites(){
+  var c=document.getElementById('content');
+  c.innerHTML='<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">'+
+    '<div style="font-size:18px;font-weight:800">🔑 Invite Codes</div>'+
+    '<button class="btn btn-primary" onclick="_saShowCreateInvite()">+ Generate Code</button></div>'+
+    '<div id="sa-inv-body">Loading…</div>';
+  _saAllInvites().then(function(rows){
+    var el=document.getElementById('sa-inv-body');
+    if(!rows.length){el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--t2)">No invite codes yet. Generate one to onboard a client.</div>';return;}
+    el.innerHTML='<table class="data-table"><thead><tr><th>Code</th><th>Note</th><th>Status</th><th>Used By</th><th>Date</th><th>Actions</th></tr></thead><tbody>'+
+      rows.map(function(r){
+        var used=!!(r.used_by&&r.used_by!=='');
+        return '<tr>'+
+          '<td><code style="font-size:13px;font-weight:700;letter-spacing:1px">'+r.id+'</code></td>'+
+          '<td style="font-size:12px;color:var(--t2)">'+( r.note||'—')+'</td>'+
+          '<td>'+(used?'<span class="tag tag-ok">Used</span>':r.active?'<span class="tag tag-blue">Active</span>':'<span class="tag tag-hold">Disabled</span>')+'</td>'+
+          '<td style="font-size:12px">'+(r.used_by||'—')+'</td>'+
+          '<td style="font-size:12px;color:var(--t2)">'+(r.created_at?r.created_at.slice(0,10):'—')+'</td>'+
+          '<td style="display:flex;gap:6px">'+
+            (!used?'<button class="btn btn-sm '+(r.active?'btn-outline':'btn-primary')+'" onclick="_saToggleInvite(\''+r.id+'\','+(!r.active)+')">'+(r.active?'Disable':'Enable')+'</button>':'')+
+          '</td>'+
+        '</tr>';
+      }).join('')+
+    '</tbody></table>';
+  }).catch(function(e){ document.getElementById('sa-inv-body').innerHTML='<div style="color:var(--c5);padding:24px">Error: '+e.message+'</div>'; });
+}
+function _saShowCreateInvite(){
+  var code='INV-'+Math.random().toString(36).slice(2,8).toUpperCase();
+  openM('<div class="m-title">🔑 Generate Invite Code</div>'+
+    '<div class="fg f1"><label>Code (auto-generated, can edit)</label><input id="sa-inv-code" value="'+code+'" style="font-family:monospace;font-weight:700;letter-spacing:1px"/></div>'+
+    '<div class="fg f1"><label>Note (client name or purpose)</label><input id="sa-inv-note" placeholder="e.g. ABC Logistics Ltd."/></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_saCreateInvite(document.getElementById(\'sa-inv-code\').value.trim().toUpperCase(),document.getElementById(\'sa-inv-note\').value.trim());closeM()">Create Code</button></div>');
+}
+
+/* ── SA Revenue ── */
+function rSA_Revenue(){
+  var c=document.getElementById('content');
+  c.innerHTML='<div style="font-size:18px;font-weight:800;margin-bottom:20px">💰 Revenue Overview</div>';
+  _saAllTenants().then(function(rows){
+    var active=rows.filter(function(r){return r.active;});
+    var byPlan={starter:0,professional:0,enterprise:0};
+    active.forEach(function(r){byPlan[r.plan||'starter']=(byPlan[r.plan||'starter']||0)+1;});
+    var prices={starter:99,professional:299,enterprise:799};
+    var mrr=Object.keys(byPlan).reduce(function(s,p){return s+byPlan[p]*prices[p];},0);
+    c.innerHTML+='<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:28px">'+
+      '<div class="kpi-card"><div class="kpi-val" style="color:#10B981">$'+mrr.toLocaleString()+'</div><div class="kpi-lab">Estimated MRR</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val" style="color:#6C3FF5">$'+(mrr*12).toLocaleString()+'</div><div class="kpi-lab">Estimated ARR</div></div>'+
+      '<div class="kpi-card"><div class="kpi-val">'+active.length+'</div><div class="kpi-lab">Paying Clients</div></div>'+
+    '</div>'+
+    '<div class="card">'+
+      '<div style="font-weight:700;margin-bottom:16px">Revenue by Plan</div>'+
+      Object.keys(byPlan).map(function(p){
+        var m=PLAN_META[p];var rev=byPlan[p]*prices[p];var pct=mrr?Math.round(rev/mrr*100):0;
+        return '<div style="margin-bottom:16px">'+
+          '<div style="display:flex;justify-content:space-between;margin-bottom:6px">'+
+            '<span>'+m.icon+' '+m.name+' ('+byPlan[p]+' orgs × $'+prices[p]+')</span>'+
+            '<strong style="color:'+m.color+'">$'+rev.toLocaleString()+'/mo</strong>'+
+          '</div>'+
+          '<div style="height:8px;background:var(--bd);border-radius:4px">'+
+            '<div style="height:8px;background:'+m.color+';border-radius:4px;width:'+pct+'%;transition:width .5s"></div>'+
+          '</div></div>';
+      }).join('')+
+      '<div style="border-top:1px solid var(--bd);margin-top:8px;padding-top:12px;font-size:13px;color:var(--t2)">* Estimated based on active orgs × plan price. Enterprise billed as custom.</div>'+
+    '</div>';
+  });
+}
+
 // INVITE CODES MANAGEMENT — Super Admin Only
 // ══════════════════════════════════════════════════
 function rInviteMgmt(){
