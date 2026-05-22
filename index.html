@@ -2967,6 +2967,22 @@ var _IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
 var _IS_LOCAL        = !_IS_GITHUB_PAGES;
 var INSTAPORT_API    = ''; // always relative on local; unused on GH Pages (Supabase handles auth)
 
+// ── JWT session helpers ───────────────────────────────────────────
+function _getToken(){ return sessionStorage.getItem('ip_token')||''; }
+function _authHeaders(extra){
+  var t=_getToken();
+  return Object.assign(t?{'Authorization':'Bearer '+t,'x-session-token':t}:{}, extra||{});
+}
+// Auto-inject JWT into all /api/ calls
+var _origFetch=window.fetch.bind(window);
+window.fetch=function(url,opts){
+  if(typeof url==='string'&&url.startsWith('/api/')){
+    opts=opts||{};
+    opts.headers=Object.assign(_authHeaders(),opts.headers||{});
+  }
+  return _origFetch(url,opts);
+};
+
 // ══════════════════════════════════════════════════
 // UI ENHANCEMENT HELPERS
 // ══════════════════════════════════════════════════
@@ -4392,13 +4408,37 @@ async function doLogin(){
           lerr.style.display='block';return;
         }
         u={id:uid,pin:'[server]',name:saData.name,role:'superadmin',email:'',active:true};
+        // Store SA JWT session token
+        if(saData.token){sessionStorage.setItem('ip_token', saData.token);}
         _siSaToken='';
       }catch(e){
         lerr.innerHTML='❌ Server not reachable — run <code style="font-size:11px">npm run dev</code> first<br><span style="font-size:11px;opacity:.8">Then reload this page</span>';
         lerr.style.display='block';return;
       }
     } else {
-      u=_tenantUsers.find(function(x){return String(x.id)===uid&&String(x.pin)===pin&&x.active!==false;});
+      // ── Server-side auth (bcrypt + JWT) — preferred ──────────────
+      try{
+        var authRes=await fetch('/api/auth',{method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
+        var authData=await authRes.json();
+        if(authData.ok&&authData.token){
+          // Server verified PIN with bcrypt — use server response
+          sessionStorage.setItem('ip_token', authData.token);
+          u={id:uid,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
+             email:'',active:true,plan:authData.user.plan};
+          _tenantPlan=authData.user.plan||_tenantPlan;
+        } else if(!authData.ok){
+          // Server explicitly rejected — don't fall back
+          _secRecordFail(lockKey);
+          lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
+          lerr.style.display='block';return;
+        }
+      }catch(serverErr){
+        // Server not available — fall back to Supabase local match (dev mode)
+        console.warn('Server auth unavailable, falling back to local match');
+        u=_tenantUsers.find(function(x){return String(x.id)===uid&&String(x.pin)===pin&&x.active!==false;});
+      }
     }
     if(!u){
       _secRecordFail(lockKey);
@@ -4422,8 +4462,8 @@ async function doLogin(){
     var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=_tenantName;
     audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
     _idleStart(); // begin 30-min idle timeout
-    // Warn on weak PIN (first login hint)
-    if(_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
+    // Warn on weak PIN (only if still plain-text — bcrypt-verified users are fine)
+    if(u.pin&&!u.pin.startsWith('[')&&_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
     buildSB();
     _loadFeatureGates(); // apply any saved custom feature-gate config
     var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';

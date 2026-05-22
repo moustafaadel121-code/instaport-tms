@@ -20,6 +20,7 @@ const path    = require('path');
 const crypto  = require('crypto');
 const cors    = require('cors');
 const helmet  = require('helmet');
+const auth    = require('./integrations/auth');
 
 const app  = express();
 const PORT = process.env.PORT || 7434;
@@ -189,12 +190,63 @@ app.post('/api/sa-auth', _localOnly, (req, res) => {
     const pinOk  = crypto.timingSafeEqual(Buffer.from(pin    || '', 'utf8'), Buffer.from(process.env.SA_PIN     || '', 'utf8'));
     if (orgOk && userOk && pinOk) {
       delete _saAttempts[ip];
-      return res.json({ ok: true, name: process.env.SA_NAME || 'Super Admin', role: 'superadmin' });
+      const saToken = auth.issueToken({ role: 'superadmin', userId: userId, org: org });
+      auth.saAudit('SA_LOGIN', 'Login successful', ip);
+      return res.json({ ok: true, name: process.env.SA_NAME || 'Super Admin', role: 'superadmin', token: saToken });
     }
+    auth.saAudit('SA_LOGIN_FAIL', `Failed attempt for org=${org} user=${userId}`, ip);
     return res.status(401).json({ ok: false, error: 'Invalid credentials.' });
   } catch (e) {
     return res.status(400).json({ ok: false, error: 'Bad request' });
   }
+});
+
+// ── SA Audit Log (localhost only) ────────────────────────────────
+app.get('/api/sa-audit', _localOnly, (req, res) => {
+  res.json({ ok: true, log: auth.getSaAuditLog(200) });
+});
+
+// ═══════════════════════════════════════════════════════
+// USER AUTH — bcrypt PIN verification + JWT session token
+// (Works alongside Supabase; server verifies PIN never browser)
+// ═══════════════════════════════════════════════════════
+const _authAttempts = {};
+function _authRateLimit(ip) {
+  const now = Date.now();
+  if (!_authAttempts[ip]) _authAttempts[ip] = { count: 0, reset: now + 15 * 60 * 1000 };
+  if (now > _authAttempts[ip].reset) _authAttempts[ip] = { count: 0, reset: now + 15 * 60 * 1000 };
+  _authAttempts[ip].count++;
+  return _authAttempts[ip].count > 10;
+}
+
+app.post('/api/auth', async (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || '';
+  if (_authRateLimit(ip)) return res.status(429).json({ ok: false, error: 'Too many attempts. Try again in 15 minutes.' });
+  const { org, userId, pin } = req.body || {};
+  if (!org || !userId || !pin) return res.status(400).json({ ok: false, error: 'org, userId, pin required' });
+  // Block SA org from regular auth endpoint
+  if (org === (process.env.SA_ORG || 'ip-master')) {
+    return res.status(403).json({ ok: false, error: 'Use SA login for this organization.' });
+  }
+  try {
+    const user  = await auth.authenticateUser(org, userId, pin);
+    const token = auth.issueToken({ ...user, iat: Date.now() });
+    delete _authAttempts[ip];
+    return res.json({ ok: true, token, user: { name: user.name, role: user.role, orgId: user.orgId, orgName: user.orgName, plan: user.plan } });
+  } catch (e) {
+    _authAttempts[ip] = _authAttempts[ip] || { count: 1, reset: Date.now() + 15 * 60 * 1000 };
+    return res.status(401).json({ ok: false, error: e.message });
+  }
+});
+
+// ── Verify a session token (browser calls this on page refresh) ──
+app.post('/api/auth/verify', (req, res) => {
+  const { token } = req.body || {};
+  const payload = auth.verifyToken(token);
+  if (!payload) return res.status(401).json({ ok: false, error: 'Session expired' });
+  // Issue a fresh token (sliding window)
+  const newToken = auth.issueToken({ ...payload, iat: undefined, exp: undefined });
+  return res.json({ ok: true, token: newToken, user: { name: payload.name, role: payload.role, orgId: payload.orgId, plan: payload.plan } });
 });
 
 // ═══════════════════════════════════════════════════════
