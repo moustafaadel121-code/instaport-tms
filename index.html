@@ -3274,7 +3274,7 @@ async function _loadTenant(orgCode){
   // instaport ALWAYS uses built-in local users — no Supabase needed for auth
   if(orgCode==='instaport'||orgCode==='demo'){
     _tenantId='instaport';_tenantName='InstaPort Logistics';_tenantPlan='enterprise';
-    _tenantUsers=USERS.slice();
+    _tenantUsers=_DEMO_USERS.slice(); // frozen copy — unaffected by Supabase overrides
     return true;
   }
   // Other tenants: load from Supabase
@@ -4273,6 +4273,8 @@ let USERS=[
   {id:'9001',pin:'1111',name:'Karim Ahmed',role:'driver',email:'karim@epx.com',active:true},
   {id:'9002',pin:'2222',name:'Hassan Ali',role:'driver',email:'hassan@epx.com',active:true}
 ];
+// Frozen snapshot used for login fallback — never mutated by initApp/Supabase
+const _DEMO_USERS=USERS.map(function(u){return Object.assign({},u);});
 const RL={admin:'Admin',supervisor:'Supervisor',quality:'Quality',account_manager:'Acct Manager',
   control_room:'Control Room',security:'Security',finance:'Finance',
   maintenance:'Maintenance',validation:'Validation',driver:'Driver'};
@@ -4585,10 +4587,17 @@ async function doLogin(){
 function secureLogout(){
   _idleStop();
   if(S.user){_secRecordLogout(S.user.id,S.user.name);}
+  // Clear JWT token so next login starts fresh (no stale token injected into /api/auth)
+  sessionStorage.removeItem('ip_token');
+  // Reset tenant state — forces _loadTenant() to re-run cleanly on next login
+  _tenantId='';_tenantName='InstaPort';_tenantPlan='starter';_tenantUsers=[];
+  _supabaseLoading=false;
   // Clear sensitive in-memory state
   S.user=null;S.role=null;
   S.trips=[];S.maintTickets=[];S.auditTrail=[];S.invoices=[];S.fuelLogs=[];S.notifs=[];
   S.driverProfiles={};S.shifts=[];
+  // Restore USERS to the original hardcoded list so fallback login always works
+  USERS.length=0;_DEMO_USERS.forEach(function(u){USERS.push(Object.assign({},u));});
   // Reset UI
   document.getElementById('login').style.display='flex';
   document.getElementById('app').style.display='none';
