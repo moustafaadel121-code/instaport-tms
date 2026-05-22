@@ -4588,6 +4588,11 @@ async function doLogin(){
       try{_loadHRData();}catch(e){}
     },2500);
     
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+  }finally{
+    if(btn){btn.disabled=false;btn.textContent='LOGIN';}
+  }
+}
 // ══ PWA INSTALL ══════════════════════════════════════════
 var _pwaDeferredPrompt=null;
 function _initPWA(){
@@ -4674,7 +4679,7 @@ function openPOD(tripId){
   '<div class="fg"><label>Notes</label><input id="pod-notes" placeholder="Optional delivery notes"/></div></div>'+
   '<div class="m-foot">'+
   '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
-  '<button class="btn btn-primary" onclick="_submitPOD(''+tripId+'')">&#x2705; Submit POD</button>'+
+  '<button class="btn btn-primary" data-tid="'+tripId+'" onclick="_submitPOD(this.dataset.tid)">&#x2705; Submit POD</button>'+
   '</div>');
   setTimeout(function(){_podInitCanvas();},150);
 }
@@ -4728,7 +4733,7 @@ function rFleetMap(){
     '<button class="btn btn-outline btn-sm" onclick="rFleetMap()">&#x27F3; Refresh</button>')+
   '<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">'+
     ['all','active','completed','awaiting_truck'].map(function(f){
-      return '<button class="btn btn-sm" id="fm-f-'+f+'" onclick="_fmFilter(''+f+'')" style="border-radius:20px;background:'+(f==='all'?'#6C3FF5':'var(--bg)')+';color:'+(f==='all'?'#fff':'var(--t)')+';border:1.5px solid '+(f==='all'?'#6C3FF5':'var(--bd)')+'">'+
+      return '<button class="btn btn-sm" id="fm-f-'+f+'" data-flt="'+f+'" onclick="_fmFilter(this.dataset.flt)" style="border-radius:20px;background:'+(f==='all'?'#6C3FF5':'var(--bg)')+';color:'+(f==='all'?'#fff':'var(--t)')+';border:1.5px solid '+(f==='all'?'#6C3FF5':'var(--bd)')+'">'+
         {all:'All Trips',active:'&#x1F7E2; Active',completed:'&#x2705; Completed',awaiting_truck:'&#x23F3; Awaiting'}[f]+'</button>';
     }).join('')+
   '</div>'+
@@ -4771,7 +4776,7 @@ function _fmInit(filter){
   };
   function getCoords(loc){
     if(!loc)return null;
-    var l=loc.toLowerCase().replace(/[s-_.]/g,'');
+    var l=loc.toLowerCase().replace(/[\s_\-.]/g,'');
     for(var k in CITY_COORDS){if(l.includes(k.replace(/s/g,'')))return CITY_COORDS[k];}
     // fallback: random near Cairo with jitter so pins don't stack
     return[30.0444+(Math.random()-.5)*.5,31.2357+(Math.random()-.5)*.5];
@@ -4894,9 +4899,7 @@ window._cpExport=function(){
   var rows=(S.trips||[]).filter(function(t){return t.customer===custAcc;}).map(function(t){
     return [t.id,t.customer,t.type||'',t.status,t.km||'',t.cost||'',t.ts?new Date(t.ts).toLocaleDateString('en-GB'):'',t.dests||''];
   });
-  var csv='Trip ID,Customer,Type,Status,KM,Cost,Date,Route
-'+rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(',');}).join('
-');
+  var csv='Trip ID,Customer,Type,Status,KM,Cost,Date,Route\n'+rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(',');}).join('\n');
   var blob=new Blob([csv],{type:'text/csv'});
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);
   a.download='MyShipments_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
@@ -4923,11 +4926,11 @@ function rAdminAPIKeys(){
       var statusCol=k.active?'#10B981':'#EF4444';
       return '<tr style="border-bottom:1px solid var(--bd)">'+
         '<td style="padding:8px 10px;font-weight:700">'+k.name+'</td>'+
-        '<td style="padding:8px 10px;font-family:monospace;color:#6C3FF5">'+k.key.slice(0,16)+'...<button onclick="_copyKey(''+k.key+'')" style="background:none;border:none;cursor:pointer;color:#6C3FF5;font-size:11px;margin-left:4px">&#x1F4CB;</button></td>'+
+        '<td style="padding:8px 10px;font-family:monospace;color:#6C3FF5">'+k.key.slice(0,16)+'...<button data-key="'+k.key+'" onclick="_copyKey(this.dataset.key)" style="background:none;border:none;cursor:pointer;color:#6C3FF5;font-size:11px;margin-left:4px">&#x1F4CB;</button></td>'+
         '<td style="padding:8px 10px;color:var(--t2)">'+k.createdAt+'</td>'+
         '<td style="padding:8px 10px;color:var(--t2)">'+(k.lastUsed||'Never')+'</td>'+
         '<td style="padding:8px 10px"><span style="background:'+statusCol+';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(k.active?'ACTIVE':'REVOKED')+'</span></td>'+
-        '<td style="padding:8px 10px"><button onclick="_revokeAPIKey(''+k.id+'')" class="btn btn-sm" style="background:#EF4444;color:#fff;border:none">Revoke</button></td>'+
+        '<td style="padding:8px 10px"><button data-kid="'+k.id+'" onclick="_revokeAPIKey(this.dataset.kid)" class="btn btn-sm" style="background:#EF4444;color:#fff;border:none">Revoke</button></td>'+
       '</tr>';
     }).join('')+'</tbody></table></div>')+
   '</div>'+
@@ -5179,11 +5182,7 @@ function _anRenderDrivers(trips){
   },120);
 }
 
-  if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
-  }finally{
-    if(btn){btn.disabled=false;btn.textContent='LOGIN';}
-  }
-}
+  
 function secureLogout(){
   _idleStop();
   if(S.user){_secRecordLogout(S.user.id,S.user.name);}
@@ -9467,7 +9466,7 @@ function rAdminUsers(){
   USERS.map(function(u){return '<tr><td style="font-weight:700">'+u.id+'</td><td>'+u.name+'</td><td><span class="tag tag-info">'+RL[u.role]+'</span></td><td>'+(u.active===false?'<span class="tag tag-hold">Inactive</span>':'<span class="tag tag-ok">Active</span>')+'</td>'+
   '<td style="display:flex;gap:5px"><button class="btn btn-outline btn-sm" onclick="editUser(\''+u.id+'\')">Edit</button><button class="btn btn-danger btn-sm" onclick="resetPw(\''+u.id+'\')">Reset PIN</button>'+(u.active===false?'<button class="btn btn-success btn-sm" onclick="toggleUser(\''+u.id+'\')">Activate</button>':'<button class="btn btn-outline btn-sm" onclick="toggleUser(\''+u.id+'\')">Deactivate</button>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';
 }
-function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role" onchange="document.getElementById('nu-cust-row').style.display=this.value==='client'?'block':'none'"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="fg f1" id="nu-cust-row" style="display:none"><label>Customer Account <span style="color:var(--t3);font-size:10px">(required for Client role)</span></label><input id="nu-cust" placeholder="Must match a Customer name exactly"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
+function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role" onchange="_toggleClientRow(this)"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="fg f1" id="nu-cust-row" style="display:none"><label>Customer Account <span style="color:var(--t3);font-size:10px">(required for Client role)</span></label><input id="nu-cust" placeholder="Must match a Customer name exactly"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
 async function addUser(){var id=(document.getElementById('nu-id')||{}).value;var name=(document.getElementById('nu-name')||{}).value;var pin=(document.getElementById('nu-pin')||{}).value;var role=(document.getElementById('nu-role')||{}).value;if(!id||!name||!pin||!role){toast('Fill all fields','err');return;}if(USERS.find(function(u){return u.id===id;})){toast('ID exists','err');return;}var email=(document.getElementById('nu-email')||{}).value||'';var custAcc=(document.getElementById('nu-cust')||{}).value||'';if(role==='client'&&!custAcc){toast('Customer Account required for Client role','err');return;}var uObj={id:id,name:name,pin:pin,role:role,email:email,active:true};if(custAcc)uObj.customerAccount=custAcc;USERS.push(uObj);audit('ADD_USER',name+' ('+role+')','');closeM();toast('User added!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:id,tenant_id:_tenantId,name:name,pin:pin,role:role,email:email,active:true});}catch(e){console.error('addUser sync',e);}}}
 function editUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;openM('<div class="m-title">Edit — '+u.name+'</div><div class="fg f1"><label>Name</label><input id="eu-name" value="'+u.name+'"/></div><div class="fg f1"><label>Role</label><select id="eu-role">'+Object.keys(RL).map(function(k){return '<option value="'+k+'"'+(u.role===k?' selected':'')+'>'+RL[k]+'</option>';}).join('')+'</select></div><div class="fg f1"><label>Email</label><input id="eu-email" value="'+(u.email||'')+'"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="saveUser(\''+uid+'\')">Save</button><button class="btn btn-danger" onclick="delUser(\''+uid+'\')">Remove</button></div>');}
 async function saveUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.name=(document.getElementById('eu-name')||{}).value||u.name;u.role=(document.getElementById('eu-role')||{}).value||u.role;u.email=(document.getElementById('eu-email')||{}).value;audit('EDIT_USER',uid,'');closeM();toast('Updated!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({name:u.name,role:u.role,email:u.email}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('saveUser sync',e);}}}
@@ -16092,16 +16091,14 @@ function _anExportRichExcel(){
   var esc=function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
   var s=function(v,sid){return '<Cell'+(sid?' ss:StyleID="'+sid+'"':'')+'><Data ss:Type="String">'+esc(String(v==null?'':v))+'</Data></Cell>';};
   var n=function(v,sid){return '<Cell'+(sid?' ss:StyleID="'+sid+'"':'')+'><Data ss:Type="Number">'+esc(String(isNaN(+v)?0:+v))+'</Data></Cell>';};
-  var R=function(cells){return '<Row>'+cells+'</Row>
-';};
+  var R=function(cells){return '<Row>'+cells+'</Row>\n';};
 
   var rev=trips.reduce(function(a,t){return a+(+t.cost||0);},0);
   var km=trips.reduce(function(a,t){return a+(+t.km||0);},0);
   var co2=trips.reduce(function(a,t){return a+(+t.co2||0);},0);
 
   // KPI Sheet
-  var sh1=R(s('InstaPort TMS — Analytics Report','ti'))+R(s('Period: '+(_anPeriod||'month').toUpperCase()+' | '+ts,'me'))+'<Row/>
-'+
+  var sh1=R(s('InstaPort TMS — Analytics Report','ti'))+R(s('Period: '+(_anPeriod||'month').toUpperCase()+' | '+ts,'me'))+'<Row/>\n'+
     R(s('Metric','hd')+s('Value','hd'))+
     R(s('Total Trips')+n(trips.length))+R(s('Completed')+n(trips.filter(function(t){return t.status==='completed';}).length))+
     R(s('Revenue (EGP)')+n(rev.toFixed(2)))+R(s('Total KM')+n(km.toFixed(0)))+
@@ -16145,23 +16142,14 @@ function _anExportRichExcel(){
     '<Style ss:ID="num"><NumberFormat ss:Format="#,##0.00"/></Style>'+
     '</Styles>';
 
-  var xml='<?xml version="1.0" encoding="UTF-8"?>
-<?mso-application progid="Excel.Sheet"?>
-'+
-    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:x="urn:schemas-microsoft-com:office:excel">
-'+
-    styles+'
-'+
-    '<Worksheet ss:Name="KPI Summary"><Table>'+sh1+'</Table></Worksheet>
-'+
-    '<Worksheet ss:Name="Trips (Power BI Source)"><Table>'+sh2+'</Table></Worksheet>
-'+
-    '<Worksheet ss:Name="Revenue by Customer"><Table>'+sh3+'</Table></Worksheet>
-'+
-    '<Worksheet ss:Name="Daily Trend (Charts)"><Table>'+sh4+'</Table></Worksheet>
-'+
-    '<Worksheet ss:Name="Fleet Status"><Table>'+sh5+'</Table></Worksheet>
-'+
+  var xml='<?xml version="1.0" encoding="UTF-8"?>\n<?mso-application progid="Excel.Sheet"?>\n'+
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:x="urn:schemas-microsoft-com:office:excel">\n'+
+    styles+'\n'+
+    '<Worksheet ss:Name="KPI Summary"><Table>'+sh1+'</Table></Worksheet>\n'+
+    '<Worksheet ss:Name="Trips (Power BI Source)"><Table>'+sh2+'</Table></Worksheet>\n'+
+    '<Worksheet ss:Name="Revenue by Customer"><Table>'+sh3+'</Table></Worksheet>\n'+
+    '<Worksheet ss:Name="Daily Trend (Charts)"><Table>'+sh4+'</Table></Worksheet>\n'+
+    '<Worksheet ss:Name="Fleet Status"><Table>'+sh5+'</Table></Worksheet>\n'+
     '</Workbook>';
 
   var a2=document.createElement('a');
