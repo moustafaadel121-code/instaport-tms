@@ -3385,10 +3385,11 @@ async function initApp(){
       _sb.from('audit_log').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}).limit(300),
       _sb.from('trucks').select('*').eq('tenant_id',_tenantId),
       _sb.from('am_assignments').select('*').eq('tenant_id',_tenantId),
-      _sb.from('customers').select('name').eq('tenant_id',_tenantId).order('name')
+      _sb.from('customers').select('name').eq('tenant_id',_tenantId).order('name'),
+      _sb.from('users').select('id,employee_id,name,role,email,active').eq('tenant_id',_tenantId).order('name')
     ]);
     _setLoaderProgress(68,'Processing fleet data…');
-    var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4],r6=results[5],r7=results[6];
+    var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4],r6=results[5],r7=results[6],r8=results[7];
     // Trips
     if(!r1.error&&r1.data&&r1.data.length){
       S.trips.length=0;
@@ -3413,13 +3414,16 @@ async function initApp(){
       S.auditTrail.length=0;
       r4.data.forEach(function(r){S.auditTrail.push({ts:r.ts,user:r.username,role:r.role,action:r.action,detail:r.detail,tripId:r.trip_id||''});});
     }
-    // Trucks
-    if(!r5.error){
-      if(r5.data&&r5.data.length){
-        r5.data.forEach(function(r){var t=TRUCKS.find(function(x){return x.plate===r.plate;});if(t){t.status=r.status;t.valid=r.valid;t.remark=r.remark||'';t.flagged=r.flagged||false;if(r.cal_expiry)t.calExpiry=r.cal_expiry;t.odometerKm=r.odometer_km||0;t.lastMaintKm=r.last_maint_km||0;t.maintIntervalKm=r.maint_interval_km||10000;}});
-      }else{
-        _sb.from('trucks').insert(TRUCKS.map(function(t){return{plate:t.plate,tenant_id:_tenantId,type:t.type,mfr:t.mfr,cooling:t.cooling,status:t.status,valid:t.valid,remark:t.remark||'',cal_expiry:t.calExpiry,flagged:t.flagged||false};}));
-      }
+    // Trucks — fully loaded from Supabase, no hardcoded list
+    if(!r5.error&&r5.data){
+      TRUCKS.length=0;
+      r5.data.forEach(function(r){
+        TRUCKS.push({plate:r.plate,type:r.type||'Jumbo',mfr:r.mfr||'',cooling:r.cooling||'—',
+          status:r.status||'Hold',valid:r.valid||false,remark:r.remark||'',
+          calExpiry:r.cal_expiry||'',flagged:r.flagged||false,
+          odometerKm:r.odometer_km||0,lastMaintKm:r.last_maint_km||0,
+          maintIntervalKm:r.maint_interval_km||10000});
+      });
     }
     // AM Assignments
     if(r6&&!r6.error&&r6.data&&r6.data.length){
@@ -3430,6 +3434,15 @@ async function initApp(){
     if(r7&&!r7.error&&r7.data){
       CUSTOMERS.length=0;
       r7.data.forEach(function(r){if(r.name)CUSTOMERS.push(r.name);});
+    }
+    // Users (drivers + staff) — loaded from Supabase, overrides hardcoded fallback
+    if(r8&&!r8.error&&r8.data&&r8.data.length){
+      USERS.length=0;
+      r8.data.forEach(function(r){
+        var empId=r.employee_id?String(r.employee_id):String(r.id);
+        USERS.push({id:empId,_dbId:r.id,name:r.name,role:r.role,email:r.email||'',
+          active:r.active!==false&&r.active!==0,pin:'[supabase]'});
+      });
     }
   }catch(e){
     console.error('initApp error',e);
@@ -4232,7 +4245,7 @@ function _upgradePlanCard(planId, featureId){
 // ══════════════════════════════════════════════════
 // USERS & ROLES
 // ══════════════════════════════════════════════════
-const USERS=[
+let USERS=[
   {id:'5454',pin:'9852',name:'Mohammed A.',role:'admin',email:'admin@epx.com',active:true},
   {id:'1234',pin:'1598',name:'Mostafa S.',role:'supervisor',email:'ms@epx.com',active:true},
   {id:'1235',pin:'9512',name:'Ahmed G.',role:'quality',email:'ag@epx.com',active:true},
@@ -4252,37 +4265,7 @@ let CUSTOMERS=[];
 // ══════════════════════════════════════════════════
 // TRUCKS DATA
 // ══════════════════════════════════════════════════
-const TRUCKS=[
-  {plate:'4789 أ ج ي',type:'Jumbo',mfr:'Chevrolet',cooling:'Carrier Oasis 350',status:'Released',valid:true,remark:'',calExpiry:'2026-12-01',flagged:false},
-  {plate:'4793 أ ج ي',type:'Jumbo',mfr:'Chevrolet',cooling:'Carrier Oasis 350',status:'Released',valid:true,remark:'',calExpiry:'2026-11-15',flagged:false},
-  {plate:'834 ن ي م',type:'Jumbo',mfr:'Chevrolet 2011',cooling:'Carrier Xarios 500',status:'Hold',valid:false,remark:'Need maintenance',calExpiry:'2025-06-01',flagged:true},
-  {plate:'ا س ف 367',type:'Jumbo',mfr:'Chevrolet 2013',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'Ambient only',calExpiry:'2026-10-20',flagged:false},
-  {plate:'أ ج ي 5429',type:'Jumbo',mfr:'Chevrolet 2013',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-09-15',flagged:false},
-  {plate:'ا ط ف 643',type:'Jumbo',mfr:'Chevrolet 2013',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-12-20',flagged:false},
-  {plate:'ف ج ف 517',type:'Jumbo',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-08-07',flagged:false},
-  {plate:'ف ج ف 163',type:'Jumbo',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2027-01-10',flagged:false},
-  {plate:'د ل ب 631',type:'Jumbo',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-11-01',flagged:false},
-  {plate:'742 ص م ب',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Top Cold DM 500 F',status:'Released',valid:true,remark:'',calExpiry:'2026-10-01',flagged:false},
-  {plate:'ع ر ي 826',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Top Cold DM 500 F',status:'Released',valid:true,remark:'',calExpiry:'2026-12-23',flagged:false},
-  {plate:'756 ج ن ب',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Top Cold DM 500 F',status:'Released',valid:true,remark:'',calExpiry:'2026-09-01',flagged:false},
-  {plate:'628 ه م ب',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Top Cold DM 500 FP',status:'Released',valid:true,remark:'',calExpiry:'2027-01-15',flagged:false},
-  {plate:'س ب ي 862',type:'Jumbo',mfr:'Chevrolet 2019',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-08-01',flagged:false},
-  {plate:'8537 أ ط و',type:'Jumbo',mfr:'Chevrolet 2021',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'Cold+Heating',calExpiry:'2027-02-01',flagged:false},
-  {plate:'4519 أ ج و',type:'Jumbo',mfr:'Chevrolet 2021',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-10-15',flagged:false},
-  {plate:'852 ب أ ن',type:'Dababa',mfr:'Chevrolet 2011',cooling:'ThermoKing C100',status:'Released',valid:true,remark:'',calExpiry:'2026-10-02',flagged:false},
-  {plate:'أ س ف 495',type:'Dababa',mfr:'Chevrolet 2013',cooling:'Viento V200',status:'Released',valid:true,remark:'',calExpiry:'2026-09-07',flagged:false},
-  {plate:'د د ف 715',type:'Dababa',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 150',status:'Released',valid:true,remark:'',calExpiry:'2026-12-10',flagged:false},
-  {plate:'ف ج ف 162',type:'Dababa',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-10-25',flagged:false},
-  {plate:'ج ج ف 614',type:'Dababa',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-11-25',flagged:false},
-  {plate:'ي س ر 734',type:'Dababa',mfr:'Chevrolet 2016',cooling:'Zanotti Z20s',status:'Released',valid:true,remark:'',calExpiry:'2026-09-17',flagged:false},
-  {plate:'ا ي ب 567',type:'Dababa',mfr:'Chevrolet 2019',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-06-15',flagged:false},
-  {plate:'4916 ا ط و',type:'Dababa',mfr:'Chevrolet 2021',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-03-05',flagged:false},
-  {plate:'أ ل ي 6896',type:'Dababa',mfr:'Chevrolet 2026',cooling:'Carrier Xarios 300',status:'Released',valid:true,remark:'',calExpiry:'2027-03-01',flagged:false},
-  {plate:'158 ب و ل',type:'Trailer',mfr:'Chereau 2001',cooling:'Thermoking SL200',status:'Released',valid:true,remark:'',calExpiry:'2027-03-27',flagged:false},
-  {plate:'ا م ى 265',type:'Trailer',mfr:'Schmitz 2007',cooling:'Thermoking SL200e',status:'Released',valid:true,remark:'',calExpiry:'2026-03-16',flagged:false},
-  {plate:'ا ص ي 3175',type:'Truck Head',mfr:'Mercedes 2009',cooling:'-',status:'Released',valid:true,remark:'',calExpiry:'2027-06-01',flagged:false},
-  {plate:'251 س ص ر',type:'Truck Head',mfr:'Mercedes 2009',cooling:'-',status:'Released',valid:true,remark:'',calExpiry:'2027-06-01',flagged:false}
-];
+let TRUCKS=[];
 // ══════════════════════════════════════════════════
 // GLOBAL STATE
 // ══════════════════════════════════════════════════
@@ -5280,6 +5263,7 @@ function addTruckConfirm(){
   closeM();
   requirePwd('Add Truck — '+plate, function(){
     TRUCKS.push(data);
+    syncTruck(data);
     // Sync pricing: add this truck type to all priceLists if not already there
     var mult=getTruckTypeMult(type);
     CUSTOMERS.forEach(function(cu){
@@ -8821,13 +8805,13 @@ function rAdminUsers(){
   '<td style="display:flex;gap:5px"><button class="btn btn-outline btn-sm" onclick="editUser(\''+u.id+'\')">Edit</button><button class="btn btn-danger btn-sm" onclick="resetPw(\''+u.id+'\')">Reset PIN</button>'+(u.active===false?'<button class="btn btn-success btn-sm" onclick="toggleUser(\''+u.id+'\')">Activate</button>':'<button class="btn btn-outline btn-sm" onclick="toggleUser(\''+u.id+'\')">Deactivate</button>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';
 }
 function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
-function addUser(){var id=(document.getElementById('nu-id')||{}).value;var name=(document.getElementById('nu-name')||{}).value;var pin=(document.getElementById('nu-pin')||{}).value;var role=(document.getElementById('nu-role')||{}).value;if(!id||!name||!pin||!role){toast('Fill all fields','err');return;}if(USERS.find(function(u){return u.id===id;})){toast('ID exists','err');return;}USERS.push({id:id,name:name,pin:pin,role:role,email:(document.getElementById('nu-email')||{}).value||'',active:true});audit('ADD_USER',name+' ('+role+')','');closeM();toast('User added!','ok');rAdminUsers();}
+async function addUser(){var id=(document.getElementById('nu-id')||{}).value;var name=(document.getElementById('nu-name')||{}).value;var pin=(document.getElementById('nu-pin')||{}).value;var role=(document.getElementById('nu-role')||{}).value;if(!id||!name||!pin||!role){toast('Fill all fields','err');return;}if(USERS.find(function(u){return u.id===id;})){toast('ID exists','err');return;}var email=(document.getElementById('nu-email')||{}).value||'';USERS.push({id:id,name:name,pin:pin,role:role,email:email,active:true});audit('ADD_USER',name+' ('+role+')','');closeM();toast('User added!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:id,tenant_id:_tenantId,name:name,pin:pin,role:role,email:email,active:true});}catch(e){console.error('addUser sync',e);}}}
 function editUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;openM('<div class="m-title">Edit — '+u.name+'</div><div class="fg f1"><label>Name</label><input id="eu-name" value="'+u.name+'"/></div><div class="fg f1"><label>Role</label><select id="eu-role">'+Object.keys(RL).map(function(k){return '<option value="'+k+'"'+(u.role===k?' selected':'')+'>'+RL[k]+'</option>';}).join('')+'</select></div><div class="fg f1"><label>Email</label><input id="eu-email" value="'+(u.email||'')+'"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="saveUser(\''+uid+'\')">Save</button><button class="btn btn-danger" onclick="delUser(\''+uid+'\')">Remove</button></div>');}
-function saveUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.name=(document.getElementById('eu-name')||{}).value||u.name;u.role=(document.getElementById('eu-role')||{}).value||u.role;u.email=(document.getElementById('eu-email')||{}).value;audit('EDIT_USER',uid,'');closeM();toast('Updated!','ok');rAdminUsers();}
-function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();}
-function toggleUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.active=u.active===false?true:false;audit('TOGGLE_USER',uid+(u.active?' activated':' deactivated'),'');toast(u.name+' '+(u.active?'activated':'deactivated'),'ok');rAdminUsers();}
+async function saveUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.name=(document.getElementById('eu-name')||{}).value||u.name;u.role=(document.getElementById('eu-role')||{}).value||u.role;u.email=(document.getElementById('eu-email')||{}).value;audit('EDIT_USER',uid,'');closeM();toast('Updated!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({name:u.name,role:u.role,email:u.email}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('saveUser sync',e);}}}
+async function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('delUser sync',e);}}}
+async function toggleUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.active=u.active===false?true:false;audit('TOGGLE_USER',uid+(u.active?' activated':' deactivated'),'');toast(u.name+' '+(u.active?'activated':'deactivated'),'ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:u.active}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('toggleUser sync',e);}}}
 function resetPw(uid){openM('<div class="m-title">🔑 Reset PIN — '+uid+'</div><div class="fg f1"><label>New PIN</label><input type="password" id="np" placeholder="New PIN..."/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="savePw(\''+uid+'\')">Reset</button></div>');}
-function savePw(uid){var u=USERS.find(function(x){return x.id===uid;});var np=(document.getElementById('np')||{}).value;if(!u||!np){toast('Enter new PIN','err');return;}requirePwd('Reset PIN for '+uid,function(){u.pin=np;audit('RESET_PW',uid,'');closeM();toast('PIN reset!','ok');});}
+function savePw(uid){var u=USERS.find(function(x){return x.id===uid;});var np=(document.getElementById('np')||{}).value;if(!u||!np){toast('Enter new PIN','err');return;}requirePwd('Reset PIN for '+uid,async function(){u.pin=np;audit('RESET_PW',uid,'');closeM();toast('PIN reset!','ok');if(_sb&&_tenantId){try{await _sb.from('users').update({pin:np}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('savePw sync',e);}}});}
 
 // ── CUSTOMERS ──
 function rAdminCustomers(){
