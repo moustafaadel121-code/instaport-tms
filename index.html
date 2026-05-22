@@ -3384,10 +3384,11 @@ async function initApp(){
       _sb.from('spare_parts').select('*').eq('tenant_id',_tenantId),
       _sb.from('audit_log').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}).limit(300),
       _sb.from('trucks').select('*').eq('tenant_id',_tenantId),
-      _sb.from('am_assignments').select('*').eq('tenant_id',_tenantId)
+      _sb.from('am_assignments').select('*').eq('tenant_id',_tenantId),
+      _sb.from('customers').select('name').eq('tenant_id',_tenantId).order('name')
     ]);
     _setLoaderProgress(68,'Processing fleet data…');
-    var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4],r6=results[5];
+    var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4],r6=results[5],r7=results[6];
     // Trips
     if(!r1.error&&r1.data&&r1.data.length){
       S.trips.length=0;
@@ -3424,6 +3425,11 @@ async function initApp(){
     if(r6&&!r6.error&&r6.data&&r6.data.length){
       if(!S.customerAssignments)S.customerAssignments={};
       r6.data.forEach(function(r){if(r.customer&&r.account_manager){S.customerAssignments[r.customer]=r.account_manager;}});
+    }
+    // Customers — loaded from Supabase, no hardcoded list
+    if(r7&&!r7.error&&r7.data){
+      CUSTOMERS.length=0;
+      r7.data.forEach(function(r){if(r.name)CUSTOMERS.push(r.name);});
     }
   }catch(e){
     console.error('initApp error',e);
@@ -4242,7 +4248,7 @@ const USERS=[
 const RL={admin:'Admin',supervisor:'Supervisor',quality:'Quality',account_manager:'Acct Manager',
   control_room:'Control Room',security:'Security',finance:'Finance',
   maintenance:'Maintenance',validation:'Validation',driver:'Driver'};
-const CUSTOMERS=['PBG','NVS','SND','GSK','Roche','BIOMeriux','SYSMEX','SIEMENS','Viatris','Roche D','EPX','KN','IMCD','ZOETIS'];
+let CUSTOMERS=[];
 // ══════════════════════════════════════════════════
 // TRUCKS DATA
 // ══════════════════════════════════════════════════
@@ -4387,7 +4393,7 @@ const PAGES={
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
-    {id:'trips',icon:'📋',l:'Trips'},{id:'forecast',icon:'📅',l:'Forecast'},
+    {id:'trips',icon:'📋',l:'Trips'},{id:'forecast',icon:'📅',l:'New Shipment'},
     {id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'quality',icon:'🧪',l:'Quality'},
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
@@ -4607,7 +4613,7 @@ const ALL_PAGES_MASTER=[
   {id:'dashboard',   icon:'📊',l:'Dashboard',        always:true},
   {id:'fleet',       icon:'🚛',l:'Fleet'},
   {id:'trips',       icon:'📋',l:'Trips'},
-  {id:'forecast',    icon:'📅',l:'Shipment Planning'},
+  {id:'forecast',    icon:'📅',l:'New Shipment'},
   {id:'dispatch',    icon:'🚦',l:'Dispatch'},
   {id:'quality',     icon:'🧪',l:'Quality'},
   {id:'controlroom', icon:'🎛️',l:'Control Room'},
@@ -5300,7 +5306,7 @@ function rForecast(){
   var c=document.getElementById('content');
   var my=S.trips.filter(function(t){return t.createdBy===S.user.id;});
   var canAdd=can('create_planned')||can('create_emergency')||can('all');
-  c.innerHTML='<div class="page-head"><div><h2>&#128197; Shipment Planning</h2></div>'+
+  c.innerHTML='<div class="page-head"><div><h2>&#128197; New Shipment</h2></div>'+
   '<div style="display:flex;gap:6px;align-items:center">'+
   (canAdd?'<button class="btn btn-primary" onclick="openTrip()">+ New Shipment</button>':'')+
   '<div style="display:flex;gap:4px">'+
@@ -7787,7 +7793,7 @@ var _SA_FEATURE_META={
   admin_mgmt:  {label:'Admin Panel',     cat:'Core'},
   my_trips:    {label:'My Trips (Driver)',cat:'Core'},
   // Professional
-  forecast:    {label:'Forecast / New Shipment', cat:'Professional'},
+  forecast:    {label:'New Shipment',             cat:'Professional'},
   controlroom: {label:'Control Room',    cat:'Professional'},
   finance:     {label:'Finance',         cat:'Professional'},
   fuel:        {label:'Fuel Logs',       cat:'Professional'},
@@ -8837,8 +8843,8 @@ function rAdminCustomers(){
   '<td><button class="btn btn-danger btn-sm" onclick="delCust(\''+cu+'\')">Remove</button></td></tr>';}).join('')+'</tbody></table></div></div>';
 }
 function openAddCust(){openM('<div class="m-title">🏢 Add Customer</div><div class="fg f1"><label>Name *</label><input id="nc-name" placeholder="e.g. Pfizer"/></div><div class="frow"><div class="fg"><label>Rate (EGP/km)</label><input type="number" id="nc-rate" value="8.0"/></div><div class="fg"><label>Temp Min/Max</label><div style="display:flex;gap:4px"><input type="number" id="nc-min" value="2" style="width:50px"/><span style="align-self:center">–</span><input type="number" id="nc-max" value="8" style="width:50px"/></div></div></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addCust()">Add</button></div>');}
-function addCust(){var n=(document.getElementById('nc-name')||{}).value;if(!n){toast('Enter name','err');return;}CUSTOMERS.push(n);S.custModifiers[n]={baseRate:+((document.getElementById('nc-rate')||{}).value||8),bonus:0,fuelAdj:1.0,refrigSurcharge:15,emergencySurcharge:25,waitingRate:120,stopFee:50,seasonal:0,discountPct:0};S.qaAgr[n]={minTemp:+((document.getElementById('nc-min')||{}).value||2),maxTemp:+((document.getElementById('nc-max')||{}).value||8),checkReq:7};audit('ADD_CUST',n,'');closeM();toast(n+' added!','ok');rAdminCustomers();}
-function delCust(cu){if(!confirm('Remove '+cu+'?'))return;var i=CUSTOMERS.indexOf(cu);if(i>=0)CUSTOMERS.splice(i,1);audit('DEL_CUST',cu,'');toast(cu+' removed','ok');rAdminCustomers();}
+async function addCust(){var n=(document.getElementById('nc-name')||{}).value;if(!n){toast('Enter name','err');return;}if(CUSTOMERS.includes(n)){toast('Customer already exists','err');return;}CUSTOMERS.push(n);S.custModifiers[n]={baseRate:+((document.getElementById('nc-rate')||{}).value||8),bonus:0,fuelAdj:1.0,refrigSurcharge:15,emergencySurcharge:25,waitingRate:120,stopFee:50,seasonal:0,discountPct:0};S.qaAgr[n]={minTemp:+((document.getElementById('nc-min')||{}).value||2),maxTemp:+((document.getElementById('nc-max')||{}).value||8),checkReq:7};audit('ADD_CUST',n,'');closeM();toast(n+' added!','ok');rAdminCustomers();if(_sb&&_tenantId){try{await _sb.from('customers').insert({name:n,tenant_id:_tenantId});}catch(e){console.error('addCust sync',e);}}}
+async function delCust(cu){if(!confirm('Remove '+cu+'?'))return;var i=CUSTOMERS.indexOf(cu);if(i>=0)CUSTOMERS.splice(i,1);audit('DEL_CUST',cu,'');toast(cu+' removed','ok');rAdminCustomers();if(_sb&&_tenantId){try{await _sb.from('customers').delete().eq('name',cu).eq('tenant_id',_tenantId);}catch(e){console.error('delCust sync',e);}}}
 function editCustModifiers(cu){
   var m=S.custModifiers[cu]||{};var qa=S.qaAgr[cu]||{};
   openM('<div class="m-title">💰 Modifiers — '+cu+'</div>'+
@@ -9075,7 +9081,7 @@ function toggleDark(){document.body.dataset.dark=document.body.dataset.dark==='1
 
 // LANGUAGE
 var LABELS_AR={dashboard:'لوحة القيادة',fleet:'الأسطول',trips:'الرحلات',forecast:'التنبؤ',dispatch:'الإرسال',quality:'الجودة',finance:'المالية',maintenance:'الصيانة',validation:'التحقق',audit:'سجل التدقيق'};
-var LABELS_EN={dashboard:'Dashboard',fleet:'Fleet',trips:'Trips',forecast:'Forecast',dispatch:'Dispatch',quality:'Quality',finance:'Finance',maintenance:'Maintenance',validation:'Validation',audit:'Audit Trail'};
+var LABELS_EN={dashboard:'Dashboard',fleet:'Fleet',trips:'Trips',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',finance:'Finance',maintenance:'Maintenance',validation:'Validation',audit:'Audit Trail'};
 function applyLanguage(){
   var lang=S.settings&&S.settings.language||'en';
   var isAr=lang==='ar';
@@ -10709,7 +10715,7 @@ buildSB=function(){
   var pp=PAGES[S.role]||PAGES.admin;
   var ar=_lang==='ar';
   var pnd=S.trips.filter(function(t){return t.status==='awaiting_truck'&&t.type!=='Non-Revenue';}).length;
-  var LBL={dashboard:'Dashboard',fleet:'Fleet',trips:'Trips',forecast:'Forecast',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Analytics',ai:'AI',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Admin',my_trips:'My Trips'};
+  var LBL={dashboard:'Dashboard',fleet:'Fleet',trips:'Trips',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Analytics',ai:'AI',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Admin',my_trips:'My Trips'};
   var ICO={dashboard:'&#127968;',fleet:'&#128666;',trips:'&#128203;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128200;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;'};
   var html=
     '<div class="sb-user-mini" id="sb-av">'+(S.user?S.user.name.split(' ').map(function(x){return x[0];}).join(''):'?')+'</div>'+
