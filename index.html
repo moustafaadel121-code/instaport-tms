@@ -2678,6 +2678,12 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 </head>
 <body>
+<div id="pwa-banner" style="display:none;position:fixed;bottom:16px;right:16px;z-index:9999;background:linear-gradient(135deg,#1E1B4B,#6C3FF5);color:#fff;border-radius:14px;padding:12px 18px;box-shadow:0 8px 32px rgba(108,63,245,.4);align-items:center;gap:12px;font-family:inherit;max-width:320px">
+  <span style="font-size:28px">&#128241;</span>
+  <div style="flex:1"><div style="font-weight:700;font-size:13px">Install InstaPort</div><div style="font-size:11px;opacity:.8">Add to home screen for faster access</div></div>
+  <button onclick="_pwaInstall()" style="background:#fff;color:#6C3FF5;border:none;border-radius:8px;padding:7px 14px;font-weight:700;font-size:12px;cursor:pointer">Install</button>
+  <button onclick="document.getElementById('pwa-banner').style.display='none'" style="background:transparent;border:none;color:#fff;font-size:18px;cursor:pointer;padding:0 4px">&#x2715;</button>
+</div>
 <svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
   <symbol id="ip-logo-mark" viewBox="0 0 52 52">
     <defs>
@@ -4423,8 +4429,7 @@ const PAGES={
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
-    {id:'trips',icon:'📋',l:'Trips'},{id:'forecast',icon:'📅',l:'New Shipment'},
-    {id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'quality',icon:'🧪',l:'Quality'},
+    {id:'trips',icon:'📋',l:'Trips'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'quality',icon:'🧪',l:'Quality'},
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
     {id:'validation',icon:'✅',l:'Validation'},{id:'ai',icon:'🤖',l:'AI'},
@@ -4436,7 +4441,7 @@ const PAGES={
   ],
   supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
-  account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'forecast',icon:'📅',l:'New Shipment'},{id:'trips',icon:'📋',l:'My Trips'}],
+  account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
   security:     [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'security',icon:'🔒',l:'Gate & Workflow'}],
   finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -4566,7 +4571,8 @@ async function doLogin(){
     var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
     // Show dashboard instantly, silently refresh data from Supabase in background
     nav(_startPage);
-    initApp().then(function(){nav(_startPage);}).catch(function(){});
+    initApp().then(function(){nav(_startPage);_checkMaintenanceAlerts();}).catch(function(){});
+    _initPWA();
     startTemp();
     _fetchGPSSnapshot();
     setTimeout(function(){
@@ -4579,7 +4585,136 @@ async function doLogin(){
       try{_loadPMData();}catch(e){}
       try{_loadHRData();}catch(e){}
     },2500);
-    if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+    
+// ══ PWA INSTALL ══════════════════════════════════════════
+var _pwaDeferredPrompt=null;
+function _initPWA(){
+  window.addEventListener('beforeinstallprompt',function(e){
+    e.preventDefault();_pwaDeferredPrompt=e;
+    var b=document.getElementById('pwa-banner');if(b)b.style.display='flex';
+  });
+  window.addEventListener('appinstalled',function(){
+    var b=document.getElementById('pwa-banner');if(b)b.style.display='none';
+    toast('&#x2705; InstaPort installed!','ok');_pwaDeferredPrompt=null;
+  });
+}
+function _pwaInstall(){
+  if(_pwaDeferredPrompt){
+    _pwaDeferredPrompt.prompt();
+    _pwaDeferredPrompt.userChoice.then(function(){_pwaDeferredPrompt=null;});
+    var b=document.getElementById('pwa-banner');if(b)b.style.display='none';
+  }
+}
+
+// ══ MAINTENANCE ALERTS ═══════════════════════════════════
+function _checkMaintenanceAlerts(){
+  if(!Array.isArray(TRUCKS))return[];
+  var alerts=[];var today=new Date();
+  TRUCKS.forEach(function(t){
+    var odo=t.odometerKm||0,last=t.lastMaintKm||0,iv=t.maintIntervalKm||10000;
+    var pct=iv>0?(odo-last)/iv:0;
+    if(pct>=1.0)alerts.push({plate:t.plate,sev:'err',msg:'&#x1F527; '+t.plate+' maintenance OVERDUE ('+Math.round(pct*100)+'% of '+iv+' km)'});
+    else if(pct>=0.85)alerts.push({plate:t.plate,sev:'warn',msg:'&#x26A0;&#xFE0F; '+t.plate+' maintenance due soon ('+Math.round(pct*100)+'%)'});
+    if(t.calExpiry){
+      var exp=new Date(t.calExpiry),days=Math.ceil((exp-today)/864e5);
+      if(days<0)alerts.push({plate:t.plate,sev:'err',msg:'&#x1F6A8; '+t.plate+' calibration EXPIRED ('+Math.abs(days)+'d ago)'});
+      else if(days<=30)alerts.push({plate:t.plate,sev:'warn',msg:'&#x1F4C5; '+t.plate+' calibration expires in '+days+' days'});
+    }
+  });
+  S._maintAlerts=alerts;
+  if(!S.notifs)S.notifs=[];
+  S.notifs=S.notifs.filter(function(n){return !n._maintAlert;});
+  alerts.forEach(function(a){S.notifs.unshift({_maintAlert:true,sev:a.sev,msg:a.msg,ts:new Date().toLocaleString('en-GB')});});
+  var badge=document.getElementById('notif-badge');
+  if(badge){var u=(S.notifs||[]).filter(function(n){return !n.read;}).length;badge.textContent=u>0?u:'';badge.style.display=u>0?'flex':'none';}
+  return alerts;
+}
+
+// ══ AUTO-INVOICE ON TRIP COMPLETE ════════════════════════
+function _autoInvoiceOnComplete(trip){
+  if(!trip||!trip.customer||!trip.cost||+trip.cost<=0)return;
+  if(!S.invoices)S.invoices=[];
+  if(S.invoices.some(function(inv){return(inv.tripIds||[]).includes(trip.id);}))return;
+  var cfg=S.billingConfig||{};
+  var sub=+trip.cost,tax=sub*(cfg.taxRate||14)/100;
+  var due=new Date();due.setDate(due.getDate()+(cfg.paymentTermsDays||30));
+  var inv={id:(cfg.invoicePrefix||'INV')+'-'+trip.id,customer:trip.customer,
+    period:new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'}),
+    tripIds:[trip.id],subtotal:sub.toFixed(2),tax:tax.toFixed(2),
+    total:(sub+tax).toFixed(2),status:'draft',
+    dueDate:due.toISOString().slice(0,10),
+    createdAt:new Date().toLocaleString('en-GB'),createdBy:'Auto',autoGenerated:true};
+  S.invoices.unshift(inv);
+  try{localStorage.setItem('ip_invoices',JSON.stringify(S.invoices.slice(0,500)));}catch(e){}
+  setTimeout(function(){toast('&#x1F4C4; Invoice auto-created: '+trip.customer+' EGP '+inv.total,'ok');},700);
+}
+
+// ══ DIGITAL POD — PROOF OF DELIVERY ══════════════════════
+function openPOD(tripId){
+  var t=S.trips.find(function(x){return x.id===tripId;});if(!t)return;
+  openM('<div class="m-title">&#x1F4F7; Proof of Delivery</div>'+
+  '<div style="color:var(--t2);font-size:12px;margin-bottom:14px">Trip: <b>'+tripId+'</b> &mdash; '+
+  (t.customer||'')+(t.dests?' &#8594; '+t.dests:'')+
+  '</div>'+
+  '<div style="margin-bottom:14px">'+
+  '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:6px">&#x1F4F8; Delivery Photo</label>'+
+  '<input type="file" id="pod-photo" accept="image/*" capture="environment" style="font-size:12px;width:100%;padding:6px;border:1.5px solid var(--bd);border-radius:var(--r);background:var(--bg);color:var(--t)" onchange="_podPhotoPreview()"/>'+
+  '<div id="pod-img-preview" style="margin-top:8px;display:none">'+
+  '<img id="pod-img" style="max-width:100%;max-height:160px;border-radius:8px;border:1px solid var(--bd)"/></div></div>'+
+  '<div style="margin-bottom:14px">'+
+  '<label style="font-size:12px;font-weight:700;display:block;margin-bottom:6px">&#x270D;&#xFE0F; Recipient Signature</label>'+
+  '<div style="position:relative;border:2px dashed var(--bd);border-radius:8px;background:var(--bg)">'+
+  '<canvas id="pod-sig" width="500" height="140" style="width:100%;height:140px;touch-action:none;display:block;border-radius:6px;cursor:crosshair"></canvas>'+
+  '<button onclick="_podClearSig()" style="position:absolute;top:6px;right:6px;background:rgba(0,0,0,.4);color:#fff;border:none;border-radius:6px;padding:3px 10px;font-size:11px;cursor:pointer">Clear</button>'+
+  '</div></div>'+
+  '<div class="frow" style="gap:10px;margin-bottom:10px">'+
+  '<div class="fg"><label>Recipient Name</label><input id="pod-recip" placeholder="Person who received delivery"/></div>'+
+  '<div class="fg"><label>Notes</label><input id="pod-notes" placeholder="Optional delivery notes"/></div></div>'+
+  '<div class="m-foot">'+
+  '<button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+  '<button class="btn btn-primary" onclick="_submitPOD(''+tripId+'')">&#x2705; Submit POD</button>'+
+  '</div>');
+  setTimeout(function(){_podInitCanvas();},150);
+}
+function _podPhotoPreview(){
+  var files=(document.getElementById('pod-photo')||{}).files;if(!files||!files[0])return;
+  new FileReader().onload=function(e){
+    var img=document.getElementById('pod-img'),prev=document.getElementById('pod-img-preview');
+    if(img)img.src=e.target.result;if(prev)prev.style.display='block';
+  };
+  var reader=new FileReader();reader.onload=function(e){var img=document.getElementById('pod-img'),prev=document.getElementById('pod-img-preview');if(img)img.src=e.target.result;if(prev)prev.style.display='block';};reader.readAsDataURL(files[0]);
+}
+function _podInitCanvas(){
+  var c=document.getElementById('pod-sig');if(!c)return;
+  var ctx=c.getContext('2d'),drawing=false;
+  var pos=function(e){var r=c.getBoundingClientRect(),src=e.touches?e.touches[0]:e;return{x:(src.clientX-r.left)*c.width/r.width,y:(src.clientY-r.top)*c.height/r.height};};
+  c.addEventListener('mousedown',function(e){drawing=true;var p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);});
+  c.addEventListener('mousemove',function(e){if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.strokeStyle='#1e293b';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.stroke();});
+  c.addEventListener('mouseup',function(){drawing=false;});c.addEventListener('mouseleave',function(){drawing=false;});
+  c.addEventListener('touchstart',function(e){e.preventDefault();drawing=true;var p=pos(e);ctx.beginPath();ctx.moveTo(p.x,p.y);},{passive:false});
+  c.addEventListener('touchmove',function(e){e.preventDefault();if(!drawing)return;var p=pos(e);ctx.lineTo(p.x,p.y);ctx.strokeStyle='#1e293b';ctx.lineWidth=2.5;ctx.lineCap='round';ctx.stroke();},{passive:false});
+  c.addEventListener('touchend',function(){drawing=false;});
+}
+function _podClearSig(){var c=document.getElementById('pod-sig');if(c)c.getContext('2d').clearRect(0,0,c.width,c.height);}
+function _podHasSig(){var c=document.getElementById('pod-sig');if(!c)return false;var d=c.getContext('2d').getImageData(0,0,c.width,c.height).data;for(var i=3;i<d.length;i+=4){if(d[i]>10)return true;}return false;}
+function _submitPOD(tripId){
+  var t=S.trips.find(function(x){return x.id===tripId;});if(!t)return;
+  var recip=(document.getElementById('pod-recip')||{}).value||'';
+  var notes=(document.getElementById('pod-notes')||{}).value||'';
+  var photoEl=document.getElementById('pod-img');
+  var photoSrc=photoEl&&photoEl.src&&photoEl.src.startsWith('data:')?photoEl.src:null;
+  var hasSig=_podHasSig();
+  if(!photoSrc&&!hasSig){toast('Add a photo or signature to submit POD','err');return;}
+  if(!t.attachments)t.attachments=[];
+  if(photoSrc)t.attachments.push({type:'pod_photo',name:'POD Photo — '+new Date().toLocaleString('en-GB'),data:photoSrc});
+  if(hasSig){var c=document.getElementById('pod-sig');t.attachments.push({type:'pod_signature',name:'Signature: '+(recip||'Unknown'),data:c.toDataURL('image/png')});}
+  t.tl=t.tl||[];t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'POD Submitted',detail:'Recipient: '+(recip||'—')+(notes?' | '+notes:'')});
+  t.podSubmitted=true;t.podRecipient=recip;t.podNotes=notes;t.podTs=new Date().toISOString();
+  syncTrip(t);audit('POD_SUBMIT',tripId,'Recipient: '+recip);
+  closeM();toast('&#x2705; Proof of Delivery submitted!','ok');nav(S.page);
+}
+
+  if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
   }
@@ -4650,7 +4785,6 @@ const ALL_PAGES_MASTER=[
   {id:'dashboard',   icon:'📊',l:'Dashboard',        always:true},
   {id:'fleet',       icon:'🚛',l:'Fleet'},
   {id:'trips',       icon:'📋',l:'Trips'},
-  {id:'forecast',    icon:'📅',l:'New Shipment'},
   {id:'dispatch',    icon:'🚦',l:'Dispatch'},
   {id:'quality',     icon:'🧪',l:'Quality'},
   {id:'controlroom', icon:'🎛️',l:'Control Room'},
@@ -7574,7 +7708,9 @@ function rAnalytics(){
   var tab=S._anTab;
   c.innerHTML=ph('📈 Analytics & BI','Business Intelligence Dashboard',
     '<div style="display:flex;gap:8px">'+
-    '<button class="btn btn-outline btn-sm" onclick="_anExportReport()">📄 KPI Report</button>'+
+    '<button class="btn btn-primary btn-sm" onclick="_anExportRichPDF()">🖨️ PDF + Charts</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="_anExportRichExcel()">📊 Excel (Power BI)</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="_anExportReport()">📋 KPI Report</button>'+
     '</div>')+
   '<div class="tabs">'+
   ['overview','charts','sla','drivers'].map(function(t){
@@ -10797,7 +10933,9 @@ function vBtn(){return '<button class="btn btn-outline btn-sm" onclick="vT()">'+
 function vT(){S.viewMode=S.viewMode==='list'?'grid':'list';nav(S.page);}
 function fileHTML(id){return '<div style="margin-bottom:12px"><label style="font-size:12px;font-weight:700;display:block;margin-bottom:5px">&#128206; Attach File</label><input type="file" id="'+id+'" accept=".pdf,.xlsx,.jpg,.png,.docx"/></div>';}
 function getFile(id){var el=document.getElementById(id);return el&&el.files&&el.files[0]?el.files[0].name:null;}
-function compT(id){requirePwd('Complete — '+id,function(){var t=S.trips.find(function(x){return x.id===id;});if(!t)return;t.status='completed';var r=calcTripCost(t.customer,t.actualKm||t.km||0,t.type,t.condition,(t.destsArr||[]).length,0);t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Completed',detail:'EGP '+r.cost});audit('COMPLETE','',id);toast('Completed! EGP '+r.cost,'ok');nav('trips');});}
+
+function _podBtn(id){return can('all')||S.role==='driver'?'<button class="btn btn-outline btn-sm" onclick="openPOD(\''+id+'\')" style="margin-left:4px">&#x1F4F7; POD</button>':'';}
+function compT(id){requirePwd('Complete — '+id,function(){var t=S.trips.find(function(x){return x.id===id;});if(!t)return;t.status='completed';var r=calcTripCost(t.customer,t.actualKm||t.km||0,t.type,t.condition,(t.destsArr||[]).length,0);t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Completed',detail:'EGP '+r.cost});syncTrip(t);_autoInvoiceOnComplete(t);audit('COMPLETE','',id);toast('Completed! EGP '+r.cost,'ok');nav('trips');});}
 function expByCustomer(){openM('<div class="m-title">&#128202; Export by Customer</div><div class="fg" style="margin-bottom:12px"><label>Customer</label><select id="exp-cu"><option value="">All</option>'+CUSTOMERS.map(function(c){return '<option>'+c+'</option>';}).join('')+'</select></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:10px"><div class="fg"><label>From</label><input type="date" id="exp-from"/></div><div class="fg"><label>To</label><input type="date" id="exp-to"/></div></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="runExport()">&#11015; Export</button></div>');}
 function runExport(){var cu=(document.getElementById('exp-cu')||{}).value;var trips=S.trips;if(cu)trips=trips.filter(function(t){return t.customer===cu;});var rows=['ID,Customer,Type,KM,Cost,CO2,Status,Date'];trips.forEach(function(t){rows.push([t.id,t.customer,t.type,t.km||0,t.cost||0,t.co2||0,t.status,t.ts||''].join(','));});var a=document.createElement('a');a.href='data:text/csv,'+encodeURIComponent(rows.join('\n'));a.download='Report_EPX_'+(cu||'All')+'.csv';a.click();closeM();toast('Exported!','ok');}
 
@@ -15380,6 +15518,186 @@ function _anExportReport(){
   ];
   uExportAll('pdf','InstaPort KPI Report',['Metric','Value'],rows);
 }
+
+// ══ ANALYTICS — RICH PDF WITH CHARTS (Power BI style) ════════════════════
+function _anExportRichPDF(){
+  var trips=_anTrips();
+  var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);
+  var km=trips.reduce(function(s,t){return s+(+t.km||0);},0);
+  var comp=trips.filter(function(t){return t.status==='completed';}).length;
+  var period=(_anPeriod||'month').toUpperCase();
+  var ts=new Date().toLocaleString('en-GB');
+  var usr=S.user?S.user.name:'System';
+
+  // Capture live Chart.js canvases as images
+  var chartSection='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">';
+  var chartIds=[
+    {id:'an-trips-chart',title:'&#128201; Trips per Day — Last 30 Days'},
+    {id:'an-rev-chart',  title:'&#128200; Revenue Trend — 30 Days'},
+    {id:'an-cond-chart', title:'&#127777;&#65039; Condition Mix'},
+    {id:'an-sla-chart',  title:'&#9201;&#65039; SLA Compliance'},
+    {id:'an-drv-chart',  title:'&#128666; Driver Performance'}
+  ];
+  var hasCharts=false;
+  chartIds.forEach(function(ci){
+    var canvas=document.getElementById(ci.id);
+    if(canvas){
+      try{
+        var img=canvas.toDataURL('image/png');
+        chartSection+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;break-inside:avoid">'+
+          '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px">'+ci.title+'</div>'+
+          '<img src="'+img+'" style="width:100%;border-radius:6px;display:block"/></div>';
+        hasCharts=true;
+      }catch(e){}
+    }
+  });
+  chartSection+='</div>';
+
+  // Customer breakdown table
+  var custRows=CUSTOMERS.map(function(cu){
+    var ct=trips.filter(function(t){return t.customer===cu;});
+    if(!ct.length)return null;
+    var cuRev=ct.reduce(function(s,t){return s+(+t.cost||0);},0);
+    return [cu,ct.length,cuRev.toFixed(0),Math.round(cuRev/ct.length)];
+  }).filter(Boolean).sort(function(a,b){return b[1]-a[1];}).slice(0,10);
+
+  // Maintenance alerts section
+  var maintHtml='';
+  var alerts=S._maintAlerts||[];
+  if(alerts.length){
+    maintHtml='<div style="margin-bottom:20px"><div style="font-size:12px;font-weight:800;border-bottom:2px solid #EF4444;padding-bottom:6px;margin-bottom:10px;color:#EF4444">&#128680; Maintenance Alerts ('+alerts.length+')</div>'+
+      alerts.map(function(a){return '<div style="padding:7px 10px;margin-bottom:4px;border-radius:6px;font-size:9px;background:'+(a.sev==='err'?'#FEF2F2':'#FFFBEB')+';border-left:3px solid '+(a.sev==='err'?'#EF4444':'#F59E0B')+'">'+a.msg+'</div>';}).join('')+'</div>';
+  }
+
+  var pdfHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>InstaPort Analytics</title>'+
+  '<style>*{box-sizing:border-box;margin:0;padding:0}'+
+  'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#1e293b;background:#fff}'+
+  '.cover{background:linear-gradient(135deg,#0F0C29,#4F46E5,#06B6D4);color:#fff;padding:36px 32px}'+
+  '.cover h1{font-size:26px;font-weight:900;margin-bottom:4px}'+
+  '.cover .sub{font-size:11px;opacity:.75}'+
+  '.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px 32px}'+
+  '.kpi{border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;background:#fafafa}'+
+  '.kpi .n{font-size:20px;font-weight:900;color:#6C3FF5}'+
+  '.kpi .l{font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.7px;margin-top:2px}'+
+  '.section{padding:0 32px;margin-bottom:20px}'+
+  '.section-title{font-size:12px;font-weight:800;border-bottom:2px solid #6C3FF5;padding-bottom:5px;margin-bottom:12px}'+
+  'table{width:100%;border-collapse:collapse;font-size:9px}'+
+  'th{background:#4F46E5;color:#fff;padding:6px 8px;text-align:left;font-weight:700}'+
+  'td{padding:5px 8px;border-bottom:1px solid #e2e8f0}'+
+  'tr:nth-child(even) td{background:#f8fafc}'+
+  '.footer{background:#f1f5f9;padding:12px 32px;display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;border-top:1px solid #e2e8f0}'+
+  '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:10mm}}'+
+  '</style></head><body>'+
+  '<div class="cover"><h1>&#128200; Analytics &amp; BI Report</h1>'+
+  '<div class="sub">Period: '+period+' &nbsp;&bull;&nbsp; Generated: '+ts+' &nbsp;&bull;&nbsp; '+usr+'</div></div>'+
+  '<div class="kpis">'+
+  '<div class="kpi"><div class="n">'+trips.length+'</div><div class="l">Total Trips</div></div>'+
+  '<div class="kpi"><div class="n">'+comp+'</div><div class="l">Completed</div></div>'+
+  '<div class="kpi"><div class="n">EGP '+Math.round(rev).toLocaleString()+'</div><div class="l">Revenue</div></div>'+
+  '<div class="kpi"><div class="n">'+Math.round(km).toLocaleString()+' km</div><div class="l">Distance</div></div>'+
+  '<div class="kpi"><div class="n">'+Math.round(co2)+' kg</div><div class="l">CO&#8322; Emissions</div></div>'+
+  '<div class="kpi"><div class="n">'+TRUCKS.filter(function(t){return t.valid;}).length+'/'+TRUCKS.length+'</div><div class="l">Fleet Active</div></div>'+
+  '</div>'+
+  (hasCharts?'<div class="section"><div class="section-title">&#128200; Performance Charts</div>'+chartSection+'</div>':
+    '<div class="section"><div style="background:#FEF9C3;border:1px solid #FCD34D;border-radius:8px;padding:12px;font-size:10px;color:#92400E">&#128161; Open the Analytics page and wait for charts to load before exporting PDF — charts will then appear here.</div></div>')+
+  (custRows.length?'<div class="section"><div class="section-title">&#127970; Top Customers</div>'+
+  '<table><thead><tr><th>Customer</th><th>Trips</th><th>Revenue (EGP)</th><th>Avg/Trip</th></tr></thead><tbody>'+
+  custRows.map(function(r){return '<tr><td><b>'+r[0]+'</b></td><td>'+r[1]+'</td><td>'+Number(r[2]).toLocaleString()+'</td><td>'+Number(r[3]).toLocaleString()+'</td></tr>';}).join('')+
+  '</tbody></table></div>':'')+
+  maintHtml+
+  '<div class="footer"><span>InstaPort TMS &#8212; Confidential Report</span><span>'+ts+'</span></div>'+
+  '<scr'+'ipt>window.onload=function(){window.print();};</scr'+'ipt></body></html>';
+
+  var w=null;try{w=window.open('','_blank','width=1050,height=820');}catch(e){}
+  if(w&&!w.closed){w.document.write(pdfHtml);w.document.close();toast('&#x1F5A8;&#xFE0F; Analytics PDF — print / Save as PDF','ok');}
+  else{var blob=new Blob([pdfHtml],{type:'text/html;charset=utf-8'});var url=URL.createObjectURL(blob);var a=document.createElement('a');a.href=url;a.download='InstaPort_Analytics.html';document.body.appendChild(a);a.click();document.body.removeChild(a);setTimeout(function(){URL.revokeObjectURL(url);},8000);toast('&#x1F4CA; Downloaded — open in browser and print to PDF','ok');}
+}
+
+function _anExportRichExcel(){
+  var trips=_anTrips();var ts=new Date().toLocaleString('en-GB');
+  var esc=function(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');};
+  var s=function(v,sid){return '<Cell'+(sid?' ss:StyleID="'+sid+'"':'')+'><Data ss:Type="String">'+esc(String(v==null?'':v))+'</Data></Cell>';};
+  var n=function(v,sid){return '<Cell'+(sid?' ss:StyleID="'+sid+'"':'')+'><Data ss:Type="Number">'+esc(String(isNaN(+v)?0:+v))+'</Data></Cell>';};
+  var R=function(cells){return '<Row>'+cells+'</Row>
+';};
+
+  var rev=trips.reduce(function(a,t){return a+(+t.cost||0);},0);
+  var km=trips.reduce(function(a,t){return a+(+t.km||0);},0);
+  var co2=trips.reduce(function(a,t){return a+(+t.co2||0);},0);
+
+  // KPI Sheet
+  var sh1=R(s('InstaPort TMS — Analytics Report','ti'))+R(s('Period: '+(_anPeriod||'month').toUpperCase()+' | '+ts,'me'))+'<Row/>
+'+
+    R(s('Metric','hd')+s('Value','hd'))+
+    R(s('Total Trips')+n(trips.length))+R(s('Completed')+n(trips.filter(function(t){return t.status==='completed';}).length))+
+    R(s('Revenue (EGP)')+n(rev.toFixed(2)))+R(s('Total KM')+n(km.toFixed(0)))+
+    R(s('CO2 kg')+n(co2.toFixed(0)))+R(s('Avg Revenue/Trip')+n(trips.length?(rev/trips.length).toFixed(0):0))+
+    R(s('Active Trucks')+n(TRUCKS.filter(function(t){return t.valid;}).length))+R(s('Fleet Size')+n(TRUCKS.length));
+
+  // Trips Sheet (Power BI source)
+  var sh2=R(s('Trip ID','hd')+s('Date','hd')+s('Customer','hd')+s('Type','hd')+s('Condition','hd')+s('From','hd')+s('Destinations','hd')+s('KM','hd')+s('Cost EGP','hd')+s('CO2 kg','hd')+s('Status','hd')+s('Truck','hd')+s('Driver','hd')+s('Created By','hd'));
+  sh2+=trips.map(function(t){return R(s(t.id)+s((t.ts||'').slice(0,10))+s(t.customer||'')+s(t.type||'')+s(t.condition||'')+s(t.from||'')+s((t.destsArr||[]).join(', '))+n(t.km||0)+n(t.cost||0)+n(t.co2||0)+s(t.status||'')+s(t.truck||'')+s(t.driver||'')+s(t.createdBy||''));}).join('');
+
+  // Customer Revenue Sheet
+  var sh3=R(s('Customer','hd')+s('Trips','hd')+s('Revenue EGP','hd')+s('Avg Cost','hd')+s('Total KM','hd')+s('CO2 kg','hd'));
+  sh3+=CUSTOMERS.map(function(cu){
+    var ct=trips.filter(function(t){return t.customer===cu;});if(!ct.length)return '';
+    var cr=ct.reduce(function(a,t){return a+(+t.cost||0);},0);
+    var ck=ct.reduce(function(a,t){return a+(+t.km||0);},0);
+    var cc=ct.reduce(function(a,t){return a+(+t.co2||0);},0);
+    return R(s(cu)+n(ct.length)+n(cr.toFixed(2))+n(ct.length?(cr/ct.length).toFixed(0):0)+n(ck.toFixed(0))+n(cc.toFixed(0)));
+  }).join('');
+
+  // Daily Trend Sheet (for Power BI charts)
+  var now2=new Date();
+  var sh4=R(s('Date','hd')+s('Trips','hd')+s('Revenue EGP','hd')+s('Avg Cost','hd')+s('Completed','hd'));
+  for(var i=29;i>=0;i--){
+    var d2=new Date(now2);d2.setDate(d2.getDate()-i);
+    var ds2=d2.toISOString().slice(0,10);
+    var dt2=trips.filter(function(t){return(t.ts||'').slice(0,10)===ds2;});
+    var dr2=dt2.reduce(function(a,t){return a+(+t.cost||0);},0);
+    var dc2=dt2.filter(function(t){return t.status==='completed';}).length;
+    sh4+=R(s(ds2)+n(dt2.length)+n(dr2.toFixed(0))+n(dt2.length?Math.round(dr2/dt2.length):0)+n(dc2));
+  }
+
+  // Fleet Sheet
+  var sh5=R(s('Plate','hd')+s('Type','hd')+s('Manufacturer','hd')+s('Cooling','hd')+s('Status','hd')+s('Cal Expiry','hd')+s('Odometer KM','hd')+s('Last Maint KM','hd')+s('Interval KM','hd')+s('Flagged','hd'));
+  sh5+=TRUCKS.map(function(t){return R(s(t.plate)+s(t.type||'')+s(t.mfr||'')+s(t.cooling||'')+s(t.status||'')+s(t.calExpiry||'')+n(t.odometerKm||0)+n(t.lastMaintKm||0)+n(t.maintIntervalKm||10000)+s(t.flagged?'Yes':'No'));}).join('');
+
+  var styles='<Styles>'+
+    '<Style ss:ID="hd"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#4F46E5" ss:Pattern="Solid"/><Alignment ss:WrapText="0"/></Style>'+
+    '<Style ss:ID="ti"><Font ss:Bold="1" ss:Size="13"/><Interior ss:Color="#EEF2FF" ss:Pattern="Solid"/></Style>'+
+    '<Style ss:ID="me"><Font ss:Italic="1" ss:Color="#64748B"/></Style>'+
+    '<Style ss:ID="num"><NumberFormat ss:Format="#,##0.00"/></Style>'+
+    '</Styles>';
+
+  var xml='<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+'+
+    '<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet" xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet" xmlns:x="urn:schemas-microsoft-com:office:excel">
+'+
+    styles+'
+'+
+    '<Worksheet ss:Name="KPI Summary"><Table>'+sh1+'</Table></Worksheet>
+'+
+    '<Worksheet ss:Name="Trips (Power BI Source)"><Table>'+sh2+'</Table></Worksheet>
+'+
+    '<Worksheet ss:Name="Revenue by Customer"><Table>'+sh3+'</Table></Worksheet>
+'+
+    '<Worksheet ss:Name="Daily Trend (Charts)"><Table>'+sh4+'</Table></Worksheet>
+'+
+    '<Worksheet ss:Name="Fleet Status"><Table>'+sh5+'</Table></Worksheet>
+'+
+    '</Workbook>';
+
+  var a2=document.createElement('a');
+  a2.href='data:application/vnd.ms-excel;charset=utf-8,'+encodeURIComponent(xml);
+  a2.download='InstaPort_Analytics_PowerBI_'+(_anPeriod||'month')+'.xls';
+  document.body.appendChild(a2);a2.click();document.body.removeChild(a2);
+  toast('&#x1F4CA; Excel exported — 5 sheets ready for Power BI','ok');
+}
+
 
 // ══════════════════════════════════════════════════
 // TIER 9 — PREVENTIVE MAINTENANCE SCHEDULER
