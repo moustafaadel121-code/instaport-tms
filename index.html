@@ -4283,7 +4283,7 @@ let USERS=[
 const _DEMO_USERS=USERS.map(function(u){return Object.assign({},u);});
 const RL={admin:'Admin',supervisor:'Supervisor',quality:'Quality',account_manager:'Acct Manager',
   control_room:'Control Room',security:'Security',finance:'Finance',
-  maintenance:'Maintenance',validation:'Validation',driver:'Driver'};
+  maintenance:'Maintenance',validation:'Validation',driver:'Driver',client:'Client Portal'};
 let CUSTOMERS=[];
 // ══════════════════════════════════════════════════
 // TRUCKS DATA
@@ -4437,9 +4437,9 @@ const PAGES={
     {id:'esg',icon:'🌿',l:'ESG Report'},
     {id:'admin_mgmt',icon:'⚙️',l:'Admin'},{id:'analytics',icon:'📈',l:'Analytics'},
     {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'},
-    {id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'},{id:'hr',icon:'👤',l:'HR & Compliance'}
+    {id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -4447,7 +4447,8 @@ const PAGES={
   finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
   maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'},{id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'}],
   validation:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'validation',icon:'✅',l:'Validation'}],
-  driver:       [{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}]
+  driver:       [{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}],
+  client:       [{id:'client_portal',icon:'📦',l:'My Shipments'},{id:'billing',icon:'📄',l:'My Invoices'}]
 };
 // ══════════════════════════════════════════════════
 // AUTH & PASSWORD VERIFICATION
@@ -4571,7 +4572,7 @@ async function doLogin(){
     var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
     // Show dashboard instantly, silently refresh data from Supabase in background
     nav(_startPage);
-    initApp().then(function(){nav(_startPage);_checkMaintenanceAlerts();}).catch(function(){});
+    initApp().then(function(){var _sp=S.role==='client'?'client_portal':_startPage;nav(_sp);_checkMaintenanceAlerts();}).catch(function(){});
     _initPWA();
     startTemp();
     _fetchGPSSnapshot();
@@ -4714,6 +4715,193 @@ function _submitPOD(tripId){
   closeM();toast('&#x2705; Proof of Delivery submitted!','ok');nav(S.page);
 }
 
+  
+// ══ FLEET MAP ══════════════════════════════════════════════
+var _fleetMapInstance = null;
+function rFleetMap(){
+  var c = document.getElementById('content');
+  if(!can('all') && !can('view_trips')){
+    c.innerHTML='<div class="card" style="text-align:center;padding:60px">Access restricted</div>';return;
+  }
+  c.innerHTML = ph('🗺️ Fleet Map','Live fleet & trip activity overview',
+    '<button class="btn btn-outline btn-sm" onclick="rFleetMap()">&#x27F3; Refresh</button>')+
+  '<div style="margin-bottom:12px;display:flex;gap:8px;flex-wrap:wrap">'+
+    ['all','active','completed','awaiting_truck'].map(function(f){
+      return '<button class="btn btn-sm" id="fm-f-'+f+'" onclick="_fmFilter(''+f+'')" style="border-radius:20px;background:'+(f==='all'?'#6C3FF5':'var(--bg)')+';color:'+(f==='all'?'#fff':'var(--t)')+';border:1.5px solid '+(f==='all'?'#6C3FF5':'var(--bd)')+'">'+
+        {all:'All Trips',active:'&#x1F7E2; Active',completed:'&#x2705; Completed',awaiting_truck:'&#x23F3; Awaiting'}[f]+'</button>';
+    }).join('')+
+  '</div>'+
+  '<div id="fleet-map" style="height:520px;border-radius:14px;border:1px solid var(--bd);overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.15)"></div>'+
+  '<div id="fm-legend" style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--t2)">'+
+    '<span>🟢 Active</span><span>🔵 Awaiting</span><span>⚪ Completed</span><span>🔴 Overdue</span>'+
+  '</div>';
+  setTimeout(function(){_fmInit('all');}, 100);
+}
+window._fmFilter = function(filter){
+  ['all','active','completed','awaiting_truck'].forEach(function(f){
+    var btn=document.getElementById('fm-f-'+f);
+    if(!btn)return;
+    btn.style.background=f===filter?'#6C3FF5':'var(--bg)';
+    btn.style.color=f===filter?'#fff':'var(--t)';
+    btn.style.borderColor=f===filter?'#6C3FF5':'var(--bd)';
+  });
+  _fmInit(filter);
+};
+function _fmInit(filter){
+  if(!window.L){toast('Map library loading...','warn');return;}
+  var mapEl=document.getElementById('fleet-map');if(!mapEl)return;
+  if(_fleetMapInstance){_fleetMapInstance.remove();_fleetMapInstance=null;}
+  _fleetMapInstance=L.map('fleet-map').setView([30.0444,31.2357],7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{
+    attribution:'&copy; OpenStreetMap contributors',maxZoom:19
+  }).addTo(_fleetMapInstance);
+  // Egypt cities approximate coords
+  var CITY_COORDS={
+    'cairo':[30.0444,31.2357],'alexandria':[31.2001,29.9187],'giza':[30.0131,31.2089],
+    'luxor':[25.6872,32.6396],'aswan':[24.0889,32.8998],'suez':[29.9668,32.5498],
+    'ismailia':[30.5965,32.2715],'mansoura':[31.0364,31.3807],'tanta':[30.7865,31.0004],
+    'portsaid':[31.2565,32.2841],'hurghada':[27.2574,33.8129],'sharmelsheikh':[27.9158,34.3300],
+    '10th of ramadan':[30.3,31.7833],'6th of october':[29.9333,30.9167],'obour':[30.2411,31.4708],
+    'badr':[30.1459,31.7311],'sohag':[26.5569,31.6948],'minya':[28.1099,30.7503],
+    'benisuef':[29.0661,31.0994],'fayoum':[29.3084,30.8428],'zagazig':[30.5877,31.5020],
+    'damietta':[31.4165,31.8133],'kafrelshiekh':[31.1107,30.9388],'menofia':[30.5833,30.9833],
+    'beheira':[30.8480,30.3436],'gharbia':[30.8783,31.1612],'qena':[26.1551,32.7160],
+    'matrouh':[31.3543,27.2373],'newcairo':[30.0274,31.4913],'nasr':[30.0626,31.3219]
+  };
+  function getCoords(loc){
+    if(!loc)return null;
+    var l=loc.toLowerCase().replace(/[s-_.]/g,'');
+    for(var k in CITY_COORDS){if(l.includes(k.replace(/s/g,'')))return CITY_COORDS[k];}
+    // fallback: random near Cairo with jitter so pins don't stack
+    return[30.0444+(Math.random()-.5)*.5,31.2357+(Math.random()-.5)*.5];
+  }
+  var trips=(S.trips||[]).filter(function(t){
+    if(filter==='all')return true;
+    return t.status===filter;
+  });
+  var markers=[];
+  trips.forEach(function(t){
+    var from=t.from||t.origin||'Cairo';
+    var to=t.dests||t.to||t.customer||'Cairo';
+    var fromC=getCoords(from);
+    var toC=getCoords(to.split(',')[0].trim());
+    if(!fromC||!toC)return;
+    var col=t.status==='active'?'#10B981':t.status==='completed'?'#6B7280':t.status==='awaiting_truck'?'#3B82F6':'#EF4444';
+    var makeMk=function(coord,label,isTo){
+      var icon=L.divIcon({className:'',html:
+        '<div style="width:14px;height:14px;border-radius:50%;background:'+col+';border:2.5px solid #fff;box-shadow:0 2px 8px rgba(0,0,0,.4)'+(isTo?';transform:rotate(45deg);border-radius:3px':'')+'"></div>',
+        iconSize:[14,14],iconAnchor:[7,7]});
+      var mk=L.marker(coord,{icon:icon}).addTo(_fleetMapInstance);
+      mk.bindPopup('<div style="min-width:180px"><b>'+t.id+'</b><br>'+
+        '<span style="color:#6C3FF5">'+t.customer+'</span><br>'+
+        (isTo?'📍 Delivery: ':'&#x1F680; Pickup: ')+label+'<br>'+
+        'Status: <b style="color:'+col+'">'+t.status+'</b><br>'+
+        (t.truck?'🚛 '+t.truck:'')+'<br>'+
+        (t.cost?'💰 EGP '+t.cost:'')+'</div>');
+      return mk;
+    };
+    markers.push(makeMk(fromC, from, false));
+    markers.push(makeMk(toC, to, true));
+    // Draw route line
+    L.polyline([fromC,toC],{color:col,weight:2,opacity:0.5,dashArray:t.status==='completed'?null:'6,4'}).addTo(_fleetMapInstance);
+  });
+  if(markers.length>0){
+    try{
+      var group=L.featureGroup(markers);
+      _fleetMapInstance.fitBounds(group.getBounds().pad(0.15));
+    }catch(e){}
+  }
+  var activeCnt=(S.trips||[]).filter(function(t){return t.status==='active';}).length;
+  var awaitCnt=(S.trips||[]).filter(function(t){return t.status==='awaiting_truck';}).length;
+  toast('🗺️ Map: '+trips.length+' trips shown ('+activeCnt+' active, '+awaitCnt+' awaiting)','ok');
+}
+
+// ══ CLIENT PORTAL ══════════════════════════════════════════
+function rClientPortal(){
+  var c=document.getElementById('content');
+  // Determine which customer account this client belongs to
+  var custAcc=(S.user&&S.user.customerAccount)||S.user&&S.user.name;
+  var myTrips=(S.trips||[]).filter(function(t){return t.customer===custAcc;});
+  var myInvoices=(S.invoices||[]).filter(function(inv){return inv.customer===custAcc;});
+  var totalRev=myTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var active=myTrips.filter(function(t){return t.status==='active';}).length;
+  var comp=myTrips.filter(function(t){return t.status==='completed';}).length;
+  var pending=myInvoices.filter(function(i){return i.status==='draft'||i.status==='sent';}).length;
+  c.innerHTML=ph('📦 My Shipments','Welcome, '+custAcc,'<span style="font-size:11px;color:var(--t2)">Read-only customer portal</span>')+
+  '<div class="kpi-row">'+
+    kpiBox('📋','purple',myTrips.length,'Total Shipments',comp+' completed')+
+    kpiBox('🟢','green',active,'Active Trips','In progress')+
+    kpiBox('📄','orange',pending,'Pending Invoices','Awaiting payment')+
+    kpiBox('💰','cyan','EGP '+Math.round(totalRev/1000)+'K','Total Spend',myTrips.length+' trips')+
+  '</div>'+
+  // Active trips
+  (active>0?'<div class="card" style="margin-bottom:14px">'+
+  '<div style="font-weight:700;font-size:14px;margin-bottom:12px">🟢 Active Shipments</div>'+
+  myTrips.filter(function(t){return t.status==='active';}).map(function(t){
+    return '<div style="padding:12px;border:1px solid var(--bd);border-radius:10px;margin-bottom:8px;background:var(--bg)">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center">'+
+      '<div><div style="font-weight:700;font-size:13px">'+t.id+'</div>'+
+      '<div style="font-size:11px;color:var(--t2)">'+(t.dests||t.from||'')+(t.km?' &bull; '+t.km+' km':'')+
+      (t.driver?' &bull; Driver: '+t.driver:'')+'</div></div>'+
+      '<span style="background:#10B981;color:#fff;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:700">🟢 ACTIVE</span></div>'+
+      (t.tl&&t.tl.length?'<div style="margin-top:8px;font-size:11px;color:var(--t2);background:var(--surf);padding:6px 10px;border-radius:6px">📌 '+t.tl[t.tl.length-1].action+' &mdash; '+t.tl[t.tl.length-1].ts+'</div>':'')+
+      (t.podSubmitted?'<div style="margin-top:6px;font-size:11px;color:#10B981;font-weight:600">✅ POD Submitted &mdash; Recipient: '+(t.podRecipient||'—')+'</div>':'')+
+      '</div>';
+  }).join('')+'</div>':'') +
+  // Recent trips table
+  '<div class="card" style="margin-bottom:14px">'+
+  '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">'+
+  '<div style="font-weight:700;font-size:14px">📋 All Shipments</div>'+
+  '<button class="btn btn-outline btn-sm" onclick="_cpExport()">&#x{1F4E5} Export CSV</button></div>'+
+  (myTrips.length===0?'<div style="text-align:center;padding:30px;color:var(--t2)">No shipments found for your account</div>':
+  '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
+  '<thead><tr style="border-bottom:2px solid var(--bd)">'+
+    ['Trip ID','Route','Type','Status','KM','Cost','Date'].map(function(h){
+      return '<th style="text-align:left;padding:8px 10px;color:var(--t2);font-weight:600">'+h+'</th>';
+    }).join('')+
+  '</tr></thead><tbody>'+
+  myTrips.slice(0,50).map(function(t,i){
+    var sc={active:'#10B981',completed:'#6C3FF5',awaiting_truck:'#F97316',cancelled:'#EF4444'}[t.status]||'#6B7280';
+    return '<tr style="border-bottom:1px solid var(--bd);'+(i%2===0?'background:var(--bg)':'')+'">'+
+      '<td style="padding:8px 10px;font-weight:700">'+t.id+'</td>'+
+      '<td style="padding:8px 10px;color:var(--t2)">'+(t.dests||t.from||'—')+'</td>'+
+      '<td style="padding:8px 10px">'+(t.type||'—')+'</td>'+
+      '<td style="padding:8px 10px"><span style="background:'+sc+';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+t.status+'</span></td>'+
+      '<td style="padding:8px 10px">'+(t.km||'—')+'</td>'+
+      '<td style="padding:8px 10px;font-weight:700;color:#6C3FF5">'+(t.cost?'EGP '+t.cost:'—')+'</td>'+
+      '<td style="padding:8px 10px;color:var(--t2)">'+(t.ts?new Date(t.ts).toLocaleDateString('en-GB'):'—')+'</td>'+
+    '</tr>';
+  }).join('')+'</tbody></table></div>')+
+  '</div>'+
+  // Invoices
+  '<div class="card">'+
+  '<div style="font-weight:700;font-size:14px;margin-bottom:12px">📄 My Invoices</div>'+
+  (myInvoices.length===0?'<div style="text-align:center;padding:30px;color:var(--t2)">No invoices yet</div>':
+  myInvoices.slice(0,20).map(function(inv){
+    var sc={draft:'#F97316',sent:'#3B82F6',paid:'#10B981',overdue:'#EF4444'}[inv.status]||'#6B7280';
+    return '<div style="display:flex;justify-content:space-between;align-items:center;padding:12px;border:1px solid var(--bd);border-radius:10px;margin-bottom:8px;background:var(--bg)">'+
+      '<div><div style="font-weight:700">'+inv.id+'</div>'+
+      '<div style="font-size:11px;color:var(--t2)">Period: '+inv.period+' &bull; Due: '+(inv.dueDate||'—')+'</div></div>'+
+      '<div style="text-align:right"><div style="font-weight:800;color:#6C3FF5;font-size:15px">EGP '+inv.total+'</div>'+
+      '<span style="background:'+sc+';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+inv.status.toUpperCase()+'</span></div>'+
+    '</div>';
+  }).join(''))+
+  '</div>';
+}
+window._cpExport=function(){
+  var custAcc=(S.user&&S.user.customerAccount)||S.user&&S.user.name;
+  var rows=(S.trips||[]).filter(function(t){return t.customer===custAcc;}).map(function(t){
+    return [t.id,t.customer,t.type||'',t.status,t.km||'',t.cost||'',t.ts?new Date(t.ts).toLocaleDateString('en-GB'):'',t.dests||''];
+  });
+  var csv='Trip ID,Customer,Type,Status,KM,Cost,Date,Route
+'+rows.map(function(r){return r.map(function(v){return '"'+String(v).replace(/"/g,'""')+'"';}).join(',');}).join('
+');
+  var blob=new Blob([csv],{type:'text/csv'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download='MyShipments_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
+  toast('📥 CSV exported','ok');
+};
+
   if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
@@ -4805,7 +4993,9 @@ const ALL_PAGES_MASTER=[
   {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'},
   {id:'pm_schedule', icon:'📅', l:'PM Scheduler'},
   {id:'vendors',     icon:'🏪', l:'Vendors'},
-  {id:'hr',          icon:'👤', l:'HR & Compliance'}
+  {id:'hr',          icon:'👤', l:'HR & Compliance'},
+  {id:'client_portal',icon:'📦', l:'My Shipments'},
+  {id:'fleet_map',    icon:'🗺', l:'Fleet Map'}
 ];
 
 // Returns the current role's allowed page list (admin-overridden or default)
@@ -4855,7 +5045,7 @@ function buildSB(){
     '</div>';
 }
 function nav(page){
-  _destroyDashMap();_destroyTripMap();
+  _destroyDashMap();_destroyTripMap();if(_fleetMapInstance){_fleetMapInstance.remove();_fleetMapInstance=null;}
   _closeMobileSidebar(); // close mobile sidebar on navigation
   // ── Navigation guard ──────────────────────────────
   // Admin always passes; others must have the page in their allowed list
@@ -4885,7 +5075,7 @@ function nav(page){
   var c=document.getElementById('content');
   c.style.animation='none';c.offsetHeight;
   c.innerHTML='';
-  var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,
+  var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,fleet_map:rFleetMap,client_portal:rClientPortal,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
     nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
@@ -7463,11 +7653,15 @@ function _anUpdateKpi(trips){
   var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);
   var km=trips.reduce(function(s,t){return s+(+t.km||0);},0);
   var el=document.getElementById('an-kpi');
+  var cpkm=km>0?(rev/km).toFixed(1):0;
+  var onTimeTrips=trips.filter(function(t){return t.status==='completed'&&!t.slaBreached;}).length;
+  var onTimePct=trips.length>0?Math.round(onTimeTrips/trips.length*100):0;
   if(el)el.innerHTML=
     kpiBox('&#128203;','purple',trips.length,'Trips','Completed')+
     kpiBox('&#128176;','green','EGP '+Math.round(rev/1000)+'K','Revenue',trips.length+' trips')+
-    kpiBox('&#127807;','cyan',co2.toFixed(0),'CO₂ kg','')+
-    kpiBox('&#128648;','orange',Math.round(km/1000)+'K','Total KM','');
+    kpiBox('⏱','cyan',onTimePct+'%','On-Time Rate',onTimeTrips+' on time')+
+    kpiBox('&#128648;','orange',Math.round(km/1000)+'K','Total KM','')+
+    kpiBox('💸','red','EGP '+cpkm,'/km Avg','Cost efficiency');
 }
 function _anRenderCust(trips){
   var el=document.getElementById('an-cust-body');if(!el)return;
@@ -8994,8 +9188,8 @@ function rAdminUsers(){
   USERS.map(function(u){return '<tr><td style="font-weight:700">'+u.id+'</td><td>'+u.name+'</td><td><span class="tag tag-info">'+RL[u.role]+'</span></td><td>'+(u.active===false?'<span class="tag tag-hold">Inactive</span>':'<span class="tag tag-ok">Active</span>')+'</td>'+
   '<td style="display:flex;gap:5px"><button class="btn btn-outline btn-sm" onclick="editUser(\''+u.id+'\')">Edit</button><button class="btn btn-danger btn-sm" onclick="resetPw(\''+u.id+'\')">Reset PIN</button>'+(u.active===false?'<button class="btn btn-success btn-sm" onclick="toggleUser(\''+u.id+'\')">Activate</button>':'<button class="btn btn-outline btn-sm" onclick="toggleUser(\''+u.id+'\')">Deactivate</button>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';
 }
-function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
-async function addUser(){var id=(document.getElementById('nu-id')||{}).value;var name=(document.getElementById('nu-name')||{}).value;var pin=(document.getElementById('nu-pin')||{}).value;var role=(document.getElementById('nu-role')||{}).value;if(!id||!name||!pin||!role){toast('Fill all fields','err');return;}if(USERS.find(function(u){return u.id===id;})){toast('ID exists','err');return;}var email=(document.getElementById('nu-email')||{}).value||'';USERS.push({id:id,name:name,pin:pin,role:role,email:email,active:true});audit('ADD_USER',name+' ('+role+')','');closeM();toast('User added!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:id,tenant_id:_tenantId,name:name,pin:pin,role:role,email:email,active:true});}catch(e){console.error('addUser sync',e);}}}
+function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role" onchange="document.getElementById('nu-cust-row').style.display=this.value==='client'?'block':'none'"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="fg f1" id="nu-cust-row" style="display:none"><label>Customer Account <span style="color:var(--t3);font-size:10px">(required for Client role)</span></label><input id="nu-cust" placeholder="Must match a Customer name exactly"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
+async function addUser(){var id=(document.getElementById('nu-id')||{}).value;var name=(document.getElementById('nu-name')||{}).value;var pin=(document.getElementById('nu-pin')||{}).value;var role=(document.getElementById('nu-role')||{}).value;if(!id||!name||!pin||!role){toast('Fill all fields','err');return;}if(USERS.find(function(u){return u.id===id;})){toast('ID exists','err');return;}var email=(document.getElementById('nu-email')||{}).value||'';var custAcc=(document.getElementById('nu-cust')||{}).value||'';if(role==='client'&&!custAcc){toast('Customer Account required for Client role','err');return;}var uObj={id:id,name:name,pin:pin,role:role,email:email,active:true};if(custAcc)uObj.customerAccount=custAcc;USERS.push(uObj);audit('ADD_USER',name+' ('+role+')','');closeM();toast('User added!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:id,tenant_id:_tenantId,name:name,pin:pin,role:role,email:email,active:true});}catch(e){console.error('addUser sync',e);}}}
 function editUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;openM('<div class="m-title">Edit — '+u.name+'</div><div class="fg f1"><label>Name</label><input id="eu-name" value="'+u.name+'"/></div><div class="fg f1"><label>Role</label><select id="eu-role">'+Object.keys(RL).map(function(k){return '<option value="'+k+'"'+(u.role===k?' selected':'')+'>'+RL[k]+'</option>';}).join('')+'</select></div><div class="fg f1"><label>Email</label><input id="eu-email" value="'+(u.email||'')+'"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="saveUser(\''+uid+'\')">Save</button><button class="btn btn-danger" onclick="delUser(\''+uid+'\')">Remove</button></div>');}
 async function saveUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.name=(document.getElementById('eu-name')||{}).value||u.name;u.role=(document.getElementById('eu-role')||{}).value||u.role;u.email=(document.getElementById('eu-email')||{}).value;audit('EDIT_USER',uid,'');closeM();toast('Updated!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({name:u.name,role:u.role,email:u.email}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('saveUser sync',e);}}}
 async function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('delUser sync',e);}}}
