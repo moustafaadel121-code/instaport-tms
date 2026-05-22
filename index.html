@@ -15993,6 +15993,60 @@ function _anExportReport(){
 
 // ══ ANALYTICS — RICH PDF WITH CHARTS (Power BI style) ════════════════════
 function _anExportRichPDF(){
+  // If analytics page not loaded at all, navigate to it first then retry
+  var _allChartIds=['an-trips-chart','an-rev-chart','an-cond-chart','an-sla-donut','an-sla-bar','an-driver-chart','an-cust-chart','an-fleet-chart'];
+  var _anyCanvas=_allChartIds.some(function(id){return !!document.getElementById(id);});
+  if(!_anyCanvas){
+    rAnalytics();
+    setTimeout(function(){_anExportRichPDF();},2000);
+    return;
+  }
+  // Charts are tab-specific — visit each tab to capture all charts
+  var _originalTab=S._anTab||'overview';
+  var _tabCharts={
+    'overview':['an-cust-chart','an-fleet-chart'],
+    'charts':  ['an-trips-chart','an-rev-chart','an-cond-chart'],
+    'sla':     ['an-sla-donut','an-sla-bar'],
+    'drivers': ['an-driver-chart']
+  };
+  var _captured={};
+  // Capture whatever charts are already in DOM right now
+  _allChartIds.forEach(function(id){
+    var cv=document.getElementById(id);
+    if(cv){try{_captured[id]=cv.toDataURL('image/png');}catch(e){}}
+  });
+  // Find tabs whose charts are still missing
+  var _tabsToVisit=Object.keys(_tabCharts).filter(function(tab){
+    return _tabCharts[tab].some(function(id){return !_captured[id];});
+  });
+  function _visitTab(idx){
+    if(idx>=_tabsToVisit.length){
+      // Restore original tab, then build PDF
+      S._anTab=_originalTab;
+      _anRebuild();
+      setTimeout(function(){
+        _allChartIds.forEach(function(id){
+          var cv=document.getElementById(id);
+          if(cv&&!_captured[id]){try{_captured[id]=cv.toDataURL('image/png');}catch(e){}}
+        });
+        _anBuildPDF(_captured);
+      },500);
+      return;
+    }
+    S._anTab=_tabsToVisit[idx];
+    _anRebuild();
+    setTimeout(function(){
+      _tabCharts[_tabsToVisit[idx]].forEach(function(id){
+        var cv=document.getElementById(id);
+        if(cv){try{_captured[id]=cv.toDataURL('image/png');}catch(e){}}
+      });
+      _visitTab(idx+1);
+    },700);
+  }
+  if(_tabsToVisit.length>0){toast('⏳ Capturing charts…','ok');_visitTab(0);}
+  else{_anBuildPDF(_captured);}
+}
+function _anBuildPDF(_captured){
   var trips=_anTrips();
   var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
   var co2=trips.reduce(function(s,t){return s+(+t.co2||0);},0);
@@ -16002,26 +16056,26 @@ function _anExportRichPDF(){
   var ts=new Date().toLocaleString('en-GB');
   var usr=S.user?S.user.name:'System';
 
-  // Capture live Chart.js canvases as images
-  var chartSection='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">';
-  var chartIds=[
-    {id:'an-trips-chart',title:'&#128201; Trips per Day — Last 30 Days'},
-    {id:'an-rev-chart',  title:'&#128200; Revenue Trend — 30 Days'},
-    {id:'an-cond-chart', title:'&#127777;&#65039; Condition Mix'},
-    {id:'an-sla-chart',  title:'&#9201;&#65039; SLA Compliance'},
-    {id:'an-drv-chart',  title:'&#128666; Driver Performance'}
+  // Build chart section from pre-captured canvas images
+  var chartDefs=[
+    {id:'an-trips-chart', title:'&#128201; Trips per Day — Last 30 Days'},
+    {id:'an-rev-chart',   title:'&#128200; Revenue Trend — 30 Days'},
+    {id:'an-cond-chart',  title:'&#127777;&#65039; Condition Mix'},
+    {id:'an-sla-donut',   title:'&#9201;&#65039; SLA Compliance'},
+    {id:'an-sla-bar',     title:'&#9201;&#65039; SLA Bar Breakdown'},
+    {id:'an-driver-chart',title:'&#128666; Driver Performance'},
+    {id:'an-cust-chart',  title:'&#128100; Customer Breakdown'},
+    {id:'an-fleet-chart', title:'&#128664; Fleet Utilisation'}
   ];
+  var chartSection='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">';
   var hasCharts=false;
-  chartIds.forEach(function(ci){
-    var canvas=document.getElementById(ci.id);
-    if(canvas){
-      try{
-        var img=canvas.toDataURL('image/png');
-        chartSection+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;break-inside:avoid">'+
-          '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px">'+ci.title+'</div>'+
-          '<img src="'+img+'" style="width:100%;border-radius:6px;display:block"/></div>';
-        hasCharts=true;
-      }catch(e){}
+  chartDefs.forEach(function(ci){
+    var img=_captured[ci.id];
+    if(img){
+      chartSection+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;break-inside:avoid">'+
+        '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px">'+ci.title+'</div>'+
+        '<img src="'+img+'" style="width:100%;border-radius:6px;display:block"/></div>';
+      hasCharts=true;
     }
   });
   chartSection+='</div>';
