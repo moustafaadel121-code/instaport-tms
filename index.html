@@ -3414,16 +3414,25 @@ async function initApp(){
       S.auditTrail.length=0;
       r4.data.forEach(function(r){S.auditTrail.push({ts:r.ts,user:r.username,role:r.role,action:r.action,detail:r.detail,tripId:r.trip_id||''});});
     }
-    // Trucks — fully loaded from Supabase, no hardcoded list
-    if(!r5.error&&r5.data){
-      TRUCKS.length=0;
-      r5.data.forEach(function(r){
-        TRUCKS.push({plate:r.plate,type:r.type||'Jumbo',mfr:r.mfr||'',cooling:r.cooling||'—',
-          status:r.status||'Hold',valid:r.valid||false,remark:r.remark||'',
-          calExpiry:r.cal_expiry||'',flagged:r.flagged||false,
-          odometerKm:r.odometer_km||0,lastMaintKm:r.last_maint_km||0,
-          maintIntervalKm:r.maint_interval_km||10000});
-      });
+    // Trucks — load from Supabase; only fall back to hardcoded for instaport demo org
+    if(!r5.error){
+      if(r5.data&&r5.data.length){
+        // Replace in-memory array with live Supabase data for every org
+        TRUCKS.length=0;
+        r5.data.forEach(function(r){
+          TRUCKS.push({plate:r.plate,type:r.type||'Jumbo',mfr:r.mfr||'',cooling:r.cooling||'—',
+            status:r.status||'Hold',valid:r.valid||false,remark:r.remark||'',
+            calExpiry:r.cal_expiry||'',flagged:r.flagged||false,
+            odometerKm:r.odometer_km||0,lastMaintKm:r.last_maint_km||0,
+            maintIntervalKm:r.maint_interval_km||10000});
+        });
+      } else if(_tenantId==='instaport'||_tenantId==='demo'){
+        // First run for demo org — seed Supabase from hardcoded list
+        _sb.from('trucks').insert(TRUCKS.map(function(t){return{plate:t.plate,tenant_id:_tenantId,type:t.type,mfr:t.mfr,cooling:t.cooling,status:t.status,valid:t.valid,remark:t.remark||'',cal_expiry:t.calExpiry,flagged:t.flagged||false};}));
+      } else {
+        // New real org — start with empty fleet, admin adds their own trucks
+        TRUCKS.length=0;
+      }
     }
     // AM Assignments
     if(r6&&!r6.error&&r6.data&&r6.data.length){
@@ -3435,14 +3444,20 @@ async function initApp(){
       CUSTOMERS.length=0;
       r7.data.forEach(function(r){if(r.name)CUSTOMERS.push(r.name);});
     }
-    // Users (drivers + staff) — loaded from Supabase, overrides hardcoded fallback
-    if(r8&&!r8.error&&r8.data&&r8.data.length){
-      USERS.length=0;
-      r8.data.forEach(function(r){
-        var empId=r.employee_id?String(r.employee_id):String(r.id);
-        USERS.push({id:empId,_dbId:r.id,name:r.name,role:r.role,email:r.email||'',
-          active:r.active!==false&&r.active!==0,pin:'[supabase]'});
-      });
+    // Users — load from Supabase; only keep hardcoded for instaport demo org
+    if(r8&&!r8.error){
+      if(r8.data&&r8.data.length){
+        USERS.length=0;
+        r8.data.forEach(function(r){
+          var empId=r.employee_id?String(r.employee_id):String(r.id);
+          USERS.push({id:empId,_dbId:r.id,name:r.name,role:r.role,email:r.email||'',
+            active:r.active!==false&&r.active!==0,pin:'[supabase]'});
+        });
+      } else if(_tenantId!=='instaport'&&_tenantId!=='demo'){
+        // New real org with no users yet — start empty, admin adds their own staff
+        USERS.length=0;
+      }
+      // instaport/demo with no Supabase users → keeps hardcoded array as-is
     }
   }catch(e){
     console.error('initApp error',e);
@@ -3568,7 +3583,7 @@ async function _initDashMap(){
       });
     }
   });
-  if(toPlot.length===0){var eg=[30.0444,31.2357];L.marker(eg,{icon:pIcon}).addTo(_dashMap).bindPopup('No active trips<br><a onclick="nav(\'forecast\');return false;" href="#" style="color:#6C3FF5">Create one &#8250;</a>').openPopup();}
+  if(toPlot.length===0){var eg=[30.0444,31.2357];L.marker(eg,{icon:pIcon}).addTo(_dashMap).bindPopup('No active trips<br><a onclick="openTrip();return false;" href="#" style="color:#6C3FF5">Create one &#8250;</a>').openPopup();}
   if(bounds.length>1)_dashMap.fitBounds(bounds,{padding:[30,30],maxZoom:10});
   else if(bounds.length===1)_dashMap.setView(bounds[0],9);
 }
@@ -4265,7 +4280,37 @@ let CUSTOMERS=[];
 // ══════════════════════════════════════════════════
 // TRUCKS DATA
 // ══════════════════════════════════════════════════
-let TRUCKS=[];
+let TRUCKS=[
+  {plate:'4789 أ ج ي',type:'Jumbo',mfr:'Chevrolet',cooling:'Carrier Oasis 350',status:'Released',valid:true,remark:'',calExpiry:'2026-12-01',flagged:false},
+  {plate:'4793 أ ج ي',type:'Jumbo',mfr:'Chevrolet',cooling:'Carrier Oasis 350',status:'Released',valid:true,remark:'',calExpiry:'2026-11-15',flagged:false},
+  {plate:'834 ن ي م',type:'Jumbo',mfr:'Chevrolet 2011',cooling:'Carrier Xarios 500',status:'Hold',valid:false,remark:'Need maintenance',calExpiry:'2025-06-01',flagged:true},
+  {plate:'ا س ف 367',type:'Jumbo',mfr:'Chevrolet 2013',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'Ambient only',calExpiry:'2026-10-20',flagged:false},
+  {plate:'أ ج ي 5429',type:'Jumbo',mfr:'Chevrolet 2013',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-09-15',flagged:false},
+  {plate:'ا ط ف 643',type:'Jumbo',mfr:'Chevrolet 2013',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-12-20',flagged:false},
+  {plate:'ف ج ف 517',type:'Jumbo',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-08-07',flagged:false},
+  {plate:'ف ج ف 163',type:'Jumbo',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2027-01-10',flagged:false},
+  {plate:'د ل ب 631',type:'Jumbo',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-11-01',flagged:false},
+  {plate:'742 ص م ب',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Top Cold DM 500 F',status:'Released',valid:true,remark:'',calExpiry:'2026-10-01',flagged:false},
+  {plate:'ع ر ي 826',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Top Cold DM 500 F',status:'Released',valid:true,remark:'',calExpiry:'2026-12-23',flagged:false},
+  {plate:'756 ج ن ب',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Top Cold DM 500 F',status:'Released',valid:true,remark:'',calExpiry:'2026-09-01',flagged:false},
+  {plate:'628 ه م ب',type:'Jumbo',mfr:'Chevrolet 2016',cooling:'Carrier Xarios 500 FP',status:'Released',valid:true,remark:'',calExpiry:'2027-01-15',flagged:false},
+  {plate:'س ب ي 862',type:'Jumbo',mfr:'Chevrolet 2019',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-08-01',flagged:false},
+  {plate:'8537 أ ط و',type:'Jumbo',mfr:'Chevrolet 2021',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'Cold+Heating',calExpiry:'2027-02-01',flagged:false},
+  {plate:'4519 أ ج و',type:'Jumbo',mfr:'Chevrolet 2021',cooling:'Carrier Xarios 500',status:'Released',valid:true,remark:'',calExpiry:'2026-10-15',flagged:false},
+  {plate:'852 ب أ ن',type:'Dababa',mfr:'Chevrolet 2011',cooling:'ThermoKing C100',status:'Released',valid:true,remark:'',calExpiry:'2026-10-02',flagged:false},
+  {plate:'أ س ف 495',type:'Dababa',mfr:'Chevrolet 2013',cooling:'Viento V200',status:'Released',valid:true,remark:'',calExpiry:'2026-09-07',flagged:false},
+  {plate:'د د ف 715',type:'Dababa',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 150',status:'Released',valid:true,remark:'',calExpiry:'2026-12-10',flagged:false},
+  {plate:'ف ج ف 162',type:'Dababa',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-10-25',flagged:false},
+  {plate:'ج ج ف 614',type:'Dababa',mfr:'Chevrolet 2014',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-11-25',flagged:false},
+  {plate:'ي س ر 734',type:'Dababa',mfr:'Chevrolet 2016',cooling:'Zanotti Z20s',status:'Released',valid:true,remark:'',calExpiry:'2026-09-17',flagged:false},
+  {plate:'ا ي ب 567',type:'Dababa',mfr:'Chevrolet 2019',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-06-15',flagged:false},
+  {plate:'4916 ا ط و',type:'Dababa',mfr:'Chevrolet 2021',cooling:'Carrier Xarios 200',status:'Released',valid:true,remark:'',calExpiry:'2026-03-05',flagged:false},
+  {plate:'أ ل ي 6896',type:'Dababa',mfr:'Chevrolet 2026',cooling:'Carrier Xarios 300',status:'Released',valid:true,remark:'',calExpiry:'2027-03-01',flagged:false},
+  {plate:'158 ب و ل',type:'Trailer',mfr:'Chereau 2001',cooling:'Thermoking SL200',status:'Released',valid:true,remark:'',calExpiry:'2027-03-27',flagged:false},
+  {plate:'ا م ى 265',type:'Trailer',mfr:'Schmitz 2007',cooling:'Thermoking SL200e',status:'Released',valid:true,remark:'',calExpiry:'2026-03-16',flagged:false},
+  {plate:'ا ص ي 3175',type:'Truck Head',mfr:'Mercedes 2009',cooling:'-',status:'Released',valid:true,remark:'',calExpiry:'2027-06-01',flagged:false},
+  {plate:'251 س ص ر',type:'Truck Head',mfr:'Mercedes 2009',cooling:'-',status:'Released',valid:true,remark:'',calExpiry:'2027-06-01',flagged:false}
+];
 // ══════════════════════════════════════════════════
 // GLOBAL STATE
 // ══════════════════════════════════════════════════
@@ -4376,7 +4421,7 @@ const PAGES={
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
-    {id:'trips',icon:'📋',l:'Trips'},{id:'forecast',icon:'📅',l:'New Shipment'},
+    {id:'trips',icon:'📋',l:'Trips'},
     {id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'quality',icon:'🧪',l:'Quality'},
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
@@ -4389,7 +4434,7 @@ const PAGES={
   ],
   supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
-  account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'forecast',icon:'📅',l:'New Shipment'},{id:'trips',icon:'📋',l:'My Trips'}],
+  account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
   security:     [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'security',icon:'🔒',l:'Gate & Workflow'}],
   finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -4596,7 +4641,6 @@ const ALL_PAGES_MASTER=[
   {id:'dashboard',   icon:'📊',l:'Dashboard',        always:true},
   {id:'fleet',       icon:'🚛',l:'Fleet'},
   {id:'trips',       icon:'📋',l:'Trips'},
-  {id:'forecast',    icon:'📅',l:'New Shipment'},
   {id:'dispatch',    icon:'🚦',l:'Dispatch'},
   {id:'quality',     icon:'🧪',l:'Quality'},
   {id:'controlroom', icon:'🎛️',l:'Control Room'},
@@ -4982,7 +5026,7 @@ function rDash(){
     '<img src="logo.png" alt="InstaPort" style="width:88px;height:88px;object-fit:contain;flex-shrink:0;filter:drop-shadow(0 2px 16px rgba(108,63,245,.35));"/>' +
     '<div><h2 style="margin:0">'+subtitle+'</h2>'+
     '<div class="page-head-sub">Welcome, '+S.user.name+' &nbsp;<span class="live"><span class="live-dot"></span>Live</span></div></div></div>'+
-    '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')">+ New Shipment</button>':'')+'</div></div>'+
+    '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="openTrip()">+ New Shipment</button>':'')+'</div></div>'+
     '<div class="kpi-row">'+kpis+'</div>'+
     (role==='driver'?rolePanel:chartsSection+tripsSection+rolePanel);
 }
@@ -5435,7 +5479,7 @@ function rDispatch(){
   var drivers=USERS.filter(function(u){return u.role==='driver'&&u.active!==false;});
   c.innerHTML='<div class="page-head"><div><h2>🚦 Dispatch</h2></div></div>'+
   (pend.length===0?_emptyState('✅','All Clear — No Pending Dispatches','Every trip has been assigned. Create a new shipment or check active trips below.',
-    '<button class="btn btn-primary" onclick="nav(\'forecast\')">+ New Shipment</button>' +
+    '<button class="btn btn-primary" onclick="openTrip()">+ New Shipment</button>' +
     '<button class="btn btn-outline" style="margin-left:8px" onclick="nav(\'trips\')">View All Trips &rsaquo;</button>'
   ):'') +
   pend.map(function(t){return '<div class="card">'+
@@ -9879,7 +9923,7 @@ function openFleetTruckTrips(plate) {
       }).join('') +
       '</div>' :
       '<div style="text-align:center;padding:40px 20px;color:var(--t2)"><div style="font-size:36px;margin-bottom:10px">&#128666;</div><div style="font-size:14px;font-weight:600">No trips assigned to this truck</div><div style="font-size:12px;margin-top:6px">Create a new shipment and assign this truck</div>' +
-      ((can('create_planned')||can('all')) ? '<button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="closeSP();nav(\'forecast\')">+ New Shipment</button>' : '') +
+      ((can('create_planned')||can('all')) ? '<button class="btn btn-primary btn-sm" style="margin-top:14px" onclick="closeSP();openTrip()">+ New Shipment</button>' : '') +
       '</div>')
   );
 
@@ -10771,7 +10815,7 @@ rDash=function(){
   c.innerHTML=
   ph('Shipment track',
     '<span style="display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#10B981;font-weight:700"><span style="width:7px;height:7px;border-radius:50%;background:#10B981;display:inline-block;animation:ldot 1.4s infinite"></span>Live &nbsp; Welcome, '+S.user.name+'</span>',
-    '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')">+ New Shipment</button>':'')+'<button class="btn btn-outline btn-sm" onclick="nav(\'analytics\')">&#128200;</button></div>')+
+    '<div style="display:flex;gap:8px">'+(canAdd?'<button class="btn btn-primary btn-sm" onclick="openTrip()">+ New Shipment</button>':'')+'<button class="btn btn-outline btn-sm" onclick="nav(\'analytics\')">&#128200;</button></div>')+
 
   '<div class="kpi-row">'+
   kpiBox('&#128666;','kpi-icon-purple',TRUCKS.length,'Fleet','&#8593; '+rel+' Released')+
@@ -10824,7 +10868,7 @@ rDash=function(){
     '</div>'+
     '<div style="font-size:12px;color:var(--t2)">&#128205; '+lastTrip.from+' &#8594; '+lastTrip.dests+'</div>'+
     '<button class="btn btn-outline btn-sm" style="margin-top:12px;width:100%;justify-content:center" onclick="openTripSP(\''+lastTrip.id+'\')">Open Full Details</button>'
-  :'<div style="text-align:center;padding:24px;color:var(--t2)">No shipments yet<br><button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')" style="margin-top:10px">+ Create</button></div>')+
+  :'<div style="text-align:center;padding:24px;color:var(--t2)">No shipments yet<br><button class="btn btn-primary btn-sm" onclick="openTrip()" style="margin-top:10px">+ Create</button></div>')+
   '</div></div>'+
 
   // COL 2: Truck Capacity + Trends
@@ -11615,7 +11659,7 @@ rDash = function() {
       '<div style="background:var(--bg);padding:10px 12px;border-radius:10px"><div style="font-size:10px;color:var(--t3);font-weight:600;text-transform:uppercase;letter-spacing:.4px">&#128203; KM / Condition</div>' +
         '<div style="font-size:12px;font-weight:700;color:var(--t);margin-top:2px">' + (mapTrip.km||'—') + ' km &bull; ' + (mapTrip.condition||'—') + '</div></div>' +
       '</div>'
-    : '<div style="background:var(--bg);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);text-align:center">No active shipment — <span style="color:var(--c1);cursor:pointer;font-weight:600" onclick="nav(\'forecast\')">+ Create new</span></div>') +
+    : '<div style="background:var(--bg);border-radius:10px;padding:10px 14px;margin-bottom:12px;font-size:12px;color:var(--t2);text-align:center">No active shipment — <span style="color:var(--c1);cursor:pointer;font-weight:600" onclick="openTrip()">+ Create new</span></div>') +
 
     // MAP — Real Leaflet map (OpenStreetMap, free) — compact height
     '<div class="tcp-map" style="padding:0;overflow:hidden;position:relative;border-radius:12px;margin-bottom:0">' +
@@ -11626,7 +11670,7 @@ rDash = function() {
     '<div style="display:flex;gap:8px;margin-top:12px">' +
     '<button class="btn btn-primary btn-sm" style="flex:1" onclick="nav(\'trips\')">&#128203; All Shipments</button>' +
     (mapTrip ? '<button class="btn btn-outline btn-sm" style="flex:1" onclick="openTripSP(\'' + mapTrip.id + '\')">Open Active Trip &#8250;</button>' : '') +
-    (canAdd ? '<button class="btn btn-outline btn-sm" onclick="nav(\'forecast\')">+ New</button>' : '') +
+    (canAdd ? '<button class="btn btn-outline btn-sm" onclick="openTrip()">+ New</button>' : '') +
     '</div>' +
     '</div>'; // end track-card-premium
 
@@ -11715,7 +11759,7 @@ rDash = function() {
     '<div><h2>Dashboard</h2>' +
     '<div class="page-head-sub"><span class="live-badge"><span class="live-dot"></span>Live</span> &nbsp; Welcome back, ' + S.user.name + '</div></div>' +
     '<div style="display:flex;gap:10px">' +
-    (canAdd ? '<button class="btn btn-primary btn-sm" onclick="nav(\'forecast\')">+ New Shipment</button>' : '') +
+    (canAdd ? '<button class="btn btn-primary btn-sm" onclick="openTrip()">+ New Shipment</button>' : '') +
     '<button class="btn btn-outline btn-sm" onclick="nav(\'analytics\')">&#128202; Analytics</button>' +
     '</div></div>';
 
