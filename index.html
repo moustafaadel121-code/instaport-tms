@@ -4061,7 +4061,6 @@ const PLAN_FEATURES = {
   hr:          {starter:0,professional:0,enterprise:1},
   audit:       {starter:0,professional:0,enterprise:1},
   nr_trip:     {starter:0,professional:0,enterprise:1},
-  invite_mgmt: {starter:0,professional:0,enterprise:1},
 };
 
 const PLAN_META = {
@@ -4075,7 +4074,7 @@ const FEATURE_MIN_PLAN = {
   fuel:'professional',exceptions:'professional',analytics:'professional',
   pm_schedule:'professional',vendors:'professional',esg:'professional',
   ai:'enterprise',hr:'enterprise',audit:'enterprise',
-  nr_trip:'enterprise',invite_mgmt:'enterprise',
+  nr_trip:'enterprise',
 };
 
 /* Load saved feature-gate config from localStorage and merge into PLAN_FEATURES */
@@ -4612,7 +4611,7 @@ function nav(page){
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
     nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
-    invite_mgmt:rInviteMgmt,exceptions:rExceptions,
+    exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
     sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features,sa_sensors:rSA_Sensors,sa_integrations:rSA_Integrations};
@@ -7701,7 +7700,6 @@ var _SA_FEATURE_META={
   hr:          {label:'HR & Compliance', cat:'Enterprise'},
   audit:       {label:'Audit Trail',     cat:'Enterprise'},
   nr_trip:     {label:'Non-Revenue Trips',cat:'Enterprise'},
-  invite_mgmt: {label:'Invite Management',cat:'Enterprise'},
 };
 
 function rSA_Features(){
@@ -7811,72 +7809,7 @@ function _saFgReset(){
   _resetFeatureGates(); // reloads page
 }
 
-// INVITE CODES MANAGEMENT — Super Admin Only
-// ══════════════════════════════════════════════════
-function rInviteMgmt(){
-  if(_tenantId!=='instaport'){toast('Super admin only','err');return;}
-  var c=document.getElementById('content');
-  c.innerHTML='<div class="page-head"><div><h2>🔑 Invite Codes</h2><div class="page-sub">Manage registration codes for new clients</div></div>'+
-    '<button class="btn btn-primary" onclick="genInviteCode()">+ Generate New Code</button></div>'+
-    '<div id="invite-list"><div style="text-align:center;padding:40px;color:var(--t3)">Loading...</div></div>';
-  loadInviteCodes();
-}
-async function loadInviteCodes(){
-  if(!_sb)return;
-  var r=await _sb.from('invite_codes').select('*').order('created_at',{ascending:false});
-  var el=document.getElementById('invite-list');if(!el)return;
-  if(r.error){el.innerHTML='<div style="text-align:center;padding:40px;color:#ef4444">Error: '+r.error.message+'</div>';return;}
-  if(!r.data||r.data.length===0){el.innerHTML='<div style="text-align:center;padding:40px;color:var(--t3)">No codes yet. Click "Generate New Code" to create one.</div>';return;}
-  el.innerHTML='<div class="card" style="overflow:auto"><table style="width:100%;border-collapse:collapse;font-size:13px">'+
-    '<thead><tr style="border-bottom:1px solid var(--border);color:var(--t3)">'+
-    '<th style="padding:12px 16px;text-align:left">Code</th>'+
-    '<th style="padding:12px 16px;text-align:left">Label / Client</th>'+
-    '<th style="padding:12px 16px;text-align:left">Status</th>'+
-    '<th style="padding:12px 16px;text-align:left">Used By</th>'+
-    '<th style="padding:12px 16px;text-align:left">Used At</th>'+
-    '<th style="padding:12px 16px;text-align:left">Created</th>'+
-    '<th style="padding:12px 16px;text-align:left">Actions</th>'+
-    '</tr></thead><tbody>'+
-    r.data.map(function(ic){
-      var status=!ic.active?'<span style="background:#fee2e2;color:#dc2626;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">DISABLED</span>':
-        ic.used_by?'<span style="background:#fef3c7;color:#d97706;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">USED</span>':
-        '<span style="background:#dcfce7;color:#16a34a;padding:2px 10px;border-radius:20px;font-size:11px;font-weight:700">ACTIVE</span>';
-      var usedAt=ic.used_at?new Date(ic.used_at).toLocaleDateString('en-GB'):'—';
-      var createdAt=ic.created_at?new Date(ic.created_at).toLocaleDateString('en-GB'):'—';
-      var toggleBtn=ic.active&&!ic.used_by?
-        '<button class="btn btn-sm btn-danger" onclick="toggleInviteCode(\''+ic.id+'\',false)" style="font-size:11px;padding:4px 10px">Disable</button>':
-        !ic.active&&!ic.used_by?'<button class="btn btn-sm btn-outline" onclick="toggleInviteCode(\''+ic.id+'\',true)" style="font-size:11px;padding:4px 10px">Enable</button>':'';
-      return '<tr style="border-bottom:1px solid var(--border)">'+
-        '<td style="padding:12px 16px;font-family:monospace;font-weight:700;font-size:14px;color:var(--c1)">'+ic.id+'</td>'+
-        '<td style="padding:12px 16px"><input type="text" value="'+(ic.label||'')+'" onblur="updateInviteLabel(\''+ic.id+'\',this.value)" style="background:transparent;border:none;color:var(--t);font-size:13px;width:140px;border-bottom:1px dashed var(--border);outline:none" placeholder="Add label..."/></td>'+
-        '<td style="padding:12px 16px">'+status+'</td>'+
-        '<td style="padding:12px 16px;color:var(--t2)">'+(ic.used_by||'—')+'</td>'+
-        '<td style="padding:12px 16px;color:var(--t2)">'+usedAt+'</td>'+
-        '<td style="padding:12px 16px;color:var(--t2)">'+createdAt+'</td>'+
-        '<td style="padding:12px 16px">'+toggleBtn+'</td>'+
-        '</tr>';
-    }).join('')+
-    '</tbody></table></div>';
-}
-async function genInviteCode(){
-  var chars='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-  var part=Array.from({length:3},function(){return chars[Math.floor(Math.random()*chars.length)];}).join('');
-  var code='INST-'+new Date().getFullYear()+'-'+part;
-  var label=prompt('Label for this code (e.g. client name):','');
-  if(label===null)return;
-  var r=await _sb.from('invite_codes').insert({id:code,label:label||'',active:true});
-  if(r.error){toast('Error: '+r.error.message,'err');return;}
-  toast('Code created: '+code,'ok');
-  loadInviteCodes();
-}
-async function toggleInviteCode(id,active){
-  await _sb.from('invite_codes').update({active:active}).eq('id',id);
-  toast(active?'Code enabled':'Code disabled','ok');
-  loadInviteCodes();
-}
-async function updateInviteLabel(id,label){
-  await _sb.from('invite_codes').update({label:label}).eq('id',id);
-}
+// Invite codes are managed exclusively in the Super Admin panel (localhost only)
 
 // ══════════════════════════════════════════════════
 // ADMIN PANEL — Full Management System
@@ -11370,8 +11303,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',invite_mgmt:'Invite Codes',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',invite_mgmt:'&#128273;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -11390,8 +11323,6 @@ buildSB = function() {
       badge + '</div>';
   }).join('') +
   '<div class="sb-divider"></div>' +
-  (_tenantId==='instaport'&&(S.role==='admin'||can('all'))?
-    '<div class="sbi'+(S.page==='invite_mgmt'?' active':'')+'" onclick="nav(\'invite_mgmt\')"><div class="sbi-icon">&#128273;</div><span class="sbi-label">Invite Codes</span></div>':'')+
   '<div class="sbi" onclick="toggleLang()"><div class="sbi-icon">&#127760;</div><span class="sbi-label">Language</span></div>';
 };
 
