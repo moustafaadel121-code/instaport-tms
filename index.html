@@ -3217,6 +3217,8 @@ async function _loadTenant(orgCode){
   try{
     var r=await _sb.from('tenants').select('*').eq('id',orgCode).maybeSingle();
     if(r.error||!r.data){return false;}
+    // ── Deactivated orgs are blocked immediately everywhere ──
+    if(r.data.active===false||r.data.active===0){return 'deactivated';}
     _tenantId=r.data.id;_tenantName=r.data.name;_tenantPlan=r.data.plan||'starter';
     var ur=await _sb.from('users').select('*').eq('tenant_id',orgCode);
     if(!ur.error&&ur.data&&ur.data.length){
@@ -4377,6 +4379,7 @@ async function doLogin(){
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
   try{
     var ok=await _loadTenant(orgCode);
+    if(ok==='deactivated'){lerr.innerHTML='🔴 <b>This organization has been deactivated.</b><br><span style="font-size:11px;opacity:.8">Contact InstaPort support to reactivate your account.</span>';lerr.style.display='block';return;}
     if(!ok){lerr.textContent='Organization "'+orgCode+'" not found. Please register first.';lerr.style.display='block';return;}
     // ── SA org: validate server-side (credentials never in browser) ──
     var u=null;
@@ -10515,6 +10518,7 @@ doLogin=async function(){
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
   try{
     var ok=await _loadTenant(orgCode);
+    if(ok==='deactivated'){lerr.innerHTML='🔴 <b>This organization has been deactivated.</b><br><span style="font-size:11px;opacity:.8">Contact InstaPort support to reactivate your account.</span>';lerr.style.display='block';return;}
     if(!ok){lerr.textContent='Organization "'+orgCode+'" not found. Please register first.';lerr.style.display='block';return;}
     var u=_tenantUsers.find(function(x){
       return(String(x.id)===val||x.email===val||(x.name&&x.name.toLowerCase()===val.toLowerCase()))
