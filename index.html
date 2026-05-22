@@ -9526,8 +9526,73 @@ function rAdminUsers(){
   USERS.map(function(u){return '<tr><td style="font-weight:700">'+u.id+'</td><td>'+u.name+'</td><td><span class="tag tag-info">'+RL[u.role]+'</span></td><td>'+(u.active===false?'<span class="tag tag-hold">Inactive</span>':'<span class="tag tag-ok">Active</span>')+'</td>'+
   '<td style="display:flex;gap:5px"><button class="btn btn-outline btn-sm" onclick="editUser(\''+u.id+'\')">Edit</button><button class="btn btn-danger btn-sm" onclick="resetPw(\''+u.id+'\')">Reset PIN</button>'+(u.active===false?'<button class="btn btn-success btn-sm" onclick="toggleUser(\''+u.id+'\')">Activate</button>':'<button class="btn btn-outline btn-sm" onclick="toggleUser(\''+u.id+'\')">Deactivate</button>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';
 }
-function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role" onchange="_toggleClientRow(this)"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="fg f1" id="nu-cust-row" style="display:none"><label>Customer Account <span style="color:var(--t3);font-size:10px">(required for Client role)</span></label><input id="nu-cust" placeholder="Must match a Customer name exactly"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
-async function addUser(){var id=(document.getElementById('nu-id')||{}).value;var name=(document.getElementById('nu-name')||{}).value;var pin=(document.getElementById('nu-pin')||{}).value;var role=(document.getElementById('nu-role')||{}).value;if(!id||!name||!pin||!role){toast('Fill all fields','err');return;}if(USERS.find(function(u){return u.id===id;})){toast('ID exists','err');return;}var email=(document.getElementById('nu-email')||{}).value||'';var custAcc=(document.getElementById('nu-cust')||{}).value||'';if(role==='client'&&!custAcc){toast('Customer Account required for Client role','err');return;}var uObj={id:id,name:name,pin:pin,role:role,email:email,active:true};if(custAcc)uObj.customerAccount=custAcc;USERS.push(uObj);audit('ADD_USER',name+' ('+role+')','');closeM();toast('User added!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:id,tenant_id:_tenantId,name:name,pin:pin,role:role,email:email,active:true});}catch(e){console.error('addUser sync',e);}}}
+function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
+async function addUser(){
+  var id=(document.getElementById('nu-id')||{}).value.trim();
+  var name=(document.getElementById('nu-name')||{}).value.trim();
+  var pin=(document.getElementById('nu-pin')||{}).value.trim();
+  var role=(document.getElementById('nu-role')||{}).value;
+  if(!id||!name||!pin||!role){toast('Fill all required fields','err');return;}
+  if(USERS.find(function(u){return u.id===id;})){toast('User ID already exists','err');return;}
+  var email=(document.getElementById('nu-email')||{}).value.trim();
+  // Client role requires a Customer Account — show step-2 popup
+  if(role==='client'){
+    window._pendingUser={id:id,name:name,pin:pin,role:role,email:email};
+    var custOpts=CUSTOMERS.length
+      ?CUSTOMERS.map(function(c){return '<option value="'+c+'">'+c+'</option>';}).join('')
+      :'<option value="">— No customers found —</option>';
+    openM(
+      '<div class="m-title">🏢 Customer Account Required</div>'+
+      '<div style="background:var(--bg);border:1px solid #FCD34D;border-radius:10px;padding:12px 14px;margin-bottom:16px;font-size:12px;color:var(--t)">'+
+      '<strong style="color:#92400E">⚠️ Client Portal users must be linked to a Customer Account.</strong><br>'+
+      '<span style="color:var(--t2)">Select the account this user belongs to. They will only see data for that customer.</span></div>'+
+      '<div class="fg f1"><label>Customer Account <span style="color:#EF4444">*</span></label>'+
+      '<select id="nu-cust-sel" style="font-size:13px">'+
+      '<option value="">— Select a customer —</option>'+custOpts+
+      '</select></div>'+
+      '<div class="fg f1" style="margin-top:8px"><label style="color:var(--t2);font-size:11px">Or type manually (must match exactly)</label>'+
+      '<input id="nu-cust-txt" placeholder="Customer name..." style="margin-top:4px"/>'+
+      '</div>'+
+      '<div class="m-foot">'+
+      '<button class="btn btn-outline" onclick="openAddUser()">&#8592; Back</button>'+
+      '<button class="btn btn-primary" onclick="_finishAddUser()">&#10003; Create User</button>'+
+      '</div>'
+    );
+    // Keep the dropdown and text input in sync
+    setTimeout(function(){
+      var sel=document.getElementById('nu-cust-sel');
+      var txt=document.getElementById('nu-cust-txt');
+      if(sel&&txt){
+        sel.onchange=function(){if(sel.value)txt.value='';};
+        txt.oninput=function(){if(txt.value)sel.value='';};
+      }
+    },50);
+    return;
+  }
+  // Non-client roles — create immediately
+  window._pendingUser={id:id,name:name,pin:pin,role:role,email:email};
+  await _finishAddUser();
+}
+async function _finishAddUser(){
+  var p=window._pendingUser;
+  if(!p){toast('No pending user','err');return;}
+  var custAcc='';
+  if(p.role==='client'){
+    var sel=document.getElementById('nu-cust-sel');
+    var txt=document.getElementById('nu-cust-txt');
+    custAcc=(sel&&sel.value)?sel.value:((txt&&txt.value.trim())?txt.value.trim():'');
+    if(!custAcc){toast('Customer Account is required for Client role','err');return;}
+  }
+  var uObj={id:p.id,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true};
+  if(custAcc)uObj.customerAccount=custAcc;
+  USERS.push(uObj);
+  audit('ADD_USER',p.name+' ('+p.role+')'+(custAcc?' → '+custAcc:''),'');
+  window._pendingUser=null;
+  closeM();
+  toast('User added!','ok');
+  rAdminUsers();
+  if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true});}catch(e){console.error('addUser sync',e);}}
+}
 function editUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;openM('<div class="m-title">Edit — '+u.name+'</div><div class="fg f1"><label>Name</label><input id="eu-name" value="'+u.name+'"/></div><div class="fg f1"><label>Role</label><select id="eu-role">'+Object.keys(RL).map(function(k){return '<option value="'+k+'"'+(u.role===k?' selected':'')+'>'+RL[k]+'</option>';}).join('')+'</select></div><div class="fg f1"><label>Email</label><input id="eu-email" value="'+(u.email||'')+'"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="saveUser(\''+uid+'\')">Save</button><button class="btn btn-danger" onclick="delUser(\''+uid+'\')">Remove</button></div>');}
 async function saveUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.name=(document.getElementById('eu-name')||{}).value||u.name;u.role=(document.getElementById('eu-role')||{}).value||u.role;u.email=(document.getElementById('eu-email')||{}).value;audit('EDIT_USER',uid,'');closeM();toast('Updated!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({name:u.name,role:u.role,email:u.email}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('saveUser sync',e);}}}
 async function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('delUser sync',e);}}}
