@@ -184,26 +184,69 @@ app.post('/api/sa-auth', _localOnly, (req, res) => {
   const ip = req.ip || req.socket.remoteAddress;
   if (_saRateLimit(ip)) return res.status(429).json({ ok: false, error: 'Too many attempts. Try again in 15 minutes.' });
   try {
-    const { org, userId, pin } = req.body || {};
+    const { org, userId, pin, totp } = req.body || {};
     const orgOk  = crypto.timingSafeEqual(Buffer.from(org    || '', 'utf8'), Buffer.from(process.env.SA_ORG     || '', 'utf8'));
     const userOk = crypto.timingSafeEqual(Buffer.from(userId || '', 'utf8'), Buffer.from(process.env.SA_USER_ID || '', 'utf8'));
     const pinOk  = crypto.timingSafeEqual(Buffer.from(pin    || '', 'utf8'), Buffer.from(process.env.SA_PIN     || '', 'utf8'));
     if (orgOk && userOk && pinOk) {
+      // ── 2FA check (if enabled) ────────────────────────────────
+      if (auth.isTotpEnabled()) {
+        if (!totp) {
+          // Credentials correct but 2FA code not yet provided
+          return res.json({ ok: false, require2FA: true, message: 'Enter your 6-digit authenticator code.' });
+        }
+        if (!auth.verifyTotp(totp)) {
+          auth.saAudit('SA_2FA_FAIL', `Wrong TOTP for user=${userId}`, ip);
+          return res.status(401).json({ ok: false, error: 'Invalid authenticator code. Try again.' });
+        }
+        auth.saAudit('SA_2FA_OK', `TOTP verified for user=${userId}`, ip);
+      }
       delete _saAttempts[ip];
-      const saToken = auth.issueToken({ role: 'superadmin', userId: userId, org: org });
+      const saToken = auth.issueToken({ role: 'superadmin', userId, org });
       auth.saAudit('SA_LOGIN', 'Login successful', ip);
       return res.json({ ok: true, name: process.env.SA_NAME || 'Super Admin', role: 'superadmin', token: saToken });
     }
-    auth.saAudit('SA_LOGIN_FAIL', `Failed attempt for org=${org} user=${userId}`, ip);
+    auth.saAudit('SA_LOGIN_FAIL', `Failed attempt org=${org} user=${userId}`, ip);
     return res.status(401).json({ ok: false, error: 'Invalid credentials.' });
   } catch (e) {
     return res.status(400).json({ ok: false, error: 'Bad request' });
   }
 });
 
+// ── SA 2FA Setup — generate secret + QR (localhost only) ─────────
+app.get('/api/sa-2fa/setup', _localOnly, async (req, res) => {
+  try {
+    const data = await auth.generateTotpSecret();
+    auth.saAudit('SA_2FA_SETUP', 'New TOTP secret generated', req.ip);
+    res.json({ ok: true, ...data, instructions: [
+      '1. Open Google Authenticator or Authy on your phone',
+      '2. Tap + → Scan QR code (use the qrDataUrl as an <img> src to display it)',
+      '3. Add these lines to your .env file and restart:',
+      `   SA_TOTP_SECRET=${data.secret}`,
+      '   SA_TOTP_ENABLED=true',
+      '4. Test with /api/sa-2fa/verify?token=YOUR_CODE',
+    ]});
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
+// ── SA 2FA Verify — test a TOTP code before enabling ─────────────
+app.get('/api/sa-2fa/verify', _localOnly, (req, res) => {
+  const { token } = req.query;
+  if (!token) return res.status(400).json({ ok: false, error: 'token query param required' });
+  const valid = auth.verifyTotp(token);
+  res.json({ ok: valid, message: valid ? '✅ Code is valid — 2FA working correctly' : '❌ Invalid code' });
+});
+
 // ── SA Audit Log (localhost only) ────────────────────────────────
 app.get('/api/sa-audit', _localOnly, (req, res) => {
   res.json({ ok: true, log: auth.getSaAuditLog(200) });
+});
+
+// ── Supabase RLS script (localhost only) ─────────────────────────
+app.get('/api/sa-rls-script', _localOnly, (req, res) => {
+  res.type('text/plain').send(auth.getRlsScript());
 });
 
 // ═══════════════════════════════════════════════════════

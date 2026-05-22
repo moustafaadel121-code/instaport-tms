@@ -2762,6 +2762,18 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
         <button type="button" class="l-pw-toggle" title="Show password" aria-label="Show password"
                 onclick="var p=document.getElementById('upin');p.type=p.type==='password'?'text':'password'">&#128065;</button>
       </div>
+      <!-- 2FA field (shown only when server requests it) -->
+      <div id="totp-row" style="display:none;margin-top:2px">
+        <div style="font-size:11px;color:var(--c1);font-weight:700;margin-bottom:4px">🔐 Two-Factor Authentication</div>
+        <div class="l-input-row">
+          <span class="l-input-ico">📱</span>
+          <input id="utotp" type="text" inputmode="numeric" maxlength="6"
+                 placeholder="6-digit code from Authenticator"
+                 style="letter-spacing:6px;font-size:18px;font-weight:700"
+                 onkeydown="if(event.key==='Enter')doLogin()"/>
+        </div>
+        <div style="font-size:11px;color:var(--t3);margin-top:3px">Open Google Authenticator → InstaPort SA</div>
+      </div>
       <!-- Options row -->
       <div class="l-options">
         <label class="l-remember-me">
@@ -3193,9 +3205,46 @@ function _idleLogoutFn(){
 function _idleStart(){
   ['mousemove','keydown','click','touchstart','scroll'].forEach(function(ev){document.addEventListener(ev,_idleReset,{passive:true});});
   _idleReset();
+  _jwtExpiryWatch(); // also enforce hard JWT expiry
 }
 function _idleStop(){
   clearTimeout(_idleTimer);clearTimeout(_idleWarnTimer);
+}
+
+// ── JWT hard-expiry enforcement ──────────────────────────────────
+// Even if the user is active, force logout when the 8h JWT expires.
+function _jwtExpiryWatch(){
+  var token=_getToken();
+  if(!token)return;
+  try{
+    // JWT payload is base64 middle segment
+    var payload=JSON.parse(atob(token.split('.')[1]));
+    if(!payload.exp)return;
+    var expiresIn=(payload.exp*1000)-Date.now(); // ms until expiry
+    if(expiresIn<=0){secureLogout();return;}
+    // Warn 5 min before expiry
+    var warnIn=expiresIn-(5*60*1000);
+    if(warnIn>0){
+      setTimeout(function(){
+        if(!S.user)return;
+        openM('<div class="m-title">🔐 Session Expiring Soon</div>'+
+          '<div style="text-align:center;padding:10px 0 16px">'+
+          '<div style="font-size:48px;margin-bottom:12px">🔒</div>'+
+          '<div style="font-size:14px;font-weight:600;margin-bottom:6px">Your 8-hour session ends in 5 minutes</div>'+
+          '<div style="font-size:13px;color:var(--t2);margin-bottom:16px">Save any open work. You will need to log in again.</div>'+
+          '<button class="btn btn-primary" onclick="closeM()">OK, I\'ll save my work</button>'+
+          '</div>');
+      }, warnIn);
+    }
+    // Force logout at exact expiry
+    setTimeout(function(){
+      if(!S.user)return;
+      closeM();
+      audit('JWT_EXPIRED','8-hour session token expired','');
+      toast('Your session has expired (8h limit). Please log in again.','err');
+      setTimeout(secureLogout, 2000);
+    }, expiresIn);
+  }catch(e){ /* non-fatal */ }
 }
 
 // ── PIN strength checker ───────────────────────
@@ -4327,13 +4376,14 @@ let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicke
 // ══════════════════════════════════════════════════
 const PAGES={
   superadmin:[
-    {id:'sa_overview',  icon:'👑', l:'Overview'},
-    {id:'sa_orgs',      icon:'🏢', l:'Organizations'},
-    {id:'sa_invites',   icon:'🔑', l:'Invite Codes'},
-    {id:'sa_revenue',   icon:'💰', l:'Revenue'},
-    {id:'sa_features',  icon:'🎛️', l:'Feature Gates'},
+    {id:'sa_overview',     icon:'👑', l:'Overview'},
+    {id:'sa_orgs',         icon:'🏢', l:'Organizations'},
+    {id:'sa_invites',      icon:'🔑', l:'Invite Codes'},
+    {id:'sa_revenue',      icon:'💰', l:'Revenue'},
+    {id:'sa_features',     icon:'🎛️', l:'Feature Gates'},
     {id:'sa_sensors',      icon:'🌡️', l:'Sensors'},
     {id:'sa_integrations', icon:'🔌', l:'Integrations'},
+    {id:'sa_security',     icon:'🛡️', l:'Security'},
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
@@ -4400,19 +4450,30 @@ async function doLogin(){
     var u=null;
     if(orgCode==='ip-master'){
       try{
-        var saRes=await fetch('/api/sa-auth',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
+        var totpCode=(document.getElementById('utotp')||{value:''}).value.trim();
+        var saRes=await fetch('/api/sa-auth',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({org:orgCode,userId:uid,pin:pin,totp:totpCode||undefined})});
         var saData=await saRes.json();
+        // Server says credentials OK but 2FA required
+        if(!saData.ok&&saData.require2FA){
+          var tRow=document.getElementById('totp-row');
+          if(tRow){tRow.style.display='block';setTimeout(function(){var el=document.getElementById('utotp');if(el)el.focus();},100);}
+          var btn2=document.querySelector('.l-login-btn');if(btn2){btn2.disabled=false;btn2.textContent='LOGIN';}
+          lerr.textContent='Enter the 6-digit code from your Authenticator app.';
+          lerr.style.display='block';return;
+        }
         if(!saData.ok){
           _secRecordFail(lockKey);
           lerr.innerHTML=(saData.error||'Invalid credentials.')+'<br><span style="font-size:11px;opacity:.8">Check SA_USER_ID and SA_PIN in your .env file</span>';
           lerr.style.display='block';return;
         }
         u={id:uid,pin:'[server]',name:saData.name,role:'superadmin',email:'',active:true};
-        // Store SA JWT session token
         if(saData.token){sessionStorage.setItem('ip_token', saData.token);}
+        // Hide 2FA row after successful login
+        var tRow=document.getElementById('totp-row');if(tRow)tRow.style.display='none';
         _siSaToken='';
       }catch(e){
-        lerr.innerHTML='❌ Server not reachable — run <code style="font-size:11px">npm run dev</code> first<br><span style="font-size:11px;opacity:.8">Then reload this page</span>';
+        lerr.innerHTML='❌ Server not reachable — run <code style="font-size:11px">start.bat</code> first<br><span style="font-size:11px;opacity:.8">Then reload this page</span>';
         lerr.style.display='block';return;
       }
     } else {
@@ -4654,7 +4715,7 @@ function nav(page){
     exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
-    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features,sa_sensors:rSA_Sensors,sa_integrations:rSA_Integrations};
+    sa_overview:rSA_Overview,sa_orgs:rSA_Orgs,sa_invites:rSA_Invites,sa_revenue:rSA_Revenue,sa_features:rSA_Features,sa_sensors:rSA_Sensors,sa_integrations:rSA_Integrations,sa_security:rSA_Security};
   (map[page]||rDash)();
   // Animate page entry and KPI count-up
   c.style.animation='fadeInUp .28s cubic-bezier(.22,.68,0,1.18) both';
@@ -8309,6 +8370,127 @@ function _ssRefresh(){
 // ══════════════════════════════════════════════════
 // ── SA Integrations page helpers ─────────────────────────────────
 var _siSaToken='';
+
+// ══════════════════════════════════════════════════════════════════
+// SA SECURITY PAGE — 2FA setup, audit log, RLS script
+// ══════════════════════════════════════════════════════════════════
+function rSA_Security(){
+  var c=document.getElementById('content');
+  c.innerHTML=
+    '<div style="font-size:18px;font-weight:800;margin-bottom:20px">🛡️ Security Center</div>'+
+
+    // ── 2FA Setup ─────────────────────────────────────────────────
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hd"><div class="card-title">🔐 Two-Factor Authentication (2FA)</div></div>'+
+      '<div style="font-size:13px;color:var(--t2);margin-bottom:16px">'+
+        'Protect the SA login with Google Authenticator. Once enabled, a 6-digit code is required on every login.'+
+      '</div>'+
+      '<div id="totp-status" style="margin-bottom:16px"><span style="color:var(--t3);font-size:13px">Checking status…</span></div>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+        '<button class="btn btn-primary" onclick="_sa2faSetup()">⚙️ Generate New 2FA Secret</button>'+
+        '<button class="btn btn-outline" onclick="_sa2faVerify()">✅ Test a Code</button>'+
+      '</div>'+
+      '<div id="totp-qr" style="margin-top:16px"></div>'+
+    '</div>'+
+
+    // ── Audit Log ─────────────────────────────────────────────────
+    '<div class="card" style="margin-bottom:16px">'+
+      '<div class="card-hd"><div class="card-title">📋 SA Audit Log</div>'+
+        '<button class="btn btn-outline btn-sm" onclick="_saLoadAudit()">↺ Refresh</button>'+
+      '</div>'+
+      '<div id="sa-audit-body" style="font-size:12px;font-family:monospace;max-height:320px;overflow-y:auto">Loading…</div>'+
+    '</div>'+
+
+    // ── RLS Script ────────────────────────────────────────────────
+    '<div class="card">'+
+      '<div class="card-hd"><div class="card-title">🗄️ Supabase Row Level Security</div>'+
+        '<button class="btn btn-outline btn-sm" onclick="_saLoadRLS()">Show SQL Script</button>'+
+      '</div>'+
+      '<div style="font-size:13px;color:var(--t2);margin-bottom:12px">'+
+        'Run this SQL in your Supabase Dashboard → SQL Editor to prevent orgs from accessing each other\'s data.'+
+      '</div>'+
+      '<div id="sa-rls-body"></div>'+
+    '</div>';
+
+  _saLoadAudit();
+  _saCheckTotpStatus();
+}
+
+function _saCheckTotpStatus(){
+  fetch('/api/sa-2fa/verify?token=000000')
+    .then(function(r){return r.json();})
+    .then(function(){
+      // If we get a real response, 2FA endpoint is reachable
+      var el=document.getElementById('totp-status');
+      if(el) el.innerHTML='<span style="color:var(--t3);font-size:13px">ℹ️ Check your .env for <code>SA_TOTP_ENABLED</code> status.</span>';
+    }).catch(function(){});
+}
+
+function _sa2faSetup(){
+  var el=document.getElementById('totp-qr');
+  if(el) el.innerHTML='<div style="color:var(--t3);font-size:12px">Generating…</div>';
+  fetch('/api/sa-2fa/setup')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.ok){toast('Error: '+(d.error||'unknown'),'err');return;}
+      var qrHtml='<div style="background:#fff;padding:12px;border-radius:8px;display:inline-block;margin-bottom:12px">'+
+        '<img src="'+d.qrDataUrl+'" style="width:180px;height:180px;display:block"/>'+
+      '</div>'+
+      '<div style="font-size:12px;margin-bottom:8px"><b>1.</b> Scan QR with Google Authenticator or Authy</div>'+
+      '<div style="font-size:12px;margin-bottom:8px"><b>2.</b> Add to your <code>.env</code> file:</div>'+
+      '<pre style="background:var(--bg2);padding:10px;border-radius:6px;font-size:11px;overflow-x:auto">'+
+        'SA_TOTP_SECRET='+d.secret+'\nSA_TOTP_ENABLED=true'+
+      '</pre>'+
+      '<div style="font-size:12px;margin-top:8px"><b>3.</b> Restart the server → test with the button above</div>';
+      if(el) el.innerHTML=qrHtml;
+      toast('2FA secret generated — scan the QR code now','ok');
+    }).catch(function(e){toast('Server error: '+e.message,'err');});
+}
+
+function _sa2faVerify(){
+  var code=prompt('Enter the 6-digit code from your Authenticator app:');
+  if(!code)return;
+  fetch('/api/sa-2fa/verify?token='+encodeURIComponent(code))
+    .then(function(r){return r.json();})
+    .then(function(d){toast(d.message||'—', d.ok?'ok':'err');})
+    .catch(function(e){toast('Error: '+e.message,'err');});
+}
+
+function _saLoadAudit(){
+  var el=document.getElementById('sa-audit-body');
+  fetch('/api/sa-audit')
+    .then(function(r){return r.json();})
+    .then(function(d){
+      if(!d.log||!d.log.length){
+        if(el)el.innerHTML='<div style="color:var(--t3);padding:12px">No audit events yet.</div>';
+        return;
+      }
+      if(el) el.innerHTML=d.log.map(function(e){
+        var color=e.action.includes('FAIL')?'#EF4444':e.action.includes('2FA')?'#F59E0B':'#10B981';
+        return '<div style="padding:5px 0;border-bottom:1px solid var(--bd)">'+
+          '<span style="color:var(--t3)">'+e.ts.replace('T',' ').slice(0,19)+'</span>  '+
+          '<span style="color:'+color+';font-weight:700">'+e.action+'</span>  '+
+          '<span style="color:var(--t2)">'+e.detail+'</span>  '+
+          '<span style="color:var(--t3);font-size:10px">IP: '+e.ip+'</span>'+
+        '</div>';
+      }).join('');
+    }).catch(function(){if(el)el.innerHTML='<div style="color:var(--t3)">Could not load audit log</div>';});
+}
+
+function _saLoadRLS(){
+  var el=document.getElementById('sa-rls-body');
+  if(el) el.innerHTML='<div style="color:var(--t3);font-size:12px">Loading…</div>';
+  fetch('/api/sa-rls-script')
+    .then(function(r){return r.text();})
+    .then(function(sql){
+      if(el) el.innerHTML=
+        '<pre style="background:var(--bg2);padding:14px;border-radius:8px;font-size:11px;overflow-x:auto;max-height:400px;white-space:pre-wrap">'+
+          sql.replace(/</g,'&lt;').replace(/>/g,'&gt;')+
+        '</pre>'+
+        '<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="navigator.clipboard.writeText(document.querySelector(\'#sa-rls-body pre\').textContent).then(function(){toast(\'SQL copied to clipboard\',\'ok\');})">📋 Copy SQL</button>'+
+        '<div style="font-size:12px;color:var(--t3);margin-top:8px">Go to Supabase Dashboard → SQL Editor → New Query → paste → Run</div>';
+    }).catch(function(){if(el)el.innerHTML='<div style="color:var(--t3)">Error loading script</div>';});
+}
 
 function rSA_Integrations(){
   _siSaToken=localStorage.getItem('ip_sa_token')||'';
