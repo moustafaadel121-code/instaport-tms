@@ -30,9 +30,18 @@ const ROOT = DEV ? __dirname : path.join(__dirname, 'dist');
 // SECURITY MIDDLEWARE
 // ═══════════════════════════════════════════════════════
 app.use(helmet({ contentSecurityPolicy: false }));
+const _ALLOWED_ORIGINS = (process.env.CORS_ORIGIN || '*').split(',').map(s => s.trim());
 app.use(cors({
-  origin:  process.env.CORS_ORIGIN || '*',
+  origin: function(origin, cb){
+    // Allow no-origin requests (curl, mobile apps, same-origin)
+    if(!origin) return cb(null, true);
+    if(_ALLOWED_ORIGINS.includes('*')) return cb(null, true);
+    if(_ALLOWED_ORIGINS.some(o => origin === o || origin.endsWith('.github.io')))
+      return cb(null, true);
+    cb(new Error('CORS: origin not allowed: ' + origin));
+  },
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+  credentials: true,
 }));
 
 // Raw body for Stripe webhooks (must be before express.json)
@@ -146,6 +155,21 @@ gps.on('geofence',     e => _broadcast('gps_geofence',   e));
 // ═══════════════════════════════════════════════════════
 // SA AUTH (credentials in .env only — timing-safe)
 // ═══════════════════════════════════════════════════════
+
+// ── Localhost-only guard — SA panel never reachable from internet ──
+function _localOnly(req, res, next) {
+  const raw = req.ip || req.socket.remoteAddress || '';
+  const ip  = raw.replace(/^::ffff:/, ''); // normalise IPv4-mapped IPv6
+  const ok  = ip === '127.0.0.1' || ip === '::1' || ip === 'localhost';
+  if (!ok) {
+    return res.status(403).json({
+      ok: false,
+      error: 'SA access is restricted to localhost only. Open http://localhost:' + (process.env.PORT || 7434) + ' on your server machine.'
+    });
+  }
+  next();
+}
+
 const _saAttempts = {};
 function _saRateLimit(ip) {
   const now = Date.now();
@@ -155,11 +179,11 @@ function _saRateLimit(ip) {
   return _saAttempts[ip].count > 5;
 }
 
-app.post('/api/sa-auth', (req, res) => {
+app.post('/api/sa-auth', _localOnly, (req, res) => {
   const ip = req.ip || req.socket.remoteAddress;
   if (_saRateLimit(ip)) return res.status(429).json({ ok: false, error: 'Too many attempts. Try again in 15 minutes.' });
-  const { org, userId, pin } = req.body;
   try {
+    const { org, userId, pin } = req.body || {};
     const orgOk  = crypto.timingSafeEqual(Buffer.from(org    || '', 'utf8'), Buffer.from(process.env.SA_ORG     || '', 'utf8'));
     const userOk = crypto.timingSafeEqual(Buffer.from(userId || '', 'utf8'), Buffer.from(process.env.SA_USER_ID || '', 'utf8'));
     const pinOk  = crypto.timingSafeEqual(Buffer.from(pin    || '', 'utf8'), Buffer.from(process.env.SA_PIN     || '', 'utf8'));
@@ -261,59 +285,81 @@ app.post('/api/paypal/webhook', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// ACCOUNTING OAUTH — QuickBooks & Xero
+// ACCOUNTING OAUTH — QuickBooks & Xero  (SA / localhost only)
 // ═══════════════════════════════════════════════════════
 const OAUTH_BASE = process.env.APP_URL || `http://localhost:${PORT}`;
 
 // QuickBooks OAuth flow
-app.get('/api/oauth/quickbooks', (req, res) => {
+app.get('/api/oauth/quickbooks', _localOnly, (req, res) => {
   const url = accounting.qbOAuthUrl(`${OAUTH_BASE}/api/oauth/quickbooks/callback`);
   if (!url) return res.status(400).json({ error: 'QB_CLIENT_ID not configured' });
   res.redirect(url);
 });
 
-app.get('/api/oauth/quickbooks/callback', async (req, res) => {
+app.get('/api/oauth/quickbooks/callback', _localOnly, async (req, res) => {
   const { code, realmId } = req.query;
   try {
     await accounting.qbExchangeCode(code, realmId, `${OAUTH_BASE}/api/oauth/quickbooks/callback`);
-    res.redirect('/#sa_integrations?connected=quickbooks');
+    res.send(_oauthSuccessPage('QuickBooks', 'quickbooks'));
   } catch (e) {
-    res.status(500).send('QuickBooks auth failed: ' + e.message);
+    res.send(_oauthErrorPage('QuickBooks', e.message));
   }
 });
 
 // Xero OAuth flow
-app.get('/api/oauth/xero', (req, res) => {
+app.get('/api/oauth/xero', _localOnly, (req, res) => {
   const url = accounting.xeroOAuthUrl(`${OAUTH_BASE}/api/oauth/xero/callback`);
   if (!url) return res.status(400).json({ error: 'XERO_CLIENT_ID not configured' });
   res.redirect(url);
 });
 
-app.get('/api/oauth/xero/callback', async (req, res) => {
+app.get('/api/oauth/xero/callback', _localOnly, async (req, res) => {
   const { code } = req.query;
   try {
     await accounting.xeroExchangeCode(code, `${OAUTH_BASE}/api/oauth/xero/callback`);
-    res.redirect('/#sa_integrations?connected=xero');
+    res.send(_oauthSuccessPage('Xero', 'xero'));
   } catch (e) {
-    res.status(500).send('Xero auth failed: ' + e.message);
+    res.send(_oauthErrorPage('Xero', e.message));
   }
 });
 
+// ── OAuth popup helper pages ──────────────────────────────────────
+function _oauthSuccessPage(label, provider) {
+  return `<!DOCTYPE html><html><head><title>${label} Connected</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f0f1a;color:#fff;}
+.box{text-align:center;}.icon{font-size:56px;}.msg{font-size:18px;margin:12px 0 4px;}.sub{font-size:13px;opacity:.6;}</style></head>
+<body><div class="box"><div class="icon">✅</div>
+<div class="msg">${label} connected successfully</div>
+<div class="sub">This window will close automatically…</div></div>
+<script>
+  try{window.opener&&window.opener.postMessage({type:'oauth_success',provider:'${provider}'},'*');}catch(e){}
+  setTimeout(function(){window.close();},1800);
+</script></body></html>`;
+}
+function _oauthErrorPage(label, msg) {
+  return `<!DOCTYPE html><html><head><title>${label} Error</title>
+<style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;background:#0f0f1a;color:#fff;}
+.box{text-align:center;max-width:420px;padding:24px;}.icon{font-size:56px;}.msg{font-size:16px;margin:12px 0 4px;}.sub{font-size:12px;opacity:.5;word-break:break-all;}</style></head>
+<body><div class="box"><div class="icon">❌</div>
+<div class="msg">${label} connection failed</div>
+<div class="sub">${msg}</div></div>
+<script>
+  try{window.opener&&window.opener.postMessage({type:'oauth_error',provider:'${label.toLowerCase()}',message:'${msg.replace(/'/g,"\\'")}'},'*');}catch(e){}
+  setTimeout(function(){window.close();},4000);
+</script></body></html>`;
+}
+
 // Accounting status + invoice sync
-app.get('/api/accounting/status', (req, res) => {
+app.get('/api/accounting/status',           _localOnly, (req, res) => {
   res.json(accounting.getStatus());
 });
 
-app.post('/api/accounting/sync-invoice', async (req, res) => {
-  const saToken = req.headers['x-sa-token'];
-  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+app.post('/api/accounting/sync-invoice',    _localOnly, async (req, res) => {
   const result = await accounting.syncInvoiceAll(req.body);
   res.json(result);
 });
 
-app.get('/api/accounting/customers', async (req, res) => {
-  const saToken = req.headers['x-sa-token'];
-  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+app.get('/api/accounting/customers',        _localOnly, async (req, res) => {
   const { provider } = req.query;
   if (provider === 'xero') return res.json(await accounting.xeroGetContacts());
   if (provider === 'sage') return res.json(await accounting.sageGetContacts());
@@ -321,9 +367,9 @@ app.get('/api/accounting/customers', async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════
-// INTEGRATIONS STATUS (for SA panel)
+// INTEGRATIONS STATUS / CONFIG / TEST (SA / localhost only)
 // ═══════════════════════════════════════════════════════
-app.get('/api/integrations/status', (req, res) => {
+app.get('/api/integrations/status', _localOnly, (req, res) => {
   const saToken = req.headers['x-sa-token'];
   if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
 
@@ -371,9 +417,7 @@ app.get('/api/integrations/status', (req, res) => {
 // ═══════════════════════════════════════════════════════
 
 // Save config values posted from SA Integrations page
-app.post('/api/integrations/config', (req, res) => {
-  const saToken = req.headers['x-sa-token'];
-  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+app.post('/api/integrations/config', _localOnly, (req, res) => {
 
   const { values, reinit } = req.body; // values = { KEY: 'value', ... }
   if (!values || typeof values !== 'object') return res.status(400).json({ error: 'values object required' });
@@ -396,16 +440,12 @@ app.post('/api/integrations/config', (req, res) => {
 });
 
 // Get current config (values redacted for display)
-app.get('/api/integrations/config', (req, res) => {
-  const saToken = req.headers['x-sa-token'];
-  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+app.get('/api/integrations/config', _localOnly, (req, res) => {
   res.json({ ok: true, config: cfg.getAll(true) }); // redacted view
 });
 
 // Test a specific integration (send a test notification etc.)
-app.post('/api/integrations/test', async (req, res) => {
-  const saToken = req.headers['x-sa-token'];
-  if (saToken !== process.env.SA_API_TOKEN) return res.status(403).json({ error: 'SA token required' });
+app.post('/api/integrations/test', _localOnly, async (req, res) => {
 
   const { type } = req.body;
   const notif = require('./integrations/notifications');

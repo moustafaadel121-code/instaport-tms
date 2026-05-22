@@ -2959,6 +2959,15 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 <div class="tosts" id="tosts"></div>
 <script>
 // ══════════════════════════════════════════════════
+// ENVIRONMENT DETECTION
+// localhost → full app including SA panel
+// github.io → staff login only, SA panel hidden
+// ══════════════════════════════════════════════════
+var _IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
+var _IS_LOCAL        = !_IS_GITHUB_PAGES;
+var INSTAPORT_API    = ''; // always relative on local; unused on GH Pages (Supabase handles auth)
+
+// ══════════════════════════════════════════════════
 // UI ENHANCEMENT HELPERS
 // ══════════════════════════════════════════════════
 
@@ -4335,8 +4344,9 @@ const PAGES={
 // ══════════════════════════════════════════════════
 // AUTH & PASSWORD VERIFICATION
 // ══════════════════════════════════════════════════
-// Auto-fill org code when SA user ID is detected
+// Auto-fill org code when SA user ID is detected (local only)
 function _loginAutoFill(uid){
+  if(_IS_GITHUB_PAGES) return; // SA not available on GitHub Pages
   var orgEl=document.getElementById('uorg');
   var hint=document.getElementById('sa-hint');
   var isSA=uid.trim().toUpperCase()==='SA01'||uid.trim().toLowerCase().startsWith('sa-');
@@ -4356,6 +4366,11 @@ async function doLogin(){
   var lerr=document.getElementById('lerr');lerr.style.display='none';
   if(!orgCode){lerr.textContent='Enter your organization code.';lerr.style.display='block';return;}
   if(!uid||!pin){lerr.textContent='Enter your Employee ID and PIN.';lerr.style.display='block';return;}
+  // ── SA panel is localhost-only (professional security) ────────────
+  if(orgCode==='ip-master'&&_IS_GITHUB_PAGES){
+    lerr.innerHTML='🔒 <b>Super Admin access is restricted to the local server.</b><br><span style="font-size:11px;opacity:.8">Open <code>http://localhost:7434</code> on your server machine instead.</span>';
+    lerr.style.display='block';return;
+  }
   // ── Brute-force check ─────────────────────────
   var lockKey=orgCode+':'+uid;
   if(_secIsLocked(lockKey)){lerr.textContent='🔒 '+_secLockoutMsg(lockKey);lerr.style.display='block';return;}
@@ -8413,7 +8428,7 @@ function rSA_Integrations(){
           '<div id="si-quickbooks-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">—</div>'+
           _siInput('QB_CLIENT_ID','Client ID','password','ABxxxxxxxxxxxxxxxxxxxxxxxx')+
           _siInput('QB_CLIENT_SECRET','Client Secret','password','xxxxxxxxxxxxxxxxxxxxxxxx')+
-          '<a href="/api/oauth/quickbooks" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-block;margin-top:8px">🔗 Connect QuickBooks →</a>'+
+          '<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="_oauthPopup(\'quickbooks\')">🔗 Connect QuickBooks →</button>'+
         '</div>'+
 
         // Xero
@@ -8423,7 +8438,7 @@ function rSA_Integrations(){
           '<div id="si-xero-status" style="font-size:11px;margin-bottom:8px;color:var(--t3)">—</div>'+
           _siInput('XERO_CLIENT_ID','Client ID','password','xxxxxxxxxxxxxxxxxxxxxxxx')+
           _siInput('XERO_CLIENT_SECRET','Client Secret','password','xxxxxxxxxxxxxxxxxxxxxxxx')+
-          '<a href="/api/oauth/xero" class="btn btn-primary btn-sm" style="text-decoration:none;display:inline-block;margin-top:8px">🔗 Connect Xero →</a>'+
+          '<button class="btn btn-primary btn-sm" style="margin-top:8px" onclick="_oauthPopup(\'xero\')">🔗 Connect Xero →</button>'+
         '</div>'+
 
         // Sage
@@ -8597,6 +8612,41 @@ function _siLoadStatus(){
       if(grid)grid.innerHTML='<div style="color:var(--t3);font-size:12px;padding:8px">Server offline — run <code>npm run dev</code></div>';
     });
 }
+
+// ── OAuth popup (keeps SA session alive) ─────────────────────────
+function _oauthPopup(provider){
+  var url='/api/oauth/'+provider;
+  var w=600,h=700,l=Math.round((screen.width-w)/2),t=Math.round((screen.height-h)/2);
+  var popup=window.open(url,provider+'_oauth',
+    'width='+w+',height='+h+',left='+l+',top='+t+',resizable=yes,scrollbars=yes');
+  if(!popup){
+    // Fallback if popup blocked — navigate in current tab (will need re-login)
+    toast('⚠️ Allow popups for this site so your session stays active','warn');
+    window.location.href=url;
+    return;
+  }
+  // Listen for the popup to report success/failure
+  function _onMsg(ev){
+    if(!ev.data||ev.data.type!=='oauth_success'&&ev.data.type!=='oauth_error')return;
+    window.removeEventListener('message',_onMsg);
+    if(ev.data.type==='oauth_success'){
+      toast('✅ '+ev.data.provider.charAt(0).toUpperCase()+ev.data.provider.slice(1)+' connected successfully','ok');
+      setTimeout(_siLoadStatus,800);
+    } else {
+      toast('❌ Connection failed: '+ev.data.message,'err');
+    }
+  }
+  window.addEventListener('message',_onMsg);
+}
+// Also handle redirect-back case (if popup was blocked and user navigated away)
+(function(){
+  var params=new URLSearchParams(window.location.search);
+  var hash=window.location.hash||'';
+  if(hash.includes('connected=')){
+    var prov=hash.split('connected=')[1]||'';
+    if(prov)setTimeout(function(){toast('✅ '+prov+' connected','ok');_siLoadStatus&&_siLoadStatus();},400);
+  }
+})();
 
 // ── USERS ──
 function rAdminUsers(){
@@ -10453,6 +10503,15 @@ doLogin=async function(){
   var lerr=document.getElementById('lerr');lerr.style.display='none';
   if(!orgCode){lerr.textContent='Enter your organization code.';lerr.style.display='block';return;}
   if(!val||!pin){lerr.textContent='Enter your Employee ID and PIN.';lerr.style.display='block';return;}
+  // ── Super Admin: localhost only — blocked on GitHub Pages ──
+  if(orgCode==='ip-master'){
+    if(_IS_GITHUB_PAGES){
+      var lerr2=document.getElementById('lerr');
+      lerr2.innerHTML='🔒 <b>Super Admin access is restricted to the local server.</b><br><span style="font-size:11px;opacity:.8">Open <code>http://localhost:7434</code> on your server machine instead.</span>';
+      lerr2.style.display='block';return;
+    }
+    return _origDL();
+  }
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
   try{
     var ok=await _loadTenant(orgCode);
