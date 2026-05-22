@@ -8224,6 +8224,66 @@ function expAnalyticsFleet(){
   uExport('Fleet Utilization',['Truck Type','Total','Released','On Hold','Trips','Customers','Revenue (EGP)'],rows);
 }
 function expAnalytics(){expAnalyticsCust();}
+
+// ── drillFleet: Fleet type detail side panel ─────────────────────────
+function drillFleet(type){
+  var trips=_anTrips();
+  var trucks=TRUCKS.filter(function(t){return t.type===type;});
+  var tpTrips=trips.filter(function(t){return trucks.some(function(tk){return tk.plate===t.truck;});});
+  var rel=trucks.filter(function(t){return t.valid;}).length;
+  var rev=tpTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var km=tpTrips.reduce(function(s,t){return s+(+t.km||0);},0);
+  var co2=tpTrips.reduce(function(s,t){return s+(+t.co2||0);},0);
+  window._drillFleetType=type;
+  // Per-truck breakdown
+  var truckRows=trucks.map(function(tk){
+    var tkTrips=tpTrips.filter(function(t){return t.truck===tk.plate;});
+    var tkRev=tkTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
+    var tkKm=tkTrips.reduce(function(s,t){return s+(+t.km||0);},0);
+    return{plate:tk.plate,status:tk.valid?'Released':'On Hold',trips:tkTrips.length,rev:tkRev,km:tkKm};
+  }).sort(function(a,b){return b.trips-a.trips;});
+  openSP('&#128666; '+type+' — Fleet Detail',
+    '<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:14px">'
+    +'<div class="ib"><div class="ib-l">Trucks</div><div class="ib-v">'+trucks.length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Released</div><div class="ib-v" style="color:#10B981">'+rel+'</div></div>'
+    +'<div class="ib"><div class="ib-l">On Hold</div><div class="ib-v" style="color:#EF4444">'+(trucks.length-rel)+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Trips</div><div class="ib-v">'+tpTrips.length+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Revenue</div><div class="ib-v" style="color:#6C3FF5">EGP '+Math.round(rev).toLocaleString()+'</div></div>'
+    +'<div class="ib"><div class="ib-l">Total KM</div><div class="ib-v">'+Math.round(km).toLocaleString()+' km</div></div>'
+    +'</div>'
+    +_spExpBtns('expFleetFmt','Fleet — '+type)
+    +'<div style="overflow-x:auto"><table class="tbl"><thead><tr>'
+    +'<th>Plate / ID</th><th>Status</th><th>Trips</th><th>Revenue (EGP)</th><th>Total KM</th>'
+    +'</tr></thead><tbody>'
+    +truckRows.map(function(r){
+      return '<tr style="cursor:pointer" onclick="closeSP();rFleet&&rFleet()">'
+        +'<td style="font-weight:700;color:#6C3FF5">'+r.plate+'</td>'
+        +'<td>'+('<span class="tag '+(r.status==='Released'?'tag-ok':'tag-warn')+'">'+r.status+'</span>')+'</td>'
+        +'<td style="font-weight:600">'+r.trips+'</td>'
+        +'<td style="color:#059669;font-weight:600">'+(r.rev?'EGP '+Math.round(r.rev).toLocaleString():'—')+'</td>'
+        +'<td>'+(r.km?Math.round(r.km).toLocaleString()+' km':'—')+'</td>'
+        +'</tr>';
+    }).join('')
+    +'</tbody></table></div>'
+  );
+}
+function expFleetFmt(fmt){
+  var type=window._drillFleetType||'';
+  var trips=_anTrips();
+  var trucks=TRUCKS.filter(function(t){return t.type===type;});
+  var tpTrips=trips.filter(function(t){return trucks.some(function(tk){return tk.plate===t.truck;});}).sort(function(a,b){return (b.ts||'').localeCompare(a.ts||'');});
+  var canFin=can('finance_view')||can('all');
+  var headers=['Date/Time','Trip ID','Truck','Driver','Type','Direction','Condition','KM'];
+  if(canFin)headers.push('Cost (EGP)');
+  headers.push('CO2 (kg)','Customer','Status');
+  var rows=tpTrips.map(function(t){
+    var r=[t.ts||'',t.id,t.truck||'',t.driver||'',t.type,t.dir||'',t.condition||'',t.km||0];
+    if(canFin)r.push(t.cost||0);
+    r.push(t.co2||0,t.customer||'',t.status);
+    return r;
+  });
+  _spExport(fmt,'Fleet — '+type,headers,rows);
+}
 // ══════════════════════════════════════════════════
 // ══════════════════════════════════════════════════
 // SUPER ADMIN PANEL — app-owner only (org: ip-master)
@@ -15590,12 +15650,12 @@ function _anRenderOverview(trips){
     '<div style="flex:1;min-width:0">'+
     fleetStats.map(function(x,i){
       var pct=x.total>0?Math.round(x.rel/x.total*100):0;var col=CC[i%CC.length];
-      return '<div style="margin-bottom:12px;padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--bd)">'
+      return '<div onclick="drillFleet(\''+x.name.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+'\''+')" style="cursor:pointer;margin-bottom:12px;padding:9px 11px;border-radius:10px;background:var(--bg);border:1px solid var(--bd);transition:box-shadow .15s" onmouseenter="this.style.boxShadow=\'0 2px 10px rgba(0,0,0,.12)\'" onmouseleave="this.style.boxShadow=\'\'">'
       +'<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">'
       +'<div style="display:flex;align-items:center;gap:7px"><div style="width:10px;height:10px;border-radius:3px;background:'+col+'"></div><span style="font-size:12px;font-weight:700">'+x.name+'</span></div>'
-      +'<span style="font-size:11px;font-weight:800;color:'+col+'">'+pct+'% available</span></div>'
+      +'<span style="font-size:11px;font-weight:800;color:'+col+'">'+pct+'% available &rsaquo;</span></div>'
       +'<div style="height:5px;background:rgba(0,0,0,.06);border-radius:3px"><div style="height:100%;width:'+pct+'%;background:'+col+';border-radius:3px;transition:width .6s ease"></div></div>'
-      +'<div style="font-size:10px;color:var(--t3);margin-top:4px">'+x.rel+'/'+x.total+' released · '+x.trips+' trips · EGP '+Math.round(x.rev/1000)+'K</div>'
+      +'<div style="font-size:10px;color:var(--t3);margin-top:4px">'+x.rel+'/'+x.total+' released · '+x.trips+' trips · EGP '+Math.round(x.rev/1000)+'K — click for details</div>'
       +'</div>';
     }).join('')+'</div></div>'
   )+'</div></div></div>';
