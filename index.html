@@ -4571,6 +4571,7 @@ async function doLogin(){
     _loadFeatureGates(); // apply any saved custom feature-gate config
     var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
     // Show dashboard instantly, silently refresh data from Supabase in background
+    _applyBranding();
     nav(_startPage);
     initApp().then(function(){var _sp=S.role==='client'?'client_portal':_startPage;nav(_sp);_checkMaintenanceAlerts();}).catch(function(){});
     _initPWA();
@@ -4901,6 +4902,282 @@ window._cpExport=function(){
   a.download='MyShipments_'+new Date().toISOString().slice(0,10)+'.csv';a.click();
   toast('📥 CSV exported','ok');
 };
+
+  
+// ══ API KEY MANAGEMENT ══════════════════════════════════════
+function rAdminAPIKeys(){
+  var el=document.getElementById('admin-content');if(!el)return;
+  if(!S.apiKeys)S.apiKeys=JSON.parse(localStorage.getItem('ip_apikeys')||'[]');
+  el.innerHTML='<div class="card">'+
+  '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">'+
+  '<div><div style="font-weight:700;font-size:15px">🔑 API Key Management</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-top:3px">Generate keys for external integrations (webhooks, Power BI, etc.)</div></div>'+
+  '<button class="btn btn-primary" onclick="_genAPIKey()">➕ Generate New Key</button></div>'+
+  (S.apiKeys.length===0?
+    '<div style="text-align:center;padding:40px;color:var(--t2)"><div style="font-size:36px;margin-bottom:10px">🔑</div><div>No API keys yet. Generate your first key to enable integrations.</div></div>':
+    '<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
+    '<thead><tr style="border-bottom:2px solid var(--bd)">'+
+    ['Name','Key (prefix)','Created','Last Used','Status','Actions'].map(function(h){return '<th style="text-align:left;padding:8px 10px;color:var(--t2);font-weight:600">'+h+'</th>';}).join('')+
+    '</tr></thead><tbody>'+
+    S.apiKeys.map(function(k){
+      var statusCol=k.active?'#10B981':'#EF4444';
+      return '<tr style="border-bottom:1px solid var(--bd)">'+
+        '<td style="padding:8px 10px;font-weight:700">'+k.name+'</td>'+
+        '<td style="padding:8px 10px;font-family:monospace;color:#6C3FF5">'+k.key.slice(0,16)+'...<button onclick="_copyKey(''+k.key+'')" style="background:none;border:none;cursor:pointer;color:#6C3FF5;font-size:11px;margin-left:4px">&#x1F4CB;</button></td>'+
+        '<td style="padding:8px 10px;color:var(--t2)">'+k.createdAt+'</td>'+
+        '<td style="padding:8px 10px;color:var(--t2)">'+(k.lastUsed||'Never')+'</td>'+
+        '<td style="padding:8px 10px"><span style="background:'+statusCol+';color:#fff;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700">'+(k.active?'ACTIVE':'REVOKED')+'</span></td>'+
+        '<td style="padding:8px 10px"><button onclick="_revokeAPIKey(''+k.id+'')" class="btn btn-sm" style="background:#EF4444;color:#fff;border:none">Revoke</button></td>'+
+      '</tr>';
+    }).join('')+'</tbody></table></div>')+
+  '</div>'+
+  '<div class="card" style="margin-top:12px">'+
+  '<div style="font-weight:700;font-size:13px;margin-bottom:10px">📖 Integration Guide</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:8px">Use your API key in the Authorization header:</div>'+
+  '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:8px;padding:12px;font-family:monospace;font-size:11px;color:#10B981">Authorization: Bearer YOUR_API_KEY</div>'+
+  '<div style="margin-top:10px;font-size:12px;color:var(--t2)">Available endpoints: <code style="color:#6C3FF5">/api/trips</code>, <code style="color:#6C3FF5">/api/invoices</code>, <code style="color:#6C3FF5">/api/fleet</code></div>'+
+  '<div style="margin-top:8px;font-size:12px;color:var(--t2)">For Power BI: Use Web connector with the API URL and Bearer token authentication.</div>'+
+  '</div>';
+}
+window._genAPIKey=function(){
+  openM('<div class="m-title">🔑 New API Key</div>'+
+  '<div class="fg f1"><label>Key Name / Description</label><input id="ak-name" placeholder="e.g. Power BI Integration, Webhook"/></div>'+
+  '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+  '<button class="btn btn-primary" onclick="_createAPIKey()">Generate</button></div>');
+};
+window._createAPIKey=function(){
+  var name=(document.getElementById('ak-name')||{}).value;
+  if(!name){toast('Enter a key name','err');return;}
+  if(!S.apiKeys)S.apiKeys=[];
+  var key='ip_'+_tenantId+'_'+Array.from({length:32},function(){return '0123456789abcdefghijklmnopqrstuvwxyz'[Math.floor(Math.random()*36)];}).join('');
+  var k={id:'ak_'+Date.now(),name:name,key:key,active:true,createdAt:new Date().toLocaleString('en-GB'),lastUsed:null};
+  S.apiKeys.push(k);
+  try{localStorage.setItem('ip_apikeys',JSON.stringify(S.apiKeys));}catch(e){}
+  audit('API_KEY_CREATE',name,'');closeM();
+  toast('🔑 API Key generated: '+key.slice(0,20)+'...','ok');
+  rAdminAPIKeys();
+};
+window._revokeAPIKey=function(id){
+  if(!confirm('Revoke this API key? Applications using it will lose access.'))return;
+  if(S.apiKeys){var k=S.apiKeys.find(function(x){return x.id===id;});if(k)k.active=false;}
+  try{localStorage.setItem('ip_apikeys',JSON.stringify(S.apiKeys));}catch(e){}
+  audit('API_KEY_REVOKE',id,'');toast('Key revoked','ok');rAdminAPIKeys();
+};
+window._copyKey=function(key){
+  navigator.clipboard&&navigator.clipboard.writeText(key).then(function(){toast('📋 Key copied to clipboard','ok');});
+};
+
+// ══ WHITE-LABEL BRANDING ════════════════════════════════════
+function rAdminBranding(){
+  var el=document.getElementById('admin-content');if(!el)return;
+  var br=S.branding||{};
+  el.innerHTML='<div class="card">'+
+  '<div style="font-weight:700;font-size:15px;margin-bottom:4px">🎨 White-Label Branding</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Customize the appearance of your InstaPort TMS instance.</div>'+
+  '<div class="g2" style="gap:14px">'+
+  '<div>'+
+  '<div class="frow" style="gap:10px;margin-bottom:12px">'+
+  '<div class="fg"><label>Company Name</label><input id="br-name" value="'+(br.companyName||_tenantName)+'" placeholder="Your Company"/></div>'+
+  '<div class="fg"><label>Short Name (sidebar)</label><input id="br-short" value="'+(br.shortName||'InstaPort')+'" placeholder="Short"/></div>'+
+  '</div>'+
+  '<div class="frow" style="gap:10px;margin-bottom:12px">'+
+  '<div class="fg"><label>Logo URL</label><input id="br-logo" value="'+(br.logoUrl||'')+'" placeholder="https://...logo.png"/></div>'+
+  '<div class="fg"><label>Favicon URL</label><input id="br-fav" value="'+(br.favUrl||'')+'" placeholder="https://...favicon.ico"/></div>'+
+  '</div>'+
+  '<div class="frow" style="gap:10px;margin-bottom:12px">'+
+  '<div class="fg"><label>Primary Color</label><input type="color" id="br-color" value="'+(br.primaryColor||'#6C3FF5')+'" style="height:38px;width:100%;border-radius:8px;border:1.5px solid var(--bd);cursor:pointer"/></div>'+
+  '<div class="fg"><label>Sidebar Color</label><input type="color" id="br-sidebar" value="'+(br.sidebarColor||'#1E1453')+'" style="height:38px;width:100%;border-radius:8px;border:1.5px solid var(--bd);cursor:pointer"/></div>'+
+  '</div>'+
+  '<div class="fg" style="margin-bottom:12px"><label>Support Email</label><input id="br-email" value="'+(br.supportEmail||'')+'" placeholder="support@yourcompany.com"/></div>'+
+  '<div class="fg" style="margin-bottom:16px"><label>Footer Text</label><input id="br-footer" value="'+(br.footerText||'')+'" placeholder="Powered by YourCompany"/></div>'+
+  '<div class="m-foot" style="border:none;padding:0"><button class="btn btn-primary" onclick="_saveBranding()">💾 Save Branding</button>'+
+  '<button class="btn btn-outline" onclick="_previewBranding()" style="margin-left:8px">👁 Preview</button>'+
+  '<button class="btn btn-outline" onclick="_resetBranding()" style="margin-left:8px">🔄 Reset Defaults</button></div>'+
+  '</div>'+
+  '<div>'+
+  '<div style="font-weight:700;font-size:13px;margin-bottom:10px">👁 Preview</div>'+
+  '<div id="brand-preview" style="border:1.5px solid var(--bd);border-radius:12px;overflow:hidden">'+
+  _brandingPreviewHTML(br)+
+  '</div>'+
+  '</div>'+
+  '</div>'+
+  '</div>';
+}
+function _brandingPreviewHTML(br){
+  var col=br.primaryColor||'#6C3FF5';
+  var sb=br.sidebarColor||'#1E1453';
+  var name=br.companyName||_tenantName||'InstaPort TMS';
+  return '<div style="background:'+sb+';padding:12px 16px;display:flex;align-items:center;gap:10px">'+
+    (br.logoUrl?'<img src="'+br.logoUrl+'" style="height:28px;border-radius:4px"/>':'<div style="width:28px;height:28px;border-radius:50%;background:'+col+'"></div>')+
+    '<span style="color:#fff;font-weight:700;font-size:14px">'+name+'</span></div>'+
+    '<div style="padding:14px;background:var(--bg)">'+
+    ['Dashboard','Fleet','Trips','Analytics'].map(function(p){
+      return '<div style="padding:7px 10px;border-radius:8px;margin-bottom:4px;font-size:12px;color:var(--t2)">'+p+'</div>';
+    }).join('')+
+    '</div>'+
+    '<div style="background:'+col+';padding:6px 12px;font-size:11px;color:#fff;text-align:center">'+(br.footerText||'Powered by InstaPort')+'</div>';
+}
+window._saveBranding=function(){
+  var br={
+    companyName:(document.getElementById('br-name')||{}).value||'',
+    shortName:(document.getElementById('br-short')||{}).value||'',
+    logoUrl:(document.getElementById('br-logo')||{}).value||'',
+    favUrl:(document.getElementById('br-fav')||{}).value||'',
+    primaryColor:(document.getElementById('br-color')||{}).value||'#6C3FF5',
+    sidebarColor:(document.getElementById('br-sidebar')||{}).value||'#1E1453',
+    supportEmail:(document.getElementById('br-email')||{}).value||'',
+    footerText:(document.getElementById('br-footer')||{}).value||''
+  };
+  S.branding=br;
+  try{localStorage.setItem('ip_branding',JSON.stringify(br));}catch(e){}
+  // Apply primary color immediately
+  document.documentElement.style.setProperty('--accent',br.primaryColor);
+  document.documentElement.style.setProperty('--sidebar-bg',br.sidebarColor);
+  // Update logo if provided
+  if(br.logoUrl){var logoEls=document.querySelectorAll('.logo-img');logoEls.forEach(function(el){el.src=br.logoUrl;});}
+  if(br.favUrl){var fav=document.querySelector("link[rel='icon']");if(fav)fav.href=br.favUrl;}
+  audit('BRANDING_SAVE','','');toast('🎨 Branding saved!','ok');
+  // Update preview
+  var prev=document.getElementById('brand-preview');if(prev)prev.innerHTML=_brandingPreviewHTML(br);
+};
+window._previewBranding=function(){
+  var br={
+    companyName:(document.getElementById('br-name')||{}).value||'',
+    primaryColor:(document.getElementById('br-color')||{}).value||'#6C3FF5',
+    sidebarColor:(document.getElementById('br-sidebar')||{}).value||'#1E1453',
+    logoUrl:(document.getElementById('br-logo')||{}).value||'',
+    footerText:(document.getElementById('br-footer')||{}).value||''
+  };
+  var prev=document.getElementById('brand-preview');if(prev)prev.innerHTML=_brandingPreviewHTML(br);
+};
+window._resetBranding=function(){
+  S.branding={};localStorage.removeItem('ip_branding');
+  document.documentElement.style.removeProperty('--accent');
+  document.documentElement.style.removeProperty('--sidebar-bg');
+  toast('🔄 Branding reset to defaults','ok');rAdminBranding();
+};
+
+// Apply saved branding on load
+function _applyBranding(){
+  try{
+    var br=JSON.parse(localStorage.getItem('ip_branding')||'{}');
+    if(!br.primaryColor)return;S.branding=br;
+    document.documentElement.style.setProperty('--accent',br.primaryColor);
+    document.documentElement.style.setProperty('--sidebar-bg',br.sidebarColor||'#1E1453');
+    if(br.logoUrl){var logoEls=document.querySelectorAll('.logo-img');logoEls.forEach(function(el){el.src=br.logoUrl;});}
+    if(br.favUrl){var fav=document.querySelector("link[rel='icon']");if(fav)fav.href=br.favUrl;}
+  }catch(e){}
+}
+
+// ══ DRIVER BEHAVIOR SCORECARD ═══════════════════════════════
+// Enhance driver scorecard with detailed behavior breakdown
+function _driverBehaviorScore(driver, trips, fuelLogs) {
+  var comp=trips.filter(function(t){return t.status==='completed';});
+  var km=comp.reduce(function(s,t){return s+(+t.km||0);},0);
+  var rev=comp.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var fl=fuelLogs.filter(function(l){return l.driver===driver.name;});
+  var totalL=fl.reduce(function(s,l){return s+(+l.liters||0);},0);
+  var kmPerL=totalL>0?km/totalL:null;
+  var onTimeRate=trips.length>0?Math.round(comp.filter(function(t){return !t.slaBreached;}).length/Math.max(1,trips.length)*100):null;
+  // Score components (0-100 each)
+  var s1=onTimeRate!==null?onTimeRate:50; // on-time weight 40%
+  var s2=trips.length>0?Math.min(100,trips.length*2):0; // activity weight 25%
+  var s3=kmPerL!==null?Math.min(100,kmPerL*12):50; // efficiency weight 25%
+  var s4=comp.length>0?Math.min(100,100-((trips.length-comp.length)/Math.max(1,trips.length)*100)):50; // completion weight 10%
+  var total=Math.round(s1*.40+s2*.25+s3*.25+s4*.10);
+  return {
+    total:total, onTime:s1, activity:s2, efficiency:s3, completion:s4,
+    km:Math.round(km), rev:Math.round(rev), kmPerL:kmPerL?Math.round(kmPerL*10)/10:null,
+    trips:trips.length, comp:comp.length,
+    grade:total>=90?'A+':total>=80?'A':total>=70?'B':total>=60?'C':'D',
+    gradeColor:total>=80?'#10B981':total>=60?'#F97316':'#EF4444'
+  };
+}
+
+// Override/extend _anRenderDrivers to add behavior breakdown
+var _anRenderDrivers_orig = typeof _anRenderDrivers === 'function' ? _anRenderDrivers : null;
+function _anRenderDrivers(trips){
+  var el=document.getElementById('an-tab-body');if(!el)return;
+  var drivers=USERS.filter(function(u){return u.role==='driver';});
+  var stats=drivers.map(function(d){
+    var dt=trips.filter(function(t){return t.driver===d.name;});
+    return Object.assign(_driverBehaviorScore(d,dt,S.fuelLogs||[]),{name:d.name,id:d.id});
+  }).filter(function(x){return x.trips>0;}).sort(function(a,b){return b.total-a.total;});
+  if(!stats.length){
+    el.innerHTML='<div class="card" style="text-align:center;padding:40px;color:var(--t2)">No driver trip data for this period</div>';return;
+  }
+  var CC=['#6C3FF5','#10B981','#F97316','#06B6D4','#EF4444','#8B5CF6'];
+  var cardS='background:var(--surf);border:1px solid var(--bd);border-radius:14px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.07)';
+  var headS='padding:13px 18px 11px;background:linear-gradient(135deg,#1E1453 0%,#2D1B69 100%)';
+  var titleS='font-weight:800;font-size:13px;color:#fff';
+  var subS='font-size:10px;color:rgba(255,255,255,.5);margin-top:1px';
+  // Top 3 podium KPIs
+  el.innerHTML='<div class="kpi-row" style="margin-bottom:14px">'+
+    (stats[0]?kpiBox('🥇','green',stats[0].name,'#1 Driver',stats[0].total+'% score'):'') +
+    (stats[1]?kpiBox('🥈','cyan',stats[1].name,'#2 Driver',stats[1].total+'% score'):'') +
+    (stats[2]?kpiBox('🥉','orange',stats[2].name,'#3 Driver',stats[2].total+'% score'):'') +
+    kpiBox('🚦','purple',stats.length,'Active Drivers','With trip data')+
+  '</div>'+
+  // Behavior scorecard table
+  '<div style="'+cardS+';margin-bottom:14px">'+
+  '<div style="'+headS+'"><div style="'+titleS+'">&#x{1F4CA} Driver Behavior Scorecards</div>'+
+  '<div style="'+subS+'">Composite score: 40% on-time · 25% activity · 25% fuel efficiency · 10% completion</div></div>'+
+  '<div style="padding:16px 18px;overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:12px">'+
+  '<thead><tr style="border-bottom:2px solid var(--bd)">'+
+    ['Driver','Grade','Score','On-Time','Activity','Fuel eff.','Trips','KM','Revenue'].map(function(h){
+      return '<th style="text-align:left;padding:8px 10px;color:var(--t2);font-weight:600;white-space:nowrap">'+h+'</th>';
+    }).join('')+
+  '</tr></thead><tbody>'+
+  stats.map(function(d,i){
+    var rankIcon=['🥇','🥈','🥉'][i]||'';
+    return '<tr style="border-bottom:1px solid var(--bd);'+(i%2===0?'background:var(--bg)':'')+'">'+
+      '<td style="padding:8px 10px;font-weight:700">'+rankIcon+' '+d.name+'</td>'+
+      '<td style="padding:8px 10px"><span style="background:'+d.gradeColor+';color:#fff;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:800">'+d.grade+'</span></td>'+
+      '<td style="padding:8px 10px">'+
+        '<div style="display:flex;align-items:center;gap:6px">'+
+        '<div style="height:6px;width:60px;background:var(--bd);border-radius:3px"><div style="height:100%;width:'+d.total+'%;background:'+d.gradeColor+';border-radius:3px"></div></div>'+
+        '<span style="font-weight:700;color:'+d.gradeColor+'">'+d.total+'%</span></div>'+
+      '</td>'+
+      '<td style="padding:8px 10px">'+(d.onTime!==null?d.onTime+'%':'—')+'</td>'+
+      '<td style="padding:8px 10px">'+Math.round(d.activity)+'%</td>'+
+      '<td style="padding:8px 10px">'+(d.kmPerL?d.kmPerL+' km/L':'—')+'</td>'+
+      '<td style="padding:8px 10px">'+d.trips+' ('+d.comp+' done)</td>'+
+      '<td style="padding:8px 10px">'+d.km.toLocaleString()+' km</td>'+
+      '<td style="padding:8px 10px;font-weight:700;color:#6C3FF5">EGP '+d.rev.toLocaleString()+'</td>'+
+    '</tr>';
+  }).join('')+
+  '</tbody></table></div></div>'+
+  // Bar chart
+  '<div style="'+cardS+'">'+
+  '<div style="'+headS+'"><div style="'+titleS+'">🏆 Performance Ranking</div>'+
+  '<div style="'+subS+'">Top drivers by composite behavior score</div></div>'+
+  '<div style="padding:16px 18px"><div style="position:relative;height:'+(Math.max(180,stats.length*52+30))+'px"><canvas id="an-driver-chart"></canvas></div></div></div>';
+  setTimeout(function(){
+    if(!window.Chart)return;
+    var top8=stats.slice(0,8);
+    var dc=document.getElementById('an-driver-chart');
+    if(!dc)return;
+    window._anCharts.drivers=new Chart(dc,{type:'bar',
+      data:{labels:top8.map(function(d){return d.name;}),
+        datasets:[
+          {label:'Total Score',data:top8.map(function(d){return d.total;}),
+            backgroundColor:top8.map(function(d){return d.gradeColor+'cc';}),
+            borderColor:top8.map(function(d){return d.gradeColor;}),
+            borderWidth:2,borderRadius:6},
+          {label:'On-Time %',data:top8.map(function(d){return d.onTime||0;}),
+            type:'line',borderColor:'#06B6D4',backgroundColor:'transparent',
+            borderWidth:2,pointRadius:4,tension:0.3,order:0}
+        ]},
+      options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        scales:{x:{grid:{color:'rgba(148,163,184,0.12)'},beginAtZero:true,max:100,
+          ticks:{font:{size:10},color:'#94a3b8',callback:function(v){return v+'%';}}},
+          y:{grid:{display:false},ticks:{font:{size:11},color:'#64748b'}}},
+        plugins:{legend:{position:'top',labels:{font:{size:11},boxWidth:10,usePointStyle:true,color:'#64748b'}},
+          tooltip:{callbacks:{label:function(c){return c.dataset.label+': '+c.raw+'%';}}}}
+      }});
+  },120);
+}
 
   if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
   }finally{
@@ -8307,9 +8584,11 @@ function rAdmin(){
   '<div class="tab'+(tab==='import'?' on':'')+'" onclick="S.adminTab=\'import\';rAdmin()">&#128229; Import CSV</div>'+
   '<div class="tab'+(tab==='exceptions'?' on':'')+'" onclick="S.adminTab=\'exceptions\';rAdmin()">&#9888;&#65039; Exceptions</div>'+
   '<div class="tab'+(tab==='security'?' on':'')+'" onclick="S.adminTab=\'security\';rAdmin()">🔐 Security</div>'+
+  '<div class="tab'+(tab==='apikeys'?' on':'')+'" onclick="S.adminTab=\'apikeys\';rAdmin()">🔑 API Keys</div>'+
+  '<div class="tab'+(tab==='branding'?' on':'')+'" onclick="S.adminTab=\'branding\';rAdmin()">🎨 Branding</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,security:rAdminSecurity};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity};
   (fn[tab]||rAdminUsers)();
 }
 
