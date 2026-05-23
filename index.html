@@ -9522,8 +9522,10 @@ function _oauthPopup(provider){
 function rAdminUsers(){
   var el=document.getElementById('admin-content');if(!el)return;
   el.innerHTML='<div class="card"><div class="card-hd"><div class="card-title">User Management</div><button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button></div>'+
-  '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+
-  USERS.map(function(u){return '<tr><td style="font-weight:700">'+u.id+'</td><td>'+u.name+'</td><td><span class="tag tag-info">'+RL[u.role]+'</span></td><td>'+(u.active===false?'<span class="tag tag-hold">Inactive</span>':'<span class="tag tag-ok">Active</span>')+'</td>'+
+  '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Customer Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+
+  USERS.map(function(u){return '<tr><td style="font-weight:700">'+u.id+'</td><td>'+u.name+'</td><td><span class="tag tag-info">'+RL[u.role]+'</span></td>'+
+  '<td style="font-size:11px;color:var(--t2)">'+(u.customerAccount?'<span style="background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:2px 7px;font-weight:600;color:var(--t)">'+u.customerAccount+'</span>':'<span style="color:var(--t3)">—</span>')+'</td>'+
+  '<td>'+(u.active===false?'<span class="tag tag-hold">Inactive</span>':'<span class="tag tag-ok">Active</span>')+'</td>'+
   '<td style="display:flex;gap:5px"><button class="btn btn-outline btn-sm" onclick="editUser(\''+u.id+'\')">Edit</button><button class="btn btn-danger btn-sm" onclick="resetPw(\''+u.id+'\')">Reset PIN</button>'+(u.active===false?'<button class="btn btn-success btn-sm" onclick="toggleUser(\''+u.id+'\')">Activate</button>':'<button class="btn btn-outline btn-sm" onclick="toggleUser(\''+u.id+'\')">Deactivate</button>')+'</td></tr>';}).join('')+'</tbody></table></div></div>';
 }
 function openAddUser(){openM('<div class="m-title">👤 Add User</div><div class="frow"><div class="fg"><label>ID *</label><input id="nu-id" placeholder="e.g. 1001"/></div><div class="fg"><label>Name *</label><input id="nu-name" placeholder="Full name"/></div></div><div class="frow"><div class="fg"><label>PIN *</label><input type="password" id="nu-pin" placeholder="4-6 digits"/></div><div class="fg"><label>Role *</label><select id="nu-role"><option value="">Select...</option>'+Object.keys(RL).map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('')+'</select></div></div><div class="fg f1"><label>Email</label><input id="nu-email" placeholder="email@company.com"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addUser()">Add</button></div>');}
@@ -9593,8 +9595,50 @@ async function _finishAddUser(){
   rAdminUsers();
   if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true});}catch(e){console.error('addUser sync',e);}}
 }
-function editUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;openM('<div class="m-title">Edit — '+u.name+'</div><div class="fg f1"><label>Name</label><input id="eu-name" value="'+u.name+'"/></div><div class="fg f1"><label>Role</label><select id="eu-role">'+Object.keys(RL).map(function(k){return '<option value="'+k+'"'+(u.role===k?' selected':'')+'>'+RL[k]+'</option>';}).join('')+'</select></div><div class="fg f1"><label>Email</label><input id="eu-email" value="'+(u.email||'')+'"/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="saveUser(\''+uid+'\')">Save</button><button class="btn btn-danger" onclick="delUser(\''+uid+'\')">Remove</button></div>');}
-async function saveUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.name=(document.getElementById('eu-name')||{}).value||u.name;u.role=(document.getElementById('eu-role')||{}).value||u.role;u.email=(document.getElementById('eu-email')||{}).value;audit('EDIT_USER',uid,'');closeM();toast('Updated!','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({name:u.name,role:u.role,email:u.email}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('saveUser sync',e);}}}
+function editUser(uid){
+  var u=USERS.find(function(x){return x.id===uid;});if(!u)return;
+  var custOpts=CUSTOMERS.map(function(c){return '<option value="'+c+'"'+(u.customerAccount===c?' selected':'')+'>'+c+'</option>';}).join('');
+  var isClient=u.role==='client';
+  openM('<div class="m-title">&#9998; Edit — '+u.name+'</div>'+
+    '<div class="fg f1"><label>Name</label><input id="eu-name" value="'+u.name+'"/></div>'+
+    '<div class="fg f1"><label>Role</label><select id="eu-role" onchange="_euToggleCust(this)">'+
+    Object.keys(RL).map(function(k){return '<option value="'+k+'"'+(u.role===k?' selected':'')+'>'+RL[k]+'</option>';}).join('')+
+    '</select></div>'+
+    '<div class="fg f1"><label>Email</label><input id="eu-email" value="'+(u.email||'')+'"/></div>'+
+    '<div class="fg f1" id="eu-cust-row" style="display:'+(isClient?'block':'none')+'">'+
+    '<label>Customer Account <span style="color:#EF4444">*</span></label>'+
+    '<select id="eu-cust-sel"><option value="">— Select —</option>'+custOpts+'</select>'+
+    '<input id="eu-cust-txt" placeholder="Or type manually…" style="margin-top:6px" value="'+(isClient&&!CUSTOMERS.includes(u.customerAccount||'')?u.customerAccount||'':'')+'"/>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveUser(\''+uid+'\')">Save</button>'+
+    '<button class="btn btn-danger" onclick="delUser(\''+uid+'\')">Remove</button></div>');
+}
+function _euToggleCust(sel){
+  var row=document.getElementById('eu-cust-row');
+  if(row)row.style.display=(sel.value==='client'?'block':'none');
+}
+async function saveUser(uid){
+  var u=USERS.find(function(x){return x.id===uid;});if(!u)return;
+  u.name=(document.getElementById('eu-name')||{}).value||u.name;
+  u.role=(document.getElementById('eu-role')||{}).value||u.role;
+  u.email=(document.getElementById('eu-email')||{}).value;
+  // Handle customer account for client role
+  if(u.role==='client'){
+    var sel=document.getElementById('eu-cust-sel');
+    var txt=document.getElementById('eu-cust-txt');
+    var custAcc=(sel&&sel.value)?sel.value:((txt&&txt.value.trim())?txt.value.trim():'');
+    if(!custAcc){toast('Customer Account is required for Client role','err');return;}
+    u.customerAccount=custAcc;
+  } else {
+    delete u.customerAccount;
+  }
+  audit('EDIT_USER',uid,'');
+  closeM();
+  toast('Updated!','ok');
+  rAdminUsers();
+  if(_sb&&_tenantId){try{await _sb.from('users').update({name:u.name,role:u.role,email:u.email}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('saveUser sync',e);}}
+}
 async function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('delUser sync',e);}}}
 async function toggleUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.active=u.active===false?true:false;audit('TOGGLE_USER',uid+(u.active?' activated':' deactivated'),'');toast(u.name+' '+(u.active?'activated':'deactivated'),'ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:u.active}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('toggleUser sync',e);}}}
 function resetPw(uid){openM('<div class="m-title">🔑 Reset PIN — '+uid+'</div><div class="fg f1"><label>New PIN</label><input type="password" id="np" placeholder="New PIN..."/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="savePw(\''+uid+'\')">Reset</button></div>');}
