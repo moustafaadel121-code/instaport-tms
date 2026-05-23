@@ -3297,7 +3297,7 @@ async function _loadTenant(orgCode){
         .filter(function(u){return u.active!==false&&u.active!==0&&u.active!==null;})
         .map(function(u){
           var loginId=u.employee_id?String(u.employee_id):String(u.id);
-          return{id:loginId,pin:String(u.pin),name:u.name,role:u.role,email:u.email||'',active:true};
+          return{id:loginId,pin:String(u.pin),name:u.name,role:u.role,email:u.email||null,active:true};
         });
     }
     return true;
@@ -3456,8 +3456,8 @@ async function initApp(){
         USERS.length=0;
         r8.data.forEach(function(r){
           var empId=r.employee_id?String(r.employee_id):String(r.id);
-          USERS.push({id:empId,_dbId:r.id,name:r.name,role:r.role,email:r.email||'',
-            active:r.active!==false&&r.active!==0,pin:'[supabase]'});
+          USERS.push({id:empId,_dbId:r.id,name:r.name,role:r.role,email:r.email||null,
+    active:r.active!==false&&r.active!==0,pin:'[supabase]'});
         });
       } else if(_tenantId!=='instaport'&&_tenantId!=='demo'){
         // New real org with no users yet — start empty, admin adds their own staff
@@ -8861,7 +8861,7 @@ async function confirmCSVImport(type){
           id:'VN-'+Date.now()+'-'+added,name:r.name,
           type:r.type||'Workshop',speciality:r.speciality||'',
           phone:r.phone||'',address:r.address||'',
-          contactName:r.contactName||'',email:r.email||''
+          contactName:r.contactName||'',email:r.email||null
         });added++;
       });
       _saveVendors();
@@ -9585,7 +9585,7 @@ async function _finishAddUser(){
     custAcc=(sel&&sel.value)?sel.value:((txt&&txt.value.trim())?txt.value.trim():'');
     if(!custAcc){toast('Customer Account is required for Client role','err');return;}
   }
-  var uObj={id:p.id,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true};
+  var uObj={id:p.id,name:p.name,pin:p.pin,role:p.role,email:p.email||null,active:true};
   if(custAcc)uObj.customerAccount=custAcc;
   USERS.push(uObj);
   audit('ADD_USER',p.name+' ('+p.role+')'+(custAcc?' → '+custAcc:''),'');
@@ -9595,14 +9595,14 @@ async function _finishAddUser(){
   rAdminUsers();
   if(_sb&&_tenantId){
     try{
-      var row={employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true};
+      var row={employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email||null,active:true};
       if(custAcc)row.customer_account=custAcc;
       var ir=await _sb.from('users').insert(row);
       if(ir&&ir.error)throw ir.error;
     }catch(e){
       // Retry without customer_account if column missing in schema
       try{
-        var row2={employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true};
+        var row2={employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email||null,active:true};
         var ir2=await _sb.from('users').insert(row2);
         if(ir2&&ir2.error)throw ir2.error;
       }catch(e2){
@@ -9651,7 +9651,7 @@ async function saveUser(uid){
   // Persist to Supabase FIRST — show error if it fails so user knows
   if(_sb&&_tenantId){
     try{
-      var upd={name:newName,role:newRole,email:newEmail};
+      var upd={name:newName,role:newRole,email:newEmail||null};
       if(newRole==='client')upd.customer_account=newCust;
       else upd.customer_account=null;
       var res=await _sb.from('users').update(upd).eq('employee_id',uid).eq('tenant_id',_tenantId);
@@ -9659,7 +9659,7 @@ async function saveUser(uid){
     }catch(e){
       // Try without customer_account in case column doesn't exist in schema yet
       try{
-        var res2=await _sb.from('users').update({name:newName,role:newRole,email:newEmail}).eq('employee_id',uid).eq('tenant_id',_tenantId);
+        var res2=await _sb.from('users').update({name:newName,role:newRole,email:newEmail||null}).eq('employee_id',uid).eq('tenant_id',_tenantId);
         if(res2&&res2.error)throw res2.error;
         console.warn('saveUser: customer_account column may be missing from schema');
       }catch(e2){
