@@ -9678,8 +9678,34 @@ async function saveUser(uid){
   toast('User updated!','ok');
   rAdminUsers();
 }
-async function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('delUser sync',e);}}}
-async function toggleUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.active=u.active===false?true:false;audit('TOGGLE_USER',uid+(u.active?' activated':' deactivated'),'');toast(u.name+' '+(u.active?'activated':'deactivated'),'ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:u.active}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('toggleUser sync',e);}}}
+async function delUser(uid){
+  if(_sb&&_tenantId){
+    try{
+      var r=await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);
+      if(r&&r.error)throw r.error;
+    }catch(e){toast('Remove failed: '+((e&&e.message)||'Supabase error'),'err');console.error('delUser sync',e);return;}
+  }
+  var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);
+  audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();
+}
+async function toggleUser(uid){
+  var u=USERS.find(function(x){return x.id===uid;});if(!u)return;
+  var newActive=u.active===false?true:false;
+  if(_sb&&_tenantId){
+    try{
+      var r=await _sb.from('users').update({active:newActive}).eq('employee_id',uid).eq('tenant_id',_tenantId);
+      if(r&&r.error)throw r.error;
+    }catch(e){
+      toast('Failed to '+(newActive?'activate':'deactivate')+' user: '+((e&&e.message)||'Supabase error'),'err');
+      console.error('toggleUser sync',e);
+      return;
+    }
+  }
+  u.active=newActive;
+  audit('TOGGLE_USER',uid+(newActive?' activated':' deactivated'),'');
+  toast(u.name+' '+(newActive?'activated ✓':'deactivated'),'ok');
+  rAdminUsers();
+}
 function resetPw(uid){openM('<div class="m-title">🔑 Reset PIN — '+uid+'</div><div class="fg f1"><label>New PIN</label><input type="password" id="np" placeholder="New PIN..."/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="savePw(\''+uid+'\')">Reset</button></div>');}
 function savePw(uid){var u=USERS.find(function(x){return x.id===uid;});var np=(document.getElementById('np')||{}).value;if(!u||!np){toast('Enter new PIN','err');return;}requirePwd('Reset PIN for '+uid,async function(){u.pin=np;audit('RESET_PW',uid,'');closeM();toast('PIN reset!','ok');if(_sb&&_tenantId){try{await _sb.from('users').update({pin:np}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('savePw sync',e);}}});}
 
