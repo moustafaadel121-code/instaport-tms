@@ -3277,10 +3277,26 @@ async function _loadTenant(orgCode){
     _tenantUsers=[]; // populated after server confirms auth
     return true;
   }
-  // instaport ALWAYS uses built-in local users — no Supabase needed for auth
+  // instaport: start with built-in demo users, then merge real Supabase users
   if(orgCode==='instaport'||orgCode==='demo'){
     _tenantId='instaport';_tenantName='InstaPort Logistics';_tenantPlan='enterprise';
-    _tenantUsers=_DEMO_USERS.slice(); // frozen copy — unaffected by Supabase overrides
+    _tenantUsers=_DEMO_USERS.slice();
+    // Also load any users added via admin panel from Supabase
+    if(_sb){
+      try{
+        var _ur=await _sb.from('users').select('id,employee_id,name,role,pin,active,email').eq('tenant_id','instaport');
+        if(!_ur.error&&_ur.data&&_ur.data.length){
+          _ur.data.forEach(function(u){
+            if(u.active===false||u.active===0||u.active===null)return;
+            var loginId=u.employee_id?String(u.employee_id):String(u.id);
+            // Don't overwrite existing demo users
+            if(!_tenantUsers.find(function(x){return x.id===loginId;})){
+              _tenantUsers.push({id:loginId,pin:String(u.pin||''),name:u.name,role:u.role,email:u.email||null,active:true});
+            }
+          });
+        }
+      }catch(e){console.warn('instaport Supabase user merge failed',e);}
+    }
     return true;
   }
   // Other tenants: load from Supabase
@@ -4540,7 +4556,9 @@ async function doLogin(){
       }catch(serverErr){
         // Server not available — fall back to Supabase local match (dev mode)
         console.warn('Server auth unavailable, falling back to local match');
-        u=_tenantUsers.find(function(x){return String(x.id)===uid&&String(x.pin)===pin&&x.active!==false;});
+        u=_tenantUsers.find(function(x){
+          return (String(x.id)===uid||String(x.employee_id||'')===uid)&&String(x.pin)===pin&&x.active!==false;
+        });
       }
     }
     if(!u){
