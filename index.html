@@ -9597,8 +9597,19 @@ async function _finishAddUser(){
     try{
       var row={employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true};
       if(custAcc)row.customer_account=custAcc;
-      await _sb.from('users').insert(row);
-    }catch(e){console.error('addUser sync',e);}
+      var ir=await _sb.from('users').insert(row);
+      if(ir&&ir.error)throw ir.error;
+    }catch(e){
+      // Retry without customer_account if column missing in schema
+      try{
+        var row2={employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true};
+        var ir2=await _sb.from('users').insert(row2);
+        if(ir2&&ir2.error)throw ir2.error;
+      }catch(e2){
+        toast('User saved locally but cloud sync failed: '+(e2&&e2.message||'see console'),'err');
+        console.error('addUser sync',e2);
+      }
+    }
   }
 }
 function editUser(uid){
@@ -9626,29 +9637,46 @@ function _euToggleCust(sel){
 }
 async function saveUser(uid){
   var u=USERS.find(function(x){return x.id===uid;});if(!u)return;
-  u.name=(document.getElementById('eu-name')||{}).value||u.name;
-  u.role=(document.getElementById('eu-role')||{}).value||u.role;
-  u.email=(document.getElementById('eu-email')||{}).value;
+  var newName=(document.getElementById('eu-name')||{}).value||u.name;
+  var newRole=(document.getElementById('eu-role')||{}).value||u.role;
+  var newEmail=(document.getElementById('eu-email')||{}).value;
   // Handle customer account for client role
-  if(u.role==='client'){
+  var newCust=u.customerAccount||'';
+  if(newRole==='client'){
     var sel=document.getElementById('eu-cust-sel');
     var txt=document.getElementById('eu-cust-txt');
-    var custAcc=(sel&&sel.value)?sel.value:((txt&&txt.value.trim())?txt.value.trim():'');
-    if(!custAcc){toast('Customer Account is required for Client role','err');return;}
-    u.customerAccount=custAcc;
-  } else {
-    delete u.customerAccount;
+    newCust=(sel&&sel.value)?sel.value:((txt&&txt.value.trim())?txt.value.trim():'');
+    if(!newCust){toast('Customer Account is required for Client role','err');return;}
   }
-  audit('EDIT_USER',uid,'');
-  closeM();
-  toast('Updated!','ok');
-  rAdminUsers();
+  // Persist to Supabase FIRST — show error if it fails so user knows
   if(_sb&&_tenantId){
     try{
-      var upd={name:u.name,role:u.role,email:u.email,customer_account:u.customerAccount||null};
-      await _sb.from('users').update(upd).eq('employee_id',uid).eq('tenant_id',_tenantId);
-    }catch(e){console.error('saveUser sync',e);}
+      var upd={name:newName,role:newRole,email:newEmail};
+      if(newRole==='client')upd.customer_account=newCust;
+      else upd.customer_account=null;
+      var res=await _sb.from('users').update(upd).eq('employee_id',uid).eq('tenant_id',_tenantId);
+      if(res&&res.error)throw res.error;
+    }catch(e){
+      // Try without customer_account in case column doesn't exist in schema yet
+      try{
+        var res2=await _sb.from('users').update({name:newName,role:newRole,email:newEmail}).eq('employee_id',uid).eq('tenant_id',_tenantId);
+        if(res2&&res2.error)throw res2.error;
+        console.warn('saveUser: customer_account column may be missing from schema');
+      }catch(e2){
+        toast('Save failed: '+((e2&&e2.message)||'Supabase error — check console'),'err');
+        console.error('saveUser sync',e2);
+        return; // Do NOT update in-memory if DB failed
+      }
+    }
   }
+  // Update in-memory only after DB confirms
+  u.name=newName;u.role=newRole;u.email=newEmail;
+  if(newRole==='client')u.customerAccount=newCust;
+  else delete u.customerAccount;
+  audit('EDIT_USER',uid,'');
+  closeM();
+  toast('User updated!','ok');
+  rAdminUsers();
 }
 async function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('delUser sync',e);}}}
 async function toggleUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.active=u.active===false?true:false;audit('TOGGLE_USER',uid+(u.active?' activated':' deactivated'),'');toast(u.name+' '+(u.active?'activated':'deactivated'),'ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:u.active}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('toggleUser sync',e);}}}

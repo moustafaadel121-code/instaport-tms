@@ -152,7 +152,7 @@ async function authenticateUser(orgId, employeeId, pin) {
   // 2. Load matching user
   const users = await _supaFetch(
     `/users?tenant_id=eq.${encodeURIComponent(orgId)}` +
-    `&select=id,employee_id,name,role,pin,active&limit=20`
+    `&select=id,employee_id,name,role,pin,active&limit=500`
   );
   const userList = Array.isArray(users) ? users : [];
   const user = userList.find(u =>
