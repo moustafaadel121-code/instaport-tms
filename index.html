@@ -9593,7 +9593,13 @@ async function _finishAddUser(){
   closeM();
   toast('User added!','ok');
   rAdminUsers();
-  if(_sb&&_tenantId){try{await _sb.from('users').insert({employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true});}catch(e){console.error('addUser sync',e);}}
+  if(_sb&&_tenantId){
+    try{
+      var row={employee_id:p.id,tenant_id:_tenantId,name:p.name,pin:p.pin,role:p.role,email:p.email,active:true};
+      if(custAcc)row.customer_account=custAcc;
+      await _sb.from('users').insert(row);
+    }catch(e){console.error('addUser sync',e);}
+  }
 }
 function editUser(uid){
   var u=USERS.find(function(x){return x.id===uid;});if(!u)return;
@@ -9637,7 +9643,12 @@ async function saveUser(uid){
   closeM();
   toast('Updated!','ok');
   rAdminUsers();
-  if(_sb&&_tenantId){try{await _sb.from('users').update({name:u.name,role:u.role,email:u.email}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('saveUser sync',e);}}
+  if(_sb&&_tenantId){
+    try{
+      var upd={name:u.name,role:u.role,email:u.email,customer_account:u.customerAccount||null};
+      await _sb.from('users').update(upd).eq('employee_id',uid).eq('tenant_id',_tenantId);
+    }catch(e){console.error('saveUser sync',e);}
+  }
 }
 async function delUser(uid){var idx=USERS.findIndex(function(x){return x.id===uid;});if(idx>=0)USERS.splice(idx,1);audit('DEL_USER',uid,'');closeM();toast('Removed','ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:false}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('delUser sync',e);}}}
 async function toggleUser(uid){var u=USERS.find(function(x){return x.id===uid;});if(!u)return;u.active=u.active===false?true:false;audit('TOGGLE_USER',uid+(u.active?' activated':' deactivated'),'');toast(u.name+' '+(u.active?'activated':'deactivated'),'ok');rAdminUsers();if(_sb&&_tenantId){try{await _sb.from('users').update({active:u.active}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('toggleUser sync',e);}}}
