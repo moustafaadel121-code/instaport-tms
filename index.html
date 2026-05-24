@@ -2676,6 +2676,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js"></script>
 </head>
 <body>
 <div id="pwa-banner" style="display:none;position:fixed;bottom:16px;right:16px;z-index:9999;background:linear-gradient(135deg,#1E1B4B,#6C3FF5);color:#fff;border-radius:14px;padding:12px 18px;box-shadow:0 8px 32px rgba(108,63,245,.4);align-items:center;gap:12px;font-family:inherit;max-width:320px">
@@ -4554,11 +4555,18 @@ async function doLogin(){
           lerr.style.display='block';return;
         }
       }catch(serverErr){
-        // Server not available — fall back to Supabase local match (dev mode)
+        // Server not available — fall back to local match with bcrypt support
         console.warn('Server auth unavailable, falling back to local match');
-        u=_tenantUsers.find(function(x){
-          return (String(x.id)===uid||String(x.employee_id||'')===uid)&&String(x.pin)===pin&&x.active!==false;
+        var _cands=_tenantUsers.filter(function(x){
+          return(String(x.id)===uid||String(x.employee_id||'')===uid)&&x.active!==false;
         });
+        for(var _i=0;_i<_cands.length;_i++){
+          var _cx2=_cands[_i];var _sp=String(_cx2.pin||'');var _ok=false;
+          if(_sp.startsWith('$2')&&typeof dcodeIO!=='undefined'&&dcodeIO.bcrypt){
+            try{_ok=dcodeIO.bcrypt.compareSync(pin,_sp);}catch(e){_ok=false;}
+          }else{_ok=_sp===pin;}
+          if(_ok){u=_cx2;break;}
+        }
       }
     }
     if(!u){
@@ -11682,13 +11690,36 @@ doLogin=async function(){
           lerr.style.display='block';return;
         }
       }catch(serverErr){
-        // Server unavailable — fall back to local plain-text PIN match (dev/offline only)
+        // Server unavailable (GitHub Pages / offline) — local fallback with bcrypt support
         console.warn('Server auth unavailable, local fallback');
-        u=_tenantUsers.find(function(x){
+        var _candidates=_tenantUsers.filter(function(x){
           return(String(x.id)===val||String(x.employee_id||'')===val||x.email===val||
                  (x.name&&x.name.toLowerCase()===val.toLowerCase()))
-            &&String(x.pin)===pin&&x.active!==false;
+            &&x.active!==false;
         });
+        for(var _ci=0;_ci<_candidates.length;_ci++){
+          var _cx=_candidates[_ci];
+          var _storedPin=String(_cx.pin||'');
+          var _match=false;
+          if(_storedPin.startsWith('$2')&&typeof dcodeIO!=='undefined'&&dcodeIO.bcrypt){
+            // bcryptjs loaded — compare hash properly
+            try{_match=dcodeIO.bcrypt.compareSync(pin,_storedPin);}catch(e){_match=false;}
+          } else if(_storedPin.startsWith('$2')&&typeof dcodeIO==='undefined'){
+            // bcryptjs not yet loaded — try to load it on the fly
+            try{
+              var _bcMod=await new Promise(function(res,rej){
+                var s=document.createElement('script');
+                s.src='https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js';
+                s.onload=function(){res(dcodeIO&&dcodeIO.bcrypt);};s.onerror=rej;
+                document.head.appendChild(s);
+              });
+              if(_bcMod)_match=_bcMod.compareSync(pin,_storedPin);
+            }catch(e){_match=false;}
+          } else {
+            _match=_storedPin===pin;
+          }
+          if(_match){u=_cx;break;}
+        }
       }
     }
     if(!u){
