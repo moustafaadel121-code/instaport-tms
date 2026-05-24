@@ -4432,6 +4432,8 @@ let S={
   driverProfiles: {}
 };
 _secLoad(); // load brute-force state immediately on page load
+// Auto-unlock if ?unlock param in URL (clears lockout caused by technical issues)
+(function(){try{if(window.location.search.indexOf('unlock')>-1){_SEC.attempts={};_SEC.locked={};_secSave();history.replaceState(null,'',window.location.pathname);}}catch(e){}})();
 let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicketId=null;
 // Auto-sync on array mutations
 (function(){var _op=Array.prototype.push;S.trips.push=function(){var r=_op.apply(this,arguments);if(!_supabaseLoading)for(var i=0;i<arguments.length;i++)syncTrip(arguments[i]);return r;};S.maintTickets.push=function(){var r=_op.apply(this,arguments);if(!_supabaseLoading)for(var i=0;i<arguments.length;i++)syncMaint(arguments[i]);return r;};})();
