@@ -4994,36 +4994,76 @@ function rAdminBranding(){
   var br=S.branding||{};
   el.innerHTML='<div class="card">'+
   '<div style="font-weight:700;font-size:15px;margin-bottom:4px">🎨 White-Label Branding</div>'+
-  '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Customize the appearance of your InstaPort TMS instance.</div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Customize your InstaPort TMS instance. Changes apply to:</div>'+
+  '<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px">'+
+  '<span style="background:#EEF2FF;color:#6C3FF5;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600">🖥️ App Theme & Sidebar</span>'+
+  '<span style="background:#ECFDF5;color:#059669;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600">🖨️ PDF Report Headers</span>'+
+  '<span style="background:#FFF7ED;color:#EA580C;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600">🌐 Browser Tab (Favicon)</span>'+
+  '<span style="background:#F0F9FF;color:#0284C7;border-radius:20px;padding:3px 10px;font-size:11px;font-weight:600">📋 All Document Exports</span>'+
+  '</div>'+
   '<div class="g2" style="gap:14px">'+
   '<div>'+
   '<div class="frow" style="gap:10px;margin-bottom:12px">'+
   '<div class="fg"><label>Company Name</label><input id="br-name" value="'+(br.companyName||_tenantName)+'" placeholder="Your Company"/></div>'+
   '<div class="fg"><label>Short Name (sidebar)</label><input id="br-short" value="'+(br.shortName||'InstaPort')+'" placeholder="Short"/></div>'+
   '</div>'+
-  '<div class="frow" style="gap:10px;margin-bottom:12px">'+
-  '<div class="fg"><label>Logo URL</label><input id="br-logo" value="'+(br.logoUrl||'')+'" placeholder="https://...logo.png"/></div>'+
-  '<div class="fg"><label>Favicon URL</label><input id="br-fav" value="'+(br.favUrl||'')+'" placeholder="https://...favicon.ico"/></div>'+
+  '<div style="margin-bottom:12px">'+
+  '<label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px">Company Logo</label>'+
+  '<div style="display:flex;gap:8px;align-items:center">'+
+  '<input id="br-logo" style="flex:1" value="'+(br.logoUrl||'')+'" placeholder="https://...logo.png  — or upload below"/>'+
+  '<label style="cursor:pointer;padding:6px 12px;background:var(--accent);color:#fff;border-radius:8px;font-size:12px;white-space:nowrap" title="Upload logo PNG">'+
+  '📁 Upload PNG<input type="file" accept="image/*" style="display:none" onchange="_brUpload(this,\'br-logo\',\'br-logo-prev\')"/></label>'+
+  '</div>'+
+  '<div id="br-logo-prev" style="margin-top:8px;display:'+(br.logoUrl?'block':'none')+'">'+
+  (br.logoUrl?'<img src="'+br.logoUrl+'" style="height:40px;border-radius:6px;border:1px solid var(--bd)"/>':'')+'</div>'+
+  '</div>'+
+  '<div style="margin-bottom:12px">'+
+  '<label style="display:block;font-size:12px;font-weight:600;margin-bottom:6px">Favicon (Browser Tab Icon)</label>'+
+  '<div style="display:flex;gap:8px;align-items:center">'+
+  '<input id="br-fav" style="flex:1" value="'+(br.favUrl||'')+'" placeholder="https://...favicon.png  — or upload below"/>'+
+  '<label style="cursor:pointer;padding:6px 12px;background:var(--accent);color:#fff;border-radius:8px;font-size:12px;white-space:nowrap" title="Upload favicon PNG">'+
+  '📁 Upload PNG<input type="file" accept="image/*" style="display:none" onchange="_brUpload(this,\'br-fav\',\'br-fav-prev\')"/></label>'+
+  '</div>'+
+  '<div id="br-fav-prev" style="margin-top:8px;display:'+(br.favUrl?'block':'none')+'">'+
+  (br.favUrl?'<img src="'+br.favUrl+'" style="height:32px;border-radius:4px;border:1px solid var(--bd)"/>':'')+'</div>'+
   '</div>'+
   '<div class="frow" style="gap:10px;margin-bottom:12px">'+
-  '<div class="fg"><label>Primary Color</label><input type="color" id="br-color" value="'+(br.primaryColor||'#6C3FF5')+'" style="height:38px;width:100%;border-radius:8px;border:1.5px solid var(--bd);cursor:pointer"/></div>'+
-  '<div class="fg"><label>Sidebar Color</label><input type="color" id="br-sidebar" value="'+(br.sidebarColor||'#1E1453')+'" style="height:38px;width:100%;border-radius:8px;border:1.5px solid var(--bd);cursor:pointer"/></div>'+
+  '<div class="fg"><label>Primary Color</label><input type="color" id="br-color" value="'+(br.primaryColor||'#6C3FF5')+'" style="height:38px;width:100%;border-radius:8px;border:1.5px solid var(--bd);cursor:pointer" oninput="_previewBranding()"/></div>'+
+  '<div class="fg"><label>Sidebar Color</label><input type="color" id="br-sidebar" value="'+(br.sidebarColor||'#1E1453')+'" style="height:38px;width:100%;border-radius:8px;border:1.5px solid var(--bd);cursor:pointer" oninput="_previewBranding()"/></div>'+
   '</div>'+
   '<div class="fg" style="margin-bottom:12px"><label>Support Email</label><input id="br-email" value="'+(br.supportEmail||'')+'" placeholder="support@yourcompany.com"/></div>'+
-  '<div class="fg" style="margin-bottom:16px"><label>Footer Text</label><input id="br-footer" value="'+(br.footerText||'')+'" placeholder="Powered by YourCompany"/></div>'+
-  '<div class="m-foot" style="border:none;padding:0"><button class="btn btn-primary" onclick="_saveBranding()">💾 Save Branding</button>'+
-  '<button class="btn btn-outline" onclick="_previewBranding()" style="margin-left:8px">👁 Preview</button>'+
+  '<div class="fg" style="margin-bottom:16px"><label>Footer Text (appears on PDF reports)</label><input id="br-footer" value="'+(br.footerText||'')+'" placeholder="Powered by YourCompany"/></div>'+
+  '<div class="m-foot" style="border:none;padding:0"><button class="btn btn-primary" onclick="_saveBranding()">💾 Save & Apply Branding</button>'+
   '<button class="btn btn-outline" onclick="_resetBranding()" style="margin-left:8px">🔄 Reset Defaults</button></div>'+
   '</div>'+
   '<div>'+
-  '<div style="font-weight:700;font-size:13px;margin-bottom:10px">👁 Preview</div>'+
+  '<div style="font-weight:700;font-size:13px;margin-bottom:10px">👁 Live Preview</div>'+
   '<div id="brand-preview" style="border:1.5px solid var(--bd);border-radius:12px;overflow:hidden">'+
   _brandingPreviewHTML(br)+
   '</div>'+
+  '<div style="margin-top:12px;padding:10px 12px;background:#F8FAFC;border-radius:8px;border:1px solid var(--bd)">'+
+  '<div style="font-size:11px;font-weight:700;color:var(--t1);margin-bottom:6px">PDF Report Preview</div>'+
+  '<div style="background:linear-gradient(90deg,'+(br.sidebarColor||'#1E1453')+','+(br.primaryColor||'#6C3FF5')+');padding:10px 14px;border-radius:6px;display:flex;align-items:center;gap:8px">'+
+  (br.logoUrl?'<img src="'+br.logoUrl+'" style="height:22px;border-radius:3px"/>':'<div style="width:22px;height:22px;border-radius:4px;background:rgba(255,255,255,.25)"></div>')+
+  '<span style="color:#fff;font-weight:700;font-size:12px">'+(br.companyName||_tenantName||'InstaPort Logistics')+'</span>'+
+  '<span style="color:rgba(255,255,255,.7);font-size:10px;margin-left:auto">Analytics & BI Report</span>'+
+  '</div></div>'+
   '</div>'+
   '</div>'+
   '</div>';
 }
+window._brUpload=function(input,targetId,prevId){
+  var file=input.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var dataUrl=e.target.result;
+    var field=document.getElementById(targetId);if(field)field.value=dataUrl;
+    var prev=document.getElementById(prevId);
+    if(prev){prev.style.display='block';prev.innerHTML='<img src="'+dataUrl+'" style="height:'+(prevId.includes('fav')?'32':'40')+'px;border-radius:6px;border:1px solid var(--bd)"/>';}
+    _previewBranding();
+  };
+  reader.readAsDataURL(file);
+};
 function _brandingPreviewHTML(br){
   var col=br.primaryColor||'#6C3FF5';
   var sb=br.sidebarColor||'#1E1453';
@@ -5051,25 +5091,53 @@ window._saveBranding=function(){
   };
   S.branding=br;
   try{localStorage.setItem('ip_branding',JSON.stringify(br));}catch(e){}
-  // Apply primary color immediately
-  document.documentElement.style.setProperty('--accent',br.primaryColor);
-  document.documentElement.style.setProperty('--sidebar-bg',br.sidebarColor);
-  // Update logo if provided
-  if(br.logoUrl){var logoEls=document.querySelectorAll('.logo-img');logoEls.forEach(function(el){el.src=br.logoUrl;});}
-  if(br.favUrl){var fav=document.querySelector("link[rel='icon']");if(fav)fav.href=br.favUrl;}
-  audit('BRANDING_SAVE','','');toast('🎨 Branding saved!','ok');
-  // Update preview
-  var prev=document.getElementById('brand-preview');if(prev)prev.innerHTML=_brandingPreviewHTML(br);
+  _applyBrandingLive(br);
+  audit('BRANDING_SAVE','Colors+Logo saved for '+br.companyName,'');
+  toast('🎨 Branding saved & applied! PDF reports will use your logo and colors.','ok');
+  rAdminBranding(); // refresh panel to show updated previews
 };
+function _applyBrandingLive(br){
+  if(!br)return;
+  // CSS vars — applied to entire app immediately
+  if(br.primaryColor)document.documentElement.style.setProperty('--accent',br.primaryColor);
+  if(br.sidebarColor)document.documentElement.style.setProperty('--sidebar-bg',br.sidebarColor);
+  // Logo images throughout the app
+  if(br.logoUrl){document.querySelectorAll('.logo-img,.sb-logo-img').forEach(function(el){el.src=br.logoUrl;el.style.display='block';});}
+  // Company name in sidebar/topbar
+  if(br.companyName){
+    var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=br.companyName;
+    var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=br.companyName;
+    var tbn=document.getElementById('tb-tenant-name');if(tbn)tbn.textContent=br.companyName;
+  }
+  // Short name in sidebar badge
+  if(br.shortName){var sbs=document.getElementById('sb-short-name');if(sbs)sbs.textContent=br.shortName;}
+  // Favicon
+  if(br.favUrl){
+    var fav=document.querySelector("link[rel='icon'],link[rel='shortcut icon']");
+    if(!fav){fav=document.createElement('link');fav.rel='icon';document.head.appendChild(fav);}
+    fav.href=br.favUrl;
+  }
+  // Page title
+  if(br.companyName){document.title=br.companyName+' TMS';}
+}
 window._previewBranding=function(){
   var br={
-    companyName:(document.getElementById('br-name')||{}).value||'',
+    companyName:(document.getElementById('br-name')||{}).value||_tenantName,
+    shortName:(document.getElementById('br-short')||{}).value||'',
     primaryColor:(document.getElementById('br-color')||{}).value||'#6C3FF5',
     sidebarColor:(document.getElementById('br-sidebar')||{}).value||'#1E1453',
     logoUrl:(document.getElementById('br-logo')||{}).value||'',
     footerText:(document.getElementById('br-footer')||{}).value||''
   };
   var prev=document.getElementById('brand-preview');if(prev)prev.innerHTML=_brandingPreviewHTML(br);
+  // Update PDF preview section inline
+  var pdfPrev=document.querySelector('[data-pdf-prev]');
+  if(pdfPrev){
+    pdfPrev.style.background='linear-gradient(90deg,'+br.sidebarColor+','+br.primaryColor+')';
+    var pdfName=pdfPrev.querySelector('[data-pdf-name]');if(pdfName)pdfName.textContent=br.companyName;
+    var pdfLogo=pdfPrev.querySelector('[data-pdf-logo]');
+    if(pdfLogo){pdfLogo.src=br.logoUrl;pdfLogo.style.display=br.logoUrl?'block':'none';}
+  }
 };
 window._resetBranding=function(){
   S.branding={};localStorage.removeItem('ip_branding');
@@ -5082,11 +5150,9 @@ window._resetBranding=function(){
 function _applyBranding(){
   try{
     var br=JSON.parse(localStorage.getItem('ip_branding')||'{}');
-    if(!br.primaryColor)return;S.branding=br;
-    document.documentElement.style.setProperty('--accent',br.primaryColor);
-    document.documentElement.style.setProperty('--sidebar-bg',br.sidebarColor||'#1E1453');
-    if(br.logoUrl){var logoEls=document.querySelectorAll('.logo-img');logoEls.forEach(function(el){el.src=br.logoUrl;});}
-    if(br.favUrl){var fav=document.querySelector("link[rel='icon']");if(fav)fav.href=br.favUrl;}
+    if(!br||(!br.primaryColor&&!br.logoUrl&&!br.companyName))return;
+    S.branding=br;
+    _applyBrandingLive(br);
   }catch(e){}
 }
 
@@ -16307,6 +16373,13 @@ function _anBuildPDF(_captured){
   var period=(_anPeriod||'month').toUpperCase();
   var ts=new Date().toLocaleString('en-GB');
   var usr=S.user?S.user.name:'System';
+  // Branding
+  var br=S.branding||{};
+  var _brPrimary=br.primaryColor||'#6C3FF5';
+  var _brSidebar=br.sidebarColor||'#0F0C29';
+  var _brCompany=br.companyName||_tenantName||'InstaPort Logistics';
+  var _brLogo=br.logoUrl||'';
+  var _brFooter=br.footerText||'InstaPort TMS — Confidential';
 
   // Build chart section from pre-captured canvas images
   var chartDefs=[
@@ -16319,18 +16392,17 @@ function _anBuildPDF(_captured){
     {id:'an-cust-chart',  title:'&#128100; Customer Breakdown'},
     {id:'an-fleet-chart', title:'&#128664; Fleet Utilisation'}
   ];
-  var chartSection='<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">';
+  var chartSection='';
   var hasCharts=false;
   chartDefs.forEach(function(ci){
     var img=_captured[ci.id];
     if(img){
-      chartSection+='<div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;break-inside:avoid">'+
-        '<div style="font-size:10px;font-weight:700;color:#475569;margin-bottom:6px">'+ci.title+'</div>'+
+      chartSection+='<div class="chart-box">'+
+        '<div class="chart-title">'+ci.title+'</div>'+
         '<img src="'+img+'" style="width:100%;border-radius:6px;display:block"/></div>';
       hasCharts=true;
     }
   });
-  chartSection+='</div>';
 
   // Customer breakdown table
   var custRows=CUSTOMERS.map(function(cu){
@@ -16348,27 +16420,57 @@ function _anBuildPDF(_captured){
       alerts.map(function(a){return '<div style="padding:7px 10px;margin-bottom:4px;border-radius:6px;font-size:9px;background:'+(a.sev==='err'?'#FEF2F2':'#FFFBEB')+';border-left:3px solid '+(a.sev==='err'?'#EF4444':'#F59E0B')+'">'+a.msg+'</div>';}).join('')+'</div>';
   }
 
-  var pdfHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>InstaPort Analytics</title>'+
+  // Fleet utilization table for PDF
+  var fleetTypes={};
+  TRUCKS.forEach(function(tk){
+    var tp=tk.type||'Unknown';
+    if(!fleetTypes[tp])fleetTypes[tp]={type:tp,trucks:0,active:0,trips:0,rev:0,km:0};
+    fleetTypes[tp].trucks++;
+    if(tk.valid)fleetTypes[tp].active++;
+  });
+  trips.forEach(function(t){
+    var tk=TRUCKS.find(function(x){return x.plate===t.truck;});
+    if(!tk)return;
+    var tp=tk.type||'Unknown';
+    if(!fleetTypes[tp])return;
+    fleetTypes[tp].trips++;
+    fleetTypes[tp].rev+=(+t.cost||0);
+    fleetTypes[tp].km+=(+t.km||0);
+  });
+  var fleetRows=Object.values(fleetTypes).sort(function(a,b){return b.trips-a.trips;});
+
+  var pdfHtml='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+_brCompany+' Analytics</title>'+
   '<style>*{box-sizing:border-box;margin:0;padding:0}'+
   'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#1e293b;background:#fff}'+
-  '.cover{background:linear-gradient(135deg,#0F0C29,#4F46E5,#06B6D4);color:#fff;padding:36px 32px}'+
-  '.cover h1{font-size:26px;font-weight:900;margin-bottom:4px}'+
-  '.cover .sub{font-size:11px;opacity:.75}'+
+  '.cover{background:linear-gradient(135deg,'+_brSidebar+','+_brPrimary+');color:#fff;padding:32px}'+
+  '.cover-top{display:flex;align-items:center;gap:12px;margin-bottom:14px}'+
+  '.cover-logo{height:36px;border-radius:6px}'+
+  '.cover h1{font-size:22px;font-weight:900;margin-bottom:2px}'+
+  '.cover .sub{font-size:10px;opacity:.75}'+
   '.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:20px 32px}'+
   '.kpi{border:1px solid #e2e8f0;border-radius:10px;padding:14px;text-align:center;background:#fafafa}'+
-  '.kpi .n{font-size:20px;font-weight:900;color:#6C3FF5}'+
+  '.kpi .n{font-size:18px;font-weight:900;color:'+_brPrimary+'}'+
   '.kpi .l{font-size:8px;color:#64748b;text-transform:uppercase;letter-spacing:.7px;margin-top:2px}'+
   '.section{padding:0 32px;margin-bottom:20px}'+
-  '.section-title{font-size:12px;font-weight:800;border-bottom:2px solid #6C3FF5;padding-bottom:5px;margin-bottom:12px}'+
+  '.section-title{font-size:12px;font-weight:800;border-bottom:2px solid '+_brPrimary+';padding-bottom:5px;margin-bottom:12px;color:'+_brPrimary+'}'+
   'table{width:100%;border-collapse:collapse;font-size:9px}'+
-  'th{background:#4F46E5;color:#fff;padding:6px 8px;text-align:left;font-weight:700}'+
+  'th{background:'+_brPrimary+';color:#fff;padding:6px 8px;text-align:left;font-weight:700}'+
   'td{padding:5px 8px;border-bottom:1px solid #e2e8f0}'+
   'tr:nth-child(even) td{background:#f8fafc}'+
+  '.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}'+
+  '.chart-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;break-inside:avoid}'+
+  '.chart-title{font-size:10px;font-weight:700;color:#475569;margin-bottom:6px}'+
   '.footer{background:#f1f5f9;padding:12px 32px;display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;border-top:1px solid #e2e8f0}'+
-  '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:10mm}}'+
+  '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:10mm;size:A4}}'+
   '</style></head><body>'+
-  '<div class="cover"><h1>&#128200; Analytics &amp; BI Report</h1>'+
-  '<div class="sub">Period: '+period+' &nbsp;&bull;&nbsp; Generated: '+ts+' &nbsp;&bull;&nbsp; '+usr+'</div></div>'+
+  '<div class="cover">'+
+  '<div class="cover-top">'+
+  (_brLogo?'<img class="cover-logo" src="'+_brLogo+'" onerror="this.style.display=\'none\'"/>':'<div style="width:36px;height:36px;border-radius:8px;background:rgba(255,255,255,.25)"></div>')+
+  '<div>'+
+  '<div style="font-size:13px;font-weight:700;opacity:.9">'+_brCompany+'</div>'+
+  '<h1>&#128200; Analytics &amp; BI Report</h1>'+
+  '</div></div>'+
+  '<div class="sub">Period: '+period+' &nbsp;&bull;&nbsp; Generated: '+ts+' &nbsp;&bull;&nbsp; By: '+usr+'</div></div>'+
   '<div class="kpis">'+
   '<div class="kpi"><div class="n">'+trips.length+'</div><div class="l">Total Trips</div></div>'+
   '<div class="kpi"><div class="n">'+comp+'</div><div class="l">Completed</div></div>'+
@@ -16377,14 +16479,20 @@ function _anBuildPDF(_captured){
   '<div class="kpi"><div class="n">'+Math.round(co2)+' kg</div><div class="l">CO&#8322; Emissions</div></div>'+
   '<div class="kpi"><div class="n">'+TRUCKS.filter(function(t){return t.valid;}).length+'/'+TRUCKS.length+'</div><div class="l">Fleet Active</div></div>'+
   '</div>'+
-  (hasCharts?'<div class="section"><div class="section-title">&#128200; Performance Charts</div>'+chartSection+'</div>':
-    '<div class="section"><div style="background:#FEF9C3;border:1px solid #FCD34D;border-radius:8px;padding:12px;font-size:10px;color:#92400E">&#128161; Open the Analytics page and wait for charts to load before exporting PDF — charts will then appear here.</div></div>')+
-  (custRows.length?'<div class="section"><div class="section-title">&#127970; Top Customers</div>'+
-  '<table><thead><tr><th>Customer</th><th>Trips</th><th>Revenue (EGP)</th><th>Avg/Trip</th></tr></thead><tbody>'+
+  (hasCharts?'<div class="section"><div class="section-title">&#128200; Performance Charts</div><div class="charts-grid">'+chartSection+'</div></div>':
+    '<div class="section"><div style="background:#FEF9C3;border:1px solid #FCD34D;border-radius:8px;padding:12px;font-size:10px;color:#92400E">&#128161; Charts are captured when you view each Analytics tab before exporting. Open Analytics → Charts / SLA / Drivers tabs, then export PDF again for full chart coverage.</div></div>')+
+  (custRows.length?'<div class="section"><div class="section-title">&#127970; Revenue by Customer</div>'+
+  '<table><thead><tr><th>Customer</th><th>Trips</th><th>Revenue (EGP)</th><th>Avg/Trip (EGP)</th></tr></thead><tbody>'+
   custRows.map(function(r){return '<tr><td><b>'+r[0]+'</b></td><td>'+r[1]+'</td><td>'+Number(r[2]).toLocaleString()+'</td><td>'+Number(r[3]).toLocaleString()+'</td></tr>';}).join('')+
   '</tbody></table></div>':'')+
+  (fleetRows.length?'<div class="section"><div class="section-title">&#128666; Fleet Utilization</div>'+
+  '<table><thead><tr><th>Fleet Type</th><th>Trucks</th><th>Active</th><th>Trips</th><th>Revenue (EGP)</th><th>Total KM</th><th>Utilization</th></tr></thead><tbody>'+
+  fleetRows.map(function(r){
+    var util=r.trucks>0?Math.round((r.active/r.trucks)*100):0;
+    return '<tr><td><b>'+r.type+'</b></td><td>'+r.trucks+'</td><td style="color:#059669">'+r.active+'</td><td>'+r.trips+'</td><td>'+Math.round(r.rev).toLocaleString()+'</td><td>'+Math.round(r.km).toLocaleString()+' km</td><td>'+util+'%</td></tr>';
+  }).join('')+'</tbody></table></div>':'')+
   maintHtml+
-  '<div class="footer"><span>InstaPort TMS &#8212; Confidential Report</span><span>'+ts+'</span></div>'+
+  '<div class="footer"><span>'+_brFooter+'</span><span>'+ts+'</span></div>'+
   '<scr'+'ipt>window.onload=function(){window.print();};</scr'+'ipt></body></html>';
 
   var w=null;try{w=window.open('','_blank','width=1050,height=820');}catch(e){}

@@ -11,7 +11,7 @@
  * npm run release → build + start
  */
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 // Runtime config must load BEFORE other integrations so saved keys are in process.env
 const cfg = require('./integrations/config');
 
@@ -185,9 +185,18 @@ app.post('/api/sa-auth', _localOnly, (req, res) => {
   if (_saRateLimit(ip)) return res.status(429).json({ ok: false, error: 'Too many attempts. Try again in 15 minutes.' });
   try {
     const { org, userId, pin, totp } = req.body || {};
-    const orgOk  = crypto.timingSafeEqual(Buffer.from(org    || '', 'utf8'), Buffer.from(process.env.SA_ORG     || '', 'utf8'));
-    const userOk = crypto.timingSafeEqual(Buffer.from(userId || '', 'utf8'), Buffer.from(process.env.SA_USER_ID || '', 'utf8'));
-    const pinOk  = crypto.timingSafeEqual(Buffer.from(pin    || '', 'utf8'), Buffer.from(process.env.SA_PIN     || '', 'utf8'));
+    // timingSafeEqual requires equal-length buffers — pad to max length to avoid throws
+    function _safeEq(a, b) {
+      const ba = Buffer.from(a || '', 'utf8');
+      const bb = Buffer.from(b || '', 'utf8');
+      const len = Math.max(ba.length, bb.length, 1);
+      const pa = Buffer.alloc(len); ba.copy(pa);
+      const pb = Buffer.alloc(len); bb.copy(pb);
+      return crypto.timingSafeEqual(pa, pb) && ba.length === bb.length;
+    }
+    const orgOk  = _safeEq(org,    process.env.SA_ORG     || '');
+    const userOk = _safeEq(userId, process.env.SA_USER_ID || '');
+    const pinOk  = _safeEq(pin,    process.env.SA_PIN     || '');
     if (orgOk && userOk && pinOk) {
       // ── 2FA check (if enabled) ────────────────────────────────
       if (auth.isTotpEnabled()) {
@@ -575,8 +584,12 @@ app.post('/api/integrations/test', _localOnly, async (req, res) => {
 // ═══════════════════════════════════════════════════════
 // STATIC FILES + SPA FALLBACK
 // ═══════════════════════════════════════════════════════
-app.use(express.static(ROOT));
-app.get('/{*path}', (req, res) => res.sendFile(path.join(ROOT, 'index.html')));
+app.use(express.static(ROOT, { etag: false, lastModified: false, maxAge: 0 }));
+app.get('/{*path}', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.sendFile(path.join(ROOT, 'index.html'));
+});
 
 // ═══════════════════════════════════════════════════════
 // START
