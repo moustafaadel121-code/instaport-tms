@@ -3178,6 +3178,12 @@ function _secLockoutMsg(uid){
   var mins=exp?Math.ceil((exp-Date.now())/60000):0;
   return 'Account locked — too many failed attempts. Try again in '+mins+' minute(s).';
 }
+function _secResetLockout(){
+  // Clears ALL lockouts from localStorage — shown as a link when locked
+  _SEC.attempts={};_SEC.locked={};_secSave();
+  var lerr=document.getElementById('lerr');if(lerr)lerr.style.display='none';
+  toast('🔓 Account unlocked — you can log in again','ok');
+}
 
 // ── Idle session timeout ───────────────────────
 var _idleTimer=null,_idleWarnTimer=null;
@@ -4499,7 +4505,7 @@ async function doLogin(){
   }
   // ── Brute-force check ─────────────────────────
   var lockKey=orgCode+':'+uid;
-  if(_secIsLocked(lockKey)){lerr.textContent='🔒 '+_secLockoutMsg(lockKey);lerr.style.display='block';return;}
+  if(_secIsLocked(lockKey)){lerr.innerHTML='🔒 '+_secLockoutMsg(lockKey)+'<br><a href="#" onclick="_secResetLockout();return false;" style="font-size:11px;color:#6C3FF5;text-decoration:underline;margin-top:4px;display:inline-block">🔓 Unlock my account</a>';lerr.style.display='block';return;}
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
   try{
     var ok=await _loadTenant(orgCode);
@@ -11643,7 +11649,7 @@ doLogin=async function(){
     lerr.style.display='block';return;
   }
   var lockKey=orgCode+':'+val;
-  if(_secIsLocked(lockKey)){lerr.textContent='🔒 '+_secLockoutMsg(lockKey);lerr.style.display='block';return;}
+  if(_secIsLocked(lockKey)){lerr.innerHTML='🔒 '+_secLockoutMsg(lockKey)+'<br><a href="#" onclick="_secResetLockout();return false;" style="font-size:11px;color:#6C3FF5;text-decoration:underline;margin-top:4px;display:inline-block">🔓 Unlock my account</a>';lerr.style.display='block';return;}
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
   try{
     var ok=await _loadTenant(orgCode);
