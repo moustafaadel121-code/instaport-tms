@@ -584,11 +584,21 @@ app.post('/api/integrations/test', _localOnly, async (req, res) => {
 // ═══════════════════════════════════════════════════════
 // STATIC FILES + SPA FALLBACK
 // ═══════════════════════════════════════════════════════
+// Serve index.html with strict no-cache BEFORE static middleware
+// so the browser always fetches the latest version
+const _indexPath = path.join(ROOT, 'index.html');
+app.get('/', (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+  res.sendFile(_indexPath);
+});
 app.use(express.static(ROOT, { etag: false, lastModified: false, maxAge: 0 }));
 app.get('/{*path}', (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
-  res.sendFile(path.join(ROOT, 'index.html'));
+  res.setHeader('Expires', '0');
+  res.sendFile(_indexPath);
 });
 
 // ═══════════════════════════════════════════════════════

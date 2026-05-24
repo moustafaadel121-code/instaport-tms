@@ -1,7 +1,7 @@
-/* InstaPort TMS — Service Worker v1.2
-   Strategy: Cache-first for static assets, network-first for API/Supabase
+/* InstaPort TMS — Service Worker v1.3
+   Strategy: Network-first for HTML, cache-first for static assets
 */
-const CACHE = 'instaport-v1.2';
+const CACHE = 'instaport-v1.3';
 const STATIC = ['./index.html', './logo.png', './manifest.json'];
 
 self.addEventListener('install', function(e) {
@@ -31,6 +31,20 @@ self.addEventListener('fetch', function(e) {
   if (url.includes('supabase.co')) return;
   if (url.includes('/api/')) return;
   if (url.startsWith('chrome-extension')) return;
+
+  // Always fetch HTML from network (never serve stale index.html)
+  if (url.endsWith('/') || url.endsWith('/index.html') || url.includes('index.html')) {
+    e.respondWith(
+      fetch(e.request).then(function(response) {
+        if (response && response.status === 200) {
+          var clone = response.clone();
+          caches.open(CACHE).then(function(c) { c.put(e.request, clone); });
+        }
+        return response;
+      }).catch(function() { return caches.match(e.request); })
+    );
+    return;
+  }
 
   e.respondWith(
     caches.match(e.request).then(function(cached) {

@@ -11621,53 +11621,111 @@ function spTab(el,id){
   var t=document.getElementById(id);if(t)t.style.display='block';
 }
 
-// ── PATCH doLogin: support email/name login (multi-tenant aware) ──
-// This replaces the base doLogin with a version that also accepts email or name in the ID field
-var _origDL=doLogin;
+// ── doLogin: unified server-auth + email/name lookup (replaces old client-only patch) ──
 doLogin=async function(){
+  _secLoad();
   var orgCode=(document.getElementById('uorg')||{value:'instaport'}).value.trim().toLowerCase()||'instaport';
-  var val=(document.getElementById('uid').value||'').trim();
+  var val=(document.getElementById('uid').value||'').trim(); // accepts ID, email, or name
   var pin=(document.getElementById('upin').value||'').trim();
   var lerr=document.getElementById('lerr');lerr.style.display='none';
   if(!orgCode){lerr.textContent='Enter your organization code.';lerr.style.display='block';return;}
   if(!val||!pin){lerr.textContent='Enter your Employee ID and PIN.';lerr.style.display='block';return;}
-  // ── Super Admin: localhost only — blocked on GitHub Pages ──
-  if(orgCode==='ip-master'){
-    if(_IS_GITHUB_PAGES){
-      var lerr2=document.getElementById('lerr');
-      lerr2.innerHTML='🔒 <b>Super Admin access is restricted to the local server.</b><br><span style="font-size:11px;opacity:.8">Open <code>http://localhost:7434</code> on your server machine instead.</span>';
-      lerr2.style.display='block';return;
-    }
-    return _origDL();
+  if(orgCode==='ip-master'&&_IS_GITHUB_PAGES){
+    lerr.innerHTML='🔒 <b>Super Admin access is restricted to the local server.</b><br><span style="font-size:11px;opacity:.8">Open <code>http://localhost:7434</code> on your server machine instead.</span>';
+    lerr.style.display='block';return;
   }
+  var lockKey=orgCode+':'+val;
+  if(_secIsLocked(lockKey)){lerr.textContent='🔒 '+_secLockoutMsg(lockKey);lerr.style.display='block';return;}
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
   try{
     var ok=await _loadTenant(orgCode);
     if(ok==='deactivated'){lerr.innerHTML='🔴 <b>This organization has been deactivated.</b><br><span style="font-size:11px;opacity:.8">Contact InstaPort support to reactivate your account.</span>';lerr.style.display='block';return;}
     if(!ok){lerr.textContent='Organization "'+orgCode+'" not found. Please register first.';lerr.style.display='block';return;}
-    var u=_tenantUsers.find(function(x){
-      return(String(x.id)===val||x.email===val||(x.name&&x.name.toLowerCase()===val.toLowerCase()))
-        &&String(x.pin)===pin&&x.active!==false;
-    });
-    if(!u){lerr.textContent='Invalid Employee ID or PIN.';lerr.style.display='block';return;}
+    var u=null;
+    if(orgCode==='ip-master'){
+      // SA: server-side auth only
+      var totpCode=(document.getElementById('utotp')||{value:''}).value.trim();
+      var saRes=await fetch('/api/sa-auth',{method:'POST',headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({org:orgCode,userId:val,pin:pin,totp:totpCode||undefined})});
+      var saData=await saRes.json();
+      if(!saData.ok&&saData.require2FA){
+        var tRow=document.getElementById('totp-row');if(tRow)tRow.style.display='block';
+        lerr.textContent='Enter the 6-digit code from your Authenticator app.';lerr.style.display='block';return;
+      }
+      if(!saData.ok){
+        _secRecordFail(lockKey);
+        lerr.innerHTML=(saData.error||'Invalid credentials.')+'<br><span style="font-size:11px;opacity:.8">Check SA_USER_ID and SA_PIN in your .env file</span>';
+        lerr.style.display='block';return;
+      }
+      u={id:val,pin:'[server]',name:saData.name,role:'superadmin',email:'',active:true};
+      if(saData.token)sessionStorage.setItem('ip_token',saData.token);
+    } else {
+      // Regular users: try server auth first (handles bcrypt PINs)
+      try{
+        // Resolve val → employeeId (support email/name lookup)
+        var resolvedId=val;
+        var matchLocal=_tenantUsers.find(function(x){
+          return x.email===val||(x.name&&x.name.toLowerCase()===val.toLowerCase());
+        });
+        if(matchLocal)resolvedId=String(matchLocal.employee_id||matchLocal.id||val);
+        var authRes=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({org:orgCode,userId:resolvedId,pin:pin})});
+        var authData=await authRes.json();
+        if(authData.ok&&authData.token){
+          sessionStorage.setItem('ip_token',authData.token);
+          u={id:resolvedId,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
+             email:matchLocal?matchLocal.email||'':'',active:true,plan:authData.user.plan};
+          _tenantPlan=authData.user.plan||_tenantPlan;
+        } else if(!authData.ok){
+          _secRecordFail(lockKey);
+          lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
+          lerr.style.display='block';return;
+        }
+      }catch(serverErr){
+        // Server unavailable — fall back to local plain-text PIN match (dev/offline only)
+        console.warn('Server auth unavailable, local fallback');
+        u=_tenantUsers.find(function(x){
+          return(String(x.id)===val||String(x.employee_id||'')===val||x.email===val||
+                 (x.name&&x.name.toLowerCase()===val.toLowerCase()))
+            &&String(x.pin)===pin&&x.active!==false;
+        });
+      }
+    }
+    if(!u){
+      _secRecordFail(lockKey);
+      lerr.textContent='Invalid Employee ID or PIN.';lerr.style.display='block';return;
+    }
+    _secRecordOk(lockKey,u.name,u.role);
     lerr.style.display='none';
     S.user=u;S.role=u.role;
-    if(!S.pendingParts)S.pendingParts=[];
     var lg=document.getElementById('login');lg.style.cssText='display:none!important';
     var ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='row';
-    document.getElementById('tb-avatar').textContent=u.name.split(' ').map(function(x){return x[0];}).join('');
-    document.getElementById('tb-uname').textContent=u.name;
-    document.getElementById('tb-role').textContent=(RL&&RL[u.role])||u.role;
+    var av=document.getElementById('tb-avatar');if(av)av.textContent=u.name.split(' ').map(function(x){return x[0];}).join('');
+    var un=document.getElementById('tb-uname');if(un)un.textContent=u.name;
+    var ur=document.getElementById('tb-role');if(ur)ur.textContent=(RL&&RL[u.role])||u.role;
     var tbn=document.getElementById('tb-tenant-name');if(tbn)tbn.textContent=_tenantName;
     var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=_tenantName;
     var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=_tenantName;
     audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
+    _idleStart();
+    if(u.pin&&!String(u.pin).startsWith('[')&&_pinIsWeak&&_pinIsWeak(u.pin))
+      setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users','err');},3000);
     buildSB();
-    var _startPage2=u.role==='driver'?'my_trips':'dashboard';
-    // Show dashboard instantly, then silently refresh data from Supabase
-    nav(_startPage2);
-    initApp().then(function(){nav(_startPage2);}).catch(function(){});
-    startTemp();
+    _loadFeatureGates&&_loadFeatureGates();
+    _applyBranding&&_applyBranding();
+    var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
+    nav(_startPage);
+    initApp().then(function(){
+      var sp=S.role==='client'?'client_portal':_startPage;
+      nav(sp);_checkMaintenanceAlerts&&_checkMaintenanceAlerts();
+    }).catch(function(){});
+    _initPWA&&_initPWA();startTemp&&startTemp();_fetchGPSSnapshot&&_fetchGPSSnapshot();
+    setTimeout(function(){
+      try{_exLoadRules&&_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck&&_runExceptionCheck();}catch(e){}
+      try{_loadInvoices&&_loadInvoices();}catch(e){}
+      try{_loadFuelLogs&&_loadFuelLogs();}catch(e){}
+      try{_loadWorkshopConfig&&_loadWorkshopConfig();}catch(e){}
+    },2500);
   }finally{
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
   }
