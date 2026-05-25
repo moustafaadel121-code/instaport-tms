@@ -1,8 +1,8 @@
-/* InstaPort TMS — Service Worker v1.3
+/* InstaPort TMS — Service Worker v2.0
    Strategy: Network-first for HTML, cache-first for static assets
 */
-const CACHE = 'instaport-v1.3';
-const STATIC = ['./index.html', './logo.png', './manifest.json'];
+const CACHE = 'instaport-v2.0';
+const STATIC = ['./logo.png', './manifest.json'];
 
 self.addEventListener('install', function(e) {
   e.waitUntil(
@@ -32,14 +32,10 @@ self.addEventListener('fetch', function(e) {
   if (url.includes('/api/')) return;
   if (url.startsWith('chrome-extension')) return;
 
-  // Always fetch HTML from network (never serve stale index.html)
-  if (url.endsWith('/') || url.endsWith('/index.html') || url.includes('index.html')) {
+  // Always fetch HTML from network — never serve stale index.html
+  if (url.endsWith('/') || url.endsWith('.html') || url.includes('index.html')) {
     e.respondWith(
       fetch(e.request).then(function(response) {
-        if (response && response.status === 200) {
-          var clone = response.clone();
-          caches.open(CACHE).then(function(c) { c.put(e.request, clone); });
-        }
         return response;
       }).catch(function() { return caches.match(e.request); })
     );
@@ -48,7 +44,6 @@ self.addEventListener('fetch', function(e) {
 
   e.respondWith(
     caches.match(e.request).then(function(cached) {
-      // Serve from cache instantly, update in background (stale-while-revalidate)
       var fetchPromise = fetch(e.request).then(function(response) {
         if (response && response.status === 200 && response.type !== 'opaque') {
           var clone = response.clone();

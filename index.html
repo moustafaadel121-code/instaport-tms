@@ -4579,37 +4579,31 @@ async function doLogin(){
         lerr.style.display='block';return;
       }
     } else {
-      // ── Server-side auth (bcrypt + JWT) — preferred ──────────────
-      try{
-        var authRes=await fetch('/api/auth',{method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
-        var authData=await authRes.json();
-        if(authData.ok&&authData.token){
-          // Server verified PIN with bcrypt — use server response
-          sessionStorage.setItem('ip_token', authData.token);
-          u={id:uid,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
-             email:'',active:true,plan:authData.user.plan};
-          _tenantPlan=authData.user.plan||_tenantPlan;
-        } else if(!authData.ok){
-          // Server explicitly rejected — don't fall back
-          _secRecordFail(lockKey);
-          lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
-          lerr.style.display='block';return;
-        }
-      }catch(serverErr){
-        // Server not available — fall back to local match
-        console.warn('Server auth unavailable, falling back to local match');
-        var _cands=_tenantUsers.filter(function(x){
-          return(String(x.id)===uid||String(x.employee_id||'')===uid)&&x.active!==false;
-        });
-        for(var _i=0;_i<_cands.length;_i++){
-          var _cx2=_cands[_i];var _sp=String(_cx2.pin||'');var _ok=false;
-          if(_sp.startsWith('$2')&&typeof dcodeIO!=='undefined'&&dcodeIO.bcrypt){
-            try{_ok=dcodeIO.bcrypt.compareSync(pin,_sp);}catch(e){_ok=false;}
-          }else{_ok=_sp===pin;}
-          if(_ok){u=_cx2;break;}
-        }
+      // ── Local match first (instaport/demo always local; real tenants try server then local) ──
+      var _cands=_tenantUsers.filter(function(x){
+        return(String(x.id)===uid||String(x.employee_id||'')===uid)&&x.active!==false;
+      });
+      for(var _i=0;_i<_cands.length;_i++){
+        var _cx2=_cands[_i];var _sp=String(_cx2.pin||'');var _ok=false;
+        if(_sp.startsWith('$2')&&typeof dcodeIO!=='undefined'&&dcodeIO.bcrypt){
+          try{_ok=dcodeIO.bcrypt.compareSync(pin,_sp);}catch(e){_ok=false;}
+        }else{_ok=_sp===pin;}
+        if(_ok){u=_cx2;break;}
+      }
+      // If not found locally, try server (for real tenants with bcrypt PINs in Supabase)
+      if(!u&&orgCode!=='instaport'&&orgCode!=='demo'){
+        try{
+          var authRes=await fetch('/api/auth',{method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
+          var authData=await authRes.json();
+          if(authData.ok&&authData.token){
+            sessionStorage.setItem('ip_token', authData.token);
+            u={id:uid,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
+               email:'',active:true,plan:authData.user.plan};
+            _tenantPlan=authData.user.plan||_tenantPlan;
+          }
+        }catch(serverErr){console.warn('Server auth unavailable',serverErr);}
       }
     }
     if(!u){
