@@ -6595,28 +6595,49 @@ function rejQConfirm(id){
 // ══════════════════════════════════════════════════
 function rCtrl(){
   var c=document.getElementById('content');
+  // OUTBOUND: waiting for ctrl approval before gate
   var pending=S.trips.filter(function(t){return t.status==='awaiting_ctrl';});
+  // IN TRANSIT: ctrl can confirm return from destination (IN-1)
+  var inTransit=S.trips.filter(function(t){return t.status==='in_transit';});
+  // INBOUND CTRL: ctrl already confirmed return, driver heading back (waiting for driver arrival)
   var inbCtrl=S.trips.filter(function(t){return t.status==='inbound_ctrl';});
-  var active=S.trips.filter(function(t){return ['awaiting_ctrl','in_transit'].includes(t.status);});
-  c.innerHTML='<div class="page-head"><div><h2>🎛️ Control Room</h2></div></div>'+
+  c.innerHTML='<div class="page-head"><div><h2>&#127775; Control Room</h2></div></div>'+
   '<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px">'+
   // LEFT PANEL
   '<div>'+
-  (pending.length>0?pending.map(function(t){return '<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:12px"><div style="font-size:16px;font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:13px;color:var(--t2);margin-bottom:12px">'+t.customer+' · '+t.truck+' · '+t.condition+'</div><div style="display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="ctOkConfirm(\''+t.id+'\')">✅ Approve Gate Pass</button><button class="btn btn-danger btn-sm" onclick="ctNoM(\''+t.id+'\')">❌ Reject</button></div></div>';}).join(''):'<div class="card">'+_emptyState('🎛️','No Outbound Trips Pending','All outbound trips have been approved or there are none queued for control room review.','')+'</div>')+
-  (inbCtrl.length>0?'<div class="card" style="border:2px solid var(--c3)"><div class="card-hd"><div class="card-title">📥 Inbound Arrivals</div></div>'+
-  inbCtrl.map(function(t){return '<div style="padding:10px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div style="font-weight:700">'+t.id+' — '+t.customer+'</div>'+stB(t.status)+'</div><div style="font-size:12px;color:var(--t2);margin-bottom:8px">Truck: '+t.truck+' · Driver: '+t.driver+'</div><div style="display:flex;gap:6px"><button class="btn btn-success btn-sm" onclick="inbCtrlOkConfirm(\''+t.id+'\')">✅ Approve Inbound</button><button class="btn btn-danger btn-sm" onclick="ctNoM(\''+t.id+'\')">❌ Reject</button></div></div>';}).join('')+'</div>':'')+
+  // OUTBOUND SECTION: trips waiting ctrl approval (OUT-2)
+  '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--c1);margin-bottom:8px">&#128228; Outbound — Awaiting Ctrl (OUT-2)</div>'+
+  (pending.length>0?pending.map(function(t){return '<div class="card" style="border-left:4px solid var(--c1)"><div style="display:flex;justify-content:space-between;margin-bottom:10px"><div style="font-size:15px;font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:13px;color:var(--t2);margin-bottom:12px">'+t.customer+' &bull; '+t.truck+' &bull; '+t.condition+'</div><div style="display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="ctOkConfirm(\''+t.id+'\')">&#10003; Approve Gate Pass (OUT-3)</button><button class="btn btn-danger btn-sm" onclick="ctNoM(\''+t.id+'\')">&#10006; Reject</button></div></div>';}).join(''):'<div class="card" style="padding:14px;color:var(--t2);font-size:13px;text-align:center">&#9989; No outbound trips awaiting approval</div>')+
+  // IN-TRANSIT SECTION: ctrl confirms return from destination (IN-1)
+  (inTransit.length>0?'<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#059669;margin:14px 0 8px">&#128666; In Transit — Confirm Return (IN-1)</div>'+
+  inTransit.map(function(t){return '<div class="card" style="border-left:4px solid #059669"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><div style="font-size:14px;font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:12px;color:var(--t2);margin-bottom:10px">'+t.customer+' &bull; '+(t.truck||'—')+' &bull; Driver: '+(t.driver||'—')+'<br><span style="font-size:11px">'+t.from+' &#8594; '+t.dests+'</span></div><div style="display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="ctrlConfirmReturn(\''+t.id+'\')">&#9989; Confirm Return from Destination</button><button class="btn btn-outline btn-sm" onclick="ctrlTripDetail(\''+t.id+'\')">&#128065; Detail</button></div></div>';}).join(''):''):'')+
+  // RETURNING: ctrl confirmed, driver heading back
+  (inbCtrl.length>0?'<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#D97706;margin:14px 0 8px">&#128338; Returning to Warehouse</div>'+
+  inbCtrl.map(function(t){return '<div class="card" style="border-left:4px solid #D97706"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div style="font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:12px;color:var(--t2)">'+t.customer+' &bull; '+(t.truck||'—')+' &bull; Driver heading back...</div></div>';}).join(''):'')+
   '</div>'+
-  // RIGHT PANEL
+  // RIGHT PANEL: temp monitor unchanged
   '<div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">🌡️ Live Fleet Temperature</div><span class="live"><span class="live-dot"></span>Live</span></div>'+
+  '<div class="card"><div class="card-hd"><div class="card-title">&#127777;&#65039; Live Fleet Temperature</div><span class="live"><span class="live-dot"></span>Live</span></div>'+
   '<div style="margin-bottom:10px"><input placeholder="Search truck/trip/driver..." id="ctrl-s" oninput="rCtrlTrucks()" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;outline:none"/></div>'+
   '<div id="ctrl-trucks"></div></div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">📈 Temperature Graph</div>'+
-  '<div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="expGraph()">⬇ CSV</button><button class="btn btn-outline btn-sm" onclick="expGraphExcel()">⬇ Excel</button></div></div>'+
+  '<div class="card"><div class="card-hd"><div class="card-title">&#128202; Temperature Graph</div>'+
+  '<div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="expGraph()">&#11015; CSV</button><button class="btn btn-outline btn-sm" onclick="expGraphExcel()">&#11015; Excel</button></div></div>'+
   '<div style="background:var(--bg);border-radius:var(--r);border:1px solid var(--border);padding:8px;margin-bottom:10px"><canvas id="tg-canvas" style="width:100%;height:140px"></canvas></div>'+
-  '<div style="display:flex;gap:12px;font-size:11px;flex-wrap:wrap"><span style="color:var(--c4)">● In Range (2–8°C)</span><span style="color:var(--c2)">● Warning</span><span style="color:var(--c5)">● Excursion</span></div></div>'+
+  '<div style="display:flex;gap:12px;font-size:11px;flex-wrap:wrap"><span style="color:var(--c4)">&#9679; In Range (2&#8211;8&#176;C)</span><span style="color:var(--c2)">&#9679; Warning</span><span style="color:var(--c5)">&#9679; Excursion</span></div></div>'+
   '</div></div>';
   rCtrlTrucks();setTimeout(drawGraph,100);
+}
+// Control Room: confirm truck return from destination → driver heads back to warehouse
+function ctrlConfirmReturn(id){
+  requirePwd('&#9989; Confirm Return from Destination — '+id,function(){
+    var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+    t.status='inbound_ctrl';
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#127775; IN-1: Control Confirmed Return','detail':'Driver instructed to return to warehouse'});
+    audit('CTRL_CONFIRM_RETURN','Driver heading back',id);
+    notif('&#128666; Trip '+id+' — driver returning to warehouse. Awaiting arrival.','info');
+    toast('&#9989; Return confirmed — driver notified to head back','ok');
+    rCtrl();
+  });
 }
 function rCtrlTrucks(){
   var s=((document.getElementById('ctrl-s')||{}).value||'').toLowerCase();
@@ -6762,9 +6783,27 @@ function secOkConfirm(id){
 function inbSecOkConfirm(id){
   requirePwd('Inbound Security — '+id,function(){
     var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-    t.status='inbound_quality';t.checklist=Array(8).fill(false);t.qualityPin=false;
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Inbound Security OK',detail:''});
-    audit('INBOUND_SEC_OK','',id);toast('Inbound security cleared!','ok');rSec();
+    var wf=S.workflowConfig||{};
+    var rb=wf.returnBy||'ctrl_security';
+    if(rb==='security'){
+      // security mode: no quality step — complete directly
+      t.status='completed';t.inboundApproved=true;
+      var km=t.actualKm||t.km||0;
+      var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
+      t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'IN-2: Security Confirmed — Completed',detail:'EGP '+t.cost+' · KM: '+km});
+      audit('INBOUND_SEC_COMPLETE','Security mode — direct complete',id);
+      _autoInvoiceOnComplete(t);
+      toast('&#9989; Security confirmed — trip completed!','ok');
+    } else {
+      // ctrl_security mode: security gate → quality inspection
+      t.status='inbound_quality';t.checklist=Array(8).fill(false);t.qualityPin=false;
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'IN-3: Security Gate OK',detail:'Awaiting inbound quality inspection'});
+      audit('INBOUND_SEC_OK','→ quality',id);
+      notif('Trip '+id+' — security cleared, quality inbound inspection needed','info');
+      toast('&#9989; Security cleared — sent to Quality (IN-3)','ok');
+    }
+    syncTrip(t);rSec();
   });
 }
 function secHold(id){
@@ -7790,7 +7829,7 @@ function vAConfirm(plate,action){requirePwd(action.charAt(0).toUpperCase()+actio
 // DRIVER TRIPS
 function rDriverTrips(){
   var c=document.getElementById('content');
-  var myTrips=S.trips.filter(function(t){return t.driver===S.user.name&&['awaiting_quality','awaiting_ctrl','awaiting_security','in_transit'].includes(t.status);});
+  var myTrips=S.trips.filter(function(t){return t.driver===S.user.name&&['awaiting_quality','awaiting_ctrl','awaiting_security','in_transit','inbound_ctrl'].includes(t.status);});
   c.innerHTML='<div class="page-head"><div><h2>🚛 My Trips</h2></div></div>'+
   (myTrips.length===0?'<div class="card" style="text-align:center;padding:48px;color:var(--t2)"><div style="font-size:48px">🚛</div><div style="margin-top:12px">No trips assigned yet</div></div>':'')+
   myTrips.map(function(t){return '<div class="card">'+
@@ -7798,34 +7837,69 @@ function rDriverTrips(){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px"><div style="background:var(--bg);padding:10px;border-radius:var(--r)"><div style="font-size:11px;color:var(--t2)">Truck</div><div style="font-weight:700;font-size:15px">'+(t.truck||'—')+'</div></div><div style="background:var(--bg);padding:10px;border-radius:var(--r)"><div style="font-size:11px;color:var(--t2)">Planned KM</div><div style="font-weight:600">'+(t.km||'—')+' km</div></div></div>'+
     '<div style="margin-bottom:14px"><div style="font-size:12px;font-weight:600;margin-bottom:8px">📍 Route</div>'+
     (t.destsArr||[t.dests]).map(function(d,i){var col=i===0?'var(--c4)':i===(t.destsArr||[t.dests]).length-1?'var(--c2)':'var(--c1)';return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--tb)"><div style="width:22px;height:22px;border-radius:50%;background:'+col+';color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+(i+1)+'</div><span>'+d+'</span></div>';}).join('')+'</div>'+
-    (t.status==='in_transit'?
-    '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--r);padding:14px;margin-bottom:14px">'+
-    '<div style="font-size:13px;font-weight:600;color:#D97706;margin-bottom:10px">&#127937; Complete Trip</div>'+
-    (function(){var wf=S.workflowConfig||{};var rb=wf.returnBy||'ctrl_security';
-      var lbl={driver:'Driver confirms completion directly',security:'Security will confirm truck return at gate',ctrl_security:'Control room + Security inbound approval required'}[rb];
-      return '<div style="background:#F0FDF4;border:1px solid #6EE7B7;border-radius:8px;padding:8px 12px;font-size:11px;color:#065F46;margin-bottom:10px">&#128337; Return flow: <strong>'+lbl+'</strong></div>';
-    })()+
-    (function(){
+    (function(t){
       var wf=S.workflowConfig||{};
+      var rb=wf.returnBy||'ctrl_security';
       var gpsOn=wf.gpsEnabled&&wf.gpsEndpoint;
-      var kmSrc=gpsOn?'<span style="font-size:10px;color:#10B981;font-weight:600">&#127752; GPS Active</span>':'<span style="font-size:10px;color:#94a3b8">(Manual)</span>';
-      return '<div class="fg f1" style="margin-bottom:8px"><label>Actual KM Driven * '+kmSrc+'</label>'+
-        '<div style="display:flex;gap:6px">'+
-        '<input type="number" id="akm-'+t.id+'" value="'+(t.actualKm||t.km||150)+'" placeholder="Actual kilometers..." oninput="updActualCost(\''+t.id+'\',this.value)" style="flex:1"/>'+
-        '<button class="btn '+(gpsOn?'btn-success':'btn-outline')+' btn-sm" onclick="fetchGpsKm(\''+t.id+'\')" title="'+(gpsOn?'Auto-fill from GPS':'GPS not configured — go to Admin → Workflow to enable')+'" style="font-size:11px;white-space:nowrap">&#127752; GPS</button>'+
-        '</div>'+
-        (gpsOn?'':'<div style="font-size:10px;color:#94a3b8;margin-top:3px">Enable GPS in Admin &#8594; &#9881; Workflow for auto KM</div>')+
-        '</div>';
-    })()+
-    '<div id="cost-prev-'+t.id+'" style="background:white;padding:10px;border-radius:6px;margin-bottom:10px;font-size:12px">'+
-    '<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="color:var(--t2)">Estimated Cost</span><span style="font-weight:700;color:var(--c1)" id="acp-'+t.id+'">EGP '+t.cost+'</span></div>'+
-    '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">CO&#8322; Emission</span><span style="font-weight:700;color:var(--c4)" id="ac2-'+t.id+'">'+t.co2+' kg</span></div></div>'+
-    '<div class="fg f1" style="margin-bottom:10px"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Trip notes..." style="min-height:55px">'+(t.driverNote||'')+'</textarea></div>'+
-    '<button class="btn btn-primary btn-block" onclick="driverComplete(\''+t.id+'\')">&#9989; Mark Arrived &amp; Submit</button></div>':
-    '<div class="fg f1"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Add note..." style="min-height:55px">'+(t.driverNote||'')+'</textarea></div>'+
-    '<button class="btn btn-outline btn-sm" onclick="saveNote(\''+t.id+'\')">💬 Save Note</button>')+
+
+      /* ── IN-1: inbound_ctrl — driver marks arrival ── */
+      if(t.status==='inbound_ctrl'){
+        var kmSrc=gpsOn?'<span style="font-size:10px;color:#10B981;font-weight:600">&#127752; GPS Active</span>':'<span style="font-size:10px;color:#94a3b8">(Manual)</span>';
+        return '<div style="background:#EFF6FF;border:1px solid #BFDBFE;border-radius:var(--r);padding:14px;margin-bottom:14px">'+
+          '<div style="font-size:13px;font-weight:700;color:#1D4ED8;margin-bottom:6px">&#9989; Control Room Confirmed — Mark Your Arrival</div>'+
+          '<div style="background:#DBEAFE;border-radius:8px;padding:8px 12px;font-size:11px;color:#1E40AF;margin-bottom:12px">&#128338; Step IN-1 done · You are now returning to the warehouse · Enter actual KM and confirm arrival</div>'+
+          '<div class="fg f1" style="margin-bottom:8px"><label>Actual KM Driven * '+kmSrc+'</label>'+
+          '<div style="display:flex;gap:6px">'+
+          '<input type="number" id="akm-'+t.id+'" value="'+(t.actualKm||t.km||150)+'" placeholder="Actual kilometers..." oninput="updActualCost(\''+t.id+'\',this.value)" style="flex:1"/>'+
+          '<button class="btn '+(gpsOn?'btn-success':'btn-outline')+' btn-sm" onclick="fetchGpsKm(\''+t.id+'\')" title="'+(gpsOn?'Auto-fill from GPS':'GPS not configured — go to Admin → Workflow to enable')+'" style="font-size:11px;white-space:nowrap">&#127752; GPS</button>'+
+          '</div>'+(!gpsOn?'<div style="font-size:10px;color:#94a3b8;margin-top:3px">Enable GPS in Admin &#8594; &#9881; Workflow for auto KM</div>':'')+
+          '</div>'+
+          '<div id="cost-prev-'+t.id+'" style="background:white;padding:10px;border-radius:6px;margin-bottom:10px;font-size:12px">'+
+          '<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="color:var(--t2)">Estimated Cost</span><span style="font-weight:700;color:var(--c1)" id="acp-'+t.id+'">EGP '+t.cost+'</span></div>'+
+          '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">CO&#8322; Emission</span><span style="font-weight:700;color:var(--c4)" id="ac2-'+t.id+'">'+t.co2+' kg</span></div></div>'+
+          '<div class="fg f1" style="margin-bottom:10px"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Arrival notes..." style="min-height:50px">'+(t.driverNote||'')+'</textarea></div>'+
+          '<button class="btn btn-primary btn-block" onclick="driverMarkArrived(\''+t.id+'\')">&#9989; Mark Arrived at Warehouse</button>'+
+          '</div>';
+      }
+
+      /* ── in_transit ── */
+      if(t.status==='in_transit'){
+        if(rb==='ctrl_security'){
+          /* ctrl_security mode: driver cannot self-initiate return — wait for Control Room */
+          return '<div style="background:#F1F5F9;border:1px solid #CBD5E1;border-radius:var(--r);padding:14px;margin-bottom:14px">'+
+            '<div style="font-size:13px;font-weight:600;color:#475569;margin-bottom:8px">&#128340; Waiting for Control Room (IN-1)</div>'+
+            '<div style="font-size:12px;color:#64748B;margin-bottom:12px;line-height:1.5">The Control Room will confirm your return from the destination. You\'ll receive a notification — please stay ready.</div>'+
+            '<div class="fg f1"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Add notes while you wait..." style="min-height:50px">'+(t.driverNote||'')+'</textarea></div>'+
+            '<button class="btn btn-outline btn-sm" onclick="saveNote(\''+t.id+'\')">&#128172; Save Note</button>'+
+            '</div>';
+        } else {
+          /* driver / security modes: driver self-initiates arrival */
+          var lbl={driver:'Driver confirms completion directly',security:'Security will confirm truck return at gate'}[rb]||'';
+          var kmSrc2=gpsOn?'<span style="font-size:10px;color:#10B981;font-weight:600">&#127752; GPS Active</span>':'<span style="font-size:10px;color:#94a3b8">(Manual)</span>';
+          return '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--r);padding:14px;margin-bottom:14px">'+
+            '<div style="font-size:13px;font-weight:600;color:#D97706;margin-bottom:10px">&#127937; Complete Trip</div>'+
+            '<div style="background:#F0FDF4;border:1px solid #6EE7B7;border-radius:8px;padding:8px 12px;font-size:11px;color:#065F46;margin-bottom:10px">&#128337; Return flow: <strong>'+lbl+'</strong></div>'+
+            '<div class="fg f1" style="margin-bottom:8px"><label>Actual KM Driven * '+kmSrc2+'</label>'+
+            '<div style="display:flex;gap:6px">'+
+            '<input type="number" id="akm-'+t.id+'" value="'+(t.actualKm||t.km||150)+'" placeholder="Actual kilometers..." oninput="updActualCost(\''+t.id+'\',this.value)" style="flex:1"/>'+
+            '<button class="btn '+(gpsOn?'btn-success':'btn-outline')+' btn-sm" onclick="fetchGpsKm(\''+t.id+'\')" title="'+(gpsOn?'Auto-fill from GPS':'GPS not configured — go to Admin → Workflow to enable')+'" style="font-size:11px;white-space:nowrap">&#127752; GPS</button>'+
+            '</div>'+(!gpsOn?'<div style="font-size:10px;color:#94a3b8;margin-top:3px">Enable GPS in Admin &#8594; &#9881; Workflow for auto KM</div>':'')+
+            '</div>'+
+            '<div id="cost-prev-'+t.id+'" style="background:white;padding:10px;border-radius:6px;margin-bottom:10px;font-size:12px">'+
+            '<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="color:var(--t2)">Estimated Cost</span><span style="font-weight:700;color:var(--c1)" id="acp-'+t.id+'">EGP '+t.cost+'</span></div>'+
+            '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">CO&#8322; Emission</span><span style="font-weight:700;color:var(--c4)" id="ac2-'+t.id+'">'+t.co2+' kg</span></div></div>'+
+            '<div class="fg f1" style="margin-bottom:10px"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Trip notes..." style="min-height:55px">'+(t.driverNote||'')+'</textarea></div>'+
+            '<button class="btn btn-primary btn-block" onclick="driverComplete(\''+t.id+'\')">&#9989; Mark Arrived &amp; Submit</button>'+
+            '</div>';
+        }
+      }
+
+      /* ── awaiting_quality / awaiting_ctrl / awaiting_security ── */
+      return '<div class="fg f1"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Add note..." style="min-height:55px">'+(t.driverNote||'')+'</textarea></div>'+
+        '<button class="btn btn-outline btn-sm" onclick="saveNote(\''+t.id+'\')">&#128172; Save Note</button>';
+    })(t)+
     '</div>';}).join('');
-  myTrips.filter(function(t){return t.status==='in_transit';}).forEach(function(t){var inp=document.getElementById('akm-'+t.id);if(inp)inp.addEventListener('input',function(){updActualCost(t.id,this.value);});});
+  myTrips.filter(function(t){return t.status==='in_transit'||t.status==='inbound_ctrl';}).forEach(function(t){var inp=document.getElementById('akm-'+t.id);if(inp)inp.addEventListener('input',function(){updActualCost(t.id,this.value);});});
 }
 function updActualCost(id,km){
   km=+km||0;var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
@@ -7857,6 +7931,30 @@ function driverComplete(id){
   var _nr=(S.billingConfig&&S.billingConfig.notifRecipients)||[];
   if(_nr.length>0){setTimeout(function(){_notifTripComplete(t);},400);}
 }
+// Driver marks arrived at warehouse (IN-2 step: inbound_ctrl → inbound_security)
+function driverMarkArrived(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t||t.status!=='inbound_ctrl')return;
+  var wf=S.workflowConfig||{};
+  var km=+((document.getElementById('akm-'+id)||{}).value||t.actualKm||t.km||0);
+  if(wf.gpsEnabled&&t.gpsActualKm){km=t.gpsActualKm;}
+  if(!km||km<=0){toast('Enter actual KM before confirming arrival','err');return;}
+  var note=(document.getElementById('dn-'+id)||{}).value||'';
+  if(note)t.driverNote=note;
+  t.actualKm=km;
+  t.kmSource=wf.gpsEnabled&&t.gpsActualKm?'GPS':'Manual';
+  var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
+  t.km=km;t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
+  var ts=new Date().toLocaleString('en-GB');
+  t.tl.push({ts:ts,user:S.user.name,action:'IN-2: Driver Arrived at Warehouse',detail:'KM: '+km+' ('+t.kmSource+') · EGP '+r.cost+' · CO₂: '+r.co2+'kg'});
+  t.status='inbound_security';
+  stampTrip(t,'inbound_security');
+  syncTrip(t);
+  audit('DRIVER_ARRIVED_WAREHOUSE','KM:'+km+'('+t.kmSource+')',id);
+  notif('Trip '+id+' — driver arrived at warehouse, awaiting security gate (IN-2)','info');
+  toast('&#9989; Arrived confirmed — Security gate next (IN-2)','ok');
+  rDriverTrips();
+}
+
 // GPS KM auto-fetch for a trip (called by driver UI button)
 async function fetchGpsKm(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
