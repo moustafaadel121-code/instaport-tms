@@ -4567,31 +4567,27 @@ async function doLogin(){
         lerr.style.display='block';return;
       }
     } else {
-      // ── Demo org (instaport/demo): always local auth — no server needed ──
-      var _isDemoOrg=(orgCode==='instaport'||orgCode==='demo');
-      if(!_isDemoOrg){
-        // Real tenants: try server-side auth (bcrypt + JWT)
-        try{
-          var authRes=await fetch('/api/auth',{method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
-          var authData=await authRes.json();
-          if(authData.ok&&authData.token){
-            sessionStorage.setItem('ip_token', authData.token);
-            u={id:uid,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
-               email:'',active:true,plan:authData.user.plan};
-            _tenantPlan=authData.user.plan||_tenantPlan;
-          } else if(!authData.ok){
-            _secRecordFail(lockKey);
-            lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
-            lerr.style.display='block';return;
-          }
-        }catch(serverErr){
-          console.warn('Server auth unavailable, falling back to local match');
+      // ── Server-side auth (bcrypt + JWT) — preferred ──────────────
+      try{
+        var authRes=await fetch('/api/auth',{method:'POST',
+          headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
+        var authData=await authRes.json();
+        if(authData.ok&&authData.token){
+          // Server verified PIN with bcrypt — use server response
+          sessionStorage.setItem('ip_token', authData.token);
+          u={id:uid,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
+             email:'',active:true,plan:authData.user.plan};
+          _tenantPlan=authData.user.plan||_tenantPlan;
+        } else if(!authData.ok){
+          // Server explicitly rejected — don't fall back
+          _secRecordFail(lockKey);
+          lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
+          lerr.style.display='block';return;
         }
-      }
-      // Local match (always for demo org; fallback for real tenants when server unreachable)
-      if(!u){
+      }catch(serverErr){
+        // Server not available — fall back to local match
+        console.warn('Server auth unavailable, falling back to local match');
         var _cands=_tenantUsers.filter(function(x){
           return(String(x.id)===uid||String(x.employee_id||'')===uid)&&x.active!==false;
         });
