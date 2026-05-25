@@ -4302,7 +4302,7 @@ let USERS=[
   {id:'2568',pin:'9874',name:'Assaad S.',role:'validation',email:'as@epx.com',active:true},
   {id:'9001',pin:'1111',name:'Karim Ahmed',role:'driver',email:'karim@epx.com',active:true},
   {id:'9002',pin:'2222',name:'Hassan Ali',role:'driver',email:'hassan@epx.com',active:true},
-  {id:'1212',pin:'2121',name:'Al-Noor Shipping',role:'client',email:'client@alnoor.com',active:true,customerAccount:'Al-Noor Shipping'}
+  {id:'1212',pin:'2121',name:'Client Portal Demo',role:'client',email:'client@demo.com',active:true}
 ];
 // Frozen snapshot used for login fallback — never mutated by initApp/Supabase
 const _DEMO_USERS=USERS.map(function(u){return Object.assign({},u);});
@@ -4567,27 +4567,31 @@ async function doLogin(){
         lerr.style.display='block';return;
       }
     } else {
-      // ── Server-side auth (bcrypt + JWT) — preferred ──────────────
-      try{
-        var authRes=await fetch('/api/auth',{method:'POST',
-          headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
-        var authData=await authRes.json();
-        if(authData.ok&&authData.token){
-          // Server verified PIN with bcrypt — use server response
-          sessionStorage.setItem('ip_token', authData.token);
-          u={id:uid,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
-             email:'',active:true,plan:authData.user.plan};
-          _tenantPlan=authData.user.plan||_tenantPlan;
-        } else if(!authData.ok){
-          // Server explicitly rejected — don't fall back
-          _secRecordFail(lockKey);
-          lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
-          lerr.style.display='block';return;
+      // ── Demo org (instaport/demo): always local auth — no server needed ──
+      var _isDemoOrg=(orgCode==='instaport'||orgCode==='demo');
+      if(!_isDemoOrg){
+        // Real tenants: try server-side auth (bcrypt + JWT)
+        try{
+          var authRes=await fetch('/api/auth',{method:'POST',
+            headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({org:orgCode,userId:uid,pin:pin})});
+          var authData=await authRes.json();
+          if(authData.ok&&authData.token){
+            sessionStorage.setItem('ip_token', authData.token);
+            u={id:uid,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
+               email:'',active:true,plan:authData.user.plan};
+            _tenantPlan=authData.user.plan||_tenantPlan;
+          } else if(!authData.ok){
+            _secRecordFail(lockKey);
+            lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
+            lerr.style.display='block';return;
+          }
+        }catch(serverErr){
+          console.warn('Server auth unavailable, falling back to local match');
         }
-      }catch(serverErr){
-        // Server not available — fall back to local match with bcrypt support
-        console.warn('Server auth unavailable, falling back to local match');
+      }
+      // Local match (always for demo org; fallback for real tenants when server unreachable)
+      if(!u){
         var _cands=_tenantUsers.filter(function(x){
           return(String(x.id)===uid||String(x.employee_id||'')===uid)&&x.active!==false;
         });
@@ -4883,8 +4887,19 @@ function _fmInit(filter){
 // ══ CLIENT PORTAL ══════════════════════════════════════════
 function rClientPortal(){
   var c=document.getElementById('content');
-  // Determine which customer account this client belongs to
-  var custAcc=(S.user&&S.user.customerAccount)||S.user&&S.user.name;
+  // Customer account is set by admin when creating the client user
+  var custAcc=(S.user&&S.user.customerAccount)||'';
+  if(!custAcc){
+    c.innerHTML='<div class="page-head"><div><h2>📦 Customer Portal</h2></div></div>'+
+      '<div class="card" style="text-align:center;padding:48px 24px">'+
+      '<div style="font-size:48px;margin-bottom:16px">🔗</div>'+
+      '<div style="font-size:16px;font-weight:700;margin-bottom:8px">No Customer Account Linked</div>'+
+      '<div style="color:var(--t2);font-size:13px;max-width:360px;margin:0 auto;line-height:1.6">'+
+      'Your portal account has not been linked to a customer yet.<br>'+
+      'Please contact your administrator to link this account.</div>'+
+      '</div>';
+    return;
+  }
   var myTrips=(S.trips||[]).filter(function(t){return t.customer===custAcc;});
   var myInvoices=(S.invoices||[]).filter(function(inv){return inv.customer===custAcc;});
   var totalRev=myTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
@@ -4953,7 +4968,7 @@ function rClientPortal(){
   '</div>';
 }
 window._cpExport=function(){
-  var custAcc=(S.user&&S.user.customerAccount)||S.user&&S.user.name;
+  var custAcc=(S.user&&S.user.customerAccount)||'';
   var rows=(S.trips||[]).filter(function(t){return t.customer===custAcc;}).map(function(t){
     return [t.id,t.customer,t.type||'',t.status,t.km||'',t.cost||'',t.ts?new Date(t.ts).toLocaleDateString('en-GB'):'',t.dests||''];
   });
