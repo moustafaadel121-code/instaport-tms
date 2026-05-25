@@ -2806,6 +2806,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
           <button class="l-demo-btn" onclick="fillD('2567','3654','instaport')">2567/3654 — Maint.</button>
           <button class="l-demo-btn" onclick="fillD('2568','9874','instaport')">2568/9874 — Validation</button>
           <button class="l-demo-btn" onclick="fillD('9001','1111','instaport')">9001/1111 — Driver</button>
+          <button class="l-demo-btn" onclick="fillD('1212','2121','instaport')">1212/2121 — Client Portal</button>
         </div>
       </div>
     </div>
@@ -4300,7 +4301,8 @@ let USERS=[
   {id:'2567',pin:'3654',name:'Islam I.',role:'maintenance',email:'is@epx.com',active:true},
   {id:'2568',pin:'9874',name:'Assaad S.',role:'validation',email:'as@epx.com',active:true},
   {id:'9001',pin:'1111',name:'Karim Ahmed',role:'driver',email:'karim@epx.com',active:true},
-  {id:'9002',pin:'2222',name:'Hassan Ali',role:'driver',email:'hassan@epx.com',active:true}
+  {id:'9002',pin:'2222',name:'Hassan Ali',role:'driver',email:'hassan@epx.com',active:true},
+  {id:'1212',pin:'2121',name:'Al-Noor Shipping',role:'client',email:'client@alnoor.com',active:true,customerAccount:'Al-Noor Shipping'}
 ];
 // Frozen snapshot used for login fallback — never mutated by initApp/Supabase
 const _DEMO_USERS=USERS.map(function(u){return Object.assign({},u);});
