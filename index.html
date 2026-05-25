@@ -4461,8 +4461,14 @@ let S={
   }
 };
 _secLoad(); // load brute-force state immediately on page load
-// Auto-unlock if ?unlock param in URL (clears lockout caused by technical issues)
-(function(){try{if(window.location.search.indexOf('unlock')>-1){_SEC.attempts={};_SEC.locked={};_secSave();history.replaceState(null,'',window.location.pathname);}}catch(e){}})();
+// Auto-unlock if ?unlock param in URL OR on GitHub Pages (demo site — no persistent lockouts)
+(function(){try{
+  var isGH=window.location.hostname.includes('github.io');
+  if(isGH||window.location.search.indexOf('unlock')>-1){
+    _SEC.attempts={};_SEC.locked={};_secSave();
+    if(!isGH)history.replaceState(null,'',window.location.pathname);
+  }
+}catch(e){}})();
 let _parts=[],_selT={},_tempData=[],_tempTimestamps=[],_dests=[''],_currentTicketId=null;
 // Auto-sync on array mutations
 (function(){var _op=Array.prototype.push;S.trips.push=function(){var r=_op.apply(this,arguments);if(!_supabaseLoading)for(var i=0;i<arguments.length;i++)syncTrip(arguments[i]);return r;};S.maintTickets.push=function(){var r=_op.apply(this,arguments);if(!_supabaseLoading)for(var i=0;i<arguments.length;i++)syncMaint(arguments[i]);return r;};})();
@@ -4616,43 +4622,52 @@ async function doLogin(){
     if(u.active===false){lerr.textContent='Your account has been deactivated. Contact your admin.';lerr.style.display='block';return;}
     _secRecordOk(lockKey,u.name,u.role);
     lerr.style.display='none';
-    S.user=u;S.role=u.role;
-    var lg=document.getElementById('login');lg.style.cssText='display:none!important';
-    var ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='row';
-    document.getElementById('tb-avatar').textContent=u.name.split(' ').map(function(x){return x[0];}).join('');
-    document.getElementById('tb-uname').textContent=u.name;
-    document.getElementById('tb-role').textContent=RL[u.role]||u.role;
-    // Show tenant name in topbar, sidebar, and badge
-    var tbn=document.getElementById('tb-tenant-name');if(tbn)tbn.textContent=_tenantName;
-    var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=_tenantName;
-    var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=_tenantName;
-    audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
-    _idleStart(); // begin 30-min idle timeout
-    // Warn on weak PIN (only if still plain-text — bcrypt-verified users are fine)
-    if(u.pin&&!u.pin.startsWith('[')&&_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
-    buildSB();
-    _loadFeatureGates(); // apply any saved custom feature-gate config
-    var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
-    // Show dashboard instantly, silently refresh data from Supabase in background
-    _applyBranding();
-    _wfLoad(); // restore saved workflow config
-    nav(_startPage);
-    initApp().then(function(){var _sp=S.role==='client'?'client_portal':_startPage;nav(_sp);_checkMaintenanceAlerts();}).catch(function(){});
-    _initPWA();
-    startTemp();
-    _fetchGPSSnapshot();
-    setTimeout(function(){
-      try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}
-      try{_loadInvoices();}catch(e){}
-      try{_loadFuelLogs();}catch(e){}
-      try{_loadWorkshopConfig();}catch(e){}
-      try{_loadESGConfig();}catch(e){}
-      try{_loadRolePages();}catch(e){}
-      try{_loadPMData();}catch(e){}
-      try{_loadHRData();}catch(e){}
-    },2500);
-    
-  if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+    // ── Launch app ──────────────────────────────────────────
+    try{
+      S.user=u;S.role=u.role;
+      var lg=document.getElementById('login');lg.style.cssText='display:none!important';
+      var ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='row';
+      document.getElementById('tb-avatar').textContent=u.name.split(' ').map(function(x){return x[0];}).join('');
+      document.getElementById('tb-uname').textContent=u.name;
+      document.getElementById('tb-role').textContent=RL[u.role]||u.role;
+      var tbn=document.getElementById('tb-tenant-name');if(tbn)tbn.textContent=_tenantName;
+      var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=_tenantName;
+      var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=_tenantName;
+      audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
+      _idleStart();
+      if(u.pin&&!u.pin.startsWith('[')&&_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
+      try{buildSB();}catch(e){console.error('buildSB',e);}
+      try{_loadFeatureGates();}catch(e){}
+      try{_applyBranding();}catch(e){}
+      try{_wfLoad();}catch(e){}
+      var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':u.role==='client'?'client_portal':'dashboard';
+      try{nav(_startPage);}catch(e){console.error('nav',e);document.getElementById('content').innerHTML='<div class="card" style="padding:40px;text-align:center"><h3>Page load error</h3><p style="color:var(--t2)">'+e.message+'</p></div>';}
+      initApp().then(function(){try{nav(_startPage);_checkMaintenanceAlerts();}catch(e){}}).catch(function(){});
+      try{_initPWA();}catch(e){}
+      try{startTemp();}catch(e){}
+      try{_fetchGPSSnapshot();}catch(e){}
+      setTimeout(function(){
+        try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}
+        try{_loadInvoices();}catch(e){}
+        try{_loadFuelLogs();}catch(e){}
+        try{_loadWorkshopConfig();}catch(e){}
+        try{_loadESGConfig();}catch(e){}
+        try{_loadRolePages();}catch(e){}
+        try{_loadPMData();}catch(e){}
+        try{_loadHRData();}catch(e){}
+      },2500);
+      if('serviceWorker'in navigator)navigator.serviceWorker.register('sw.js').catch(function(){});
+    }catch(appErr){
+      // App launch error — show it so user knows what went wrong
+      console.error('App launch error:',appErr);
+      document.getElementById('login').style.cssText='';
+      document.getElementById('app').style.display='none';
+      lerr.textContent='App error: '+appErr.message+' — please refresh and try again';
+      lerr.style.display='block';
+    }
+  }catch(authErr){
+    lerr.textContent='Login error: '+authErr.message;
+    lerr.style.display='block';
   }finally{
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
   }
