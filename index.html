@@ -2790,6 +2790,12 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
       </div>
       <!-- Login button -->
       <button class="l-login-btn" onclick="doLogin()">LOGIN</button>
+      <!-- Unlock / reset -->
+      <div style="text-align:center;margin-top:10px">
+        <a href="#" onclick="_secResetLockout();return false;" style="font-size:12px;color:#6C3FF5;text-decoration:none;opacity:.7">
+          🔓 Having trouble logging in? Click to reset
+        </a>
+      </div>
       <!-- Signup -->
       <div class="l-signup-row">New organization? <a href="#" onclick="showRegister();return false;">Register here</a></div>
       <!-- Demo accounts -->
@@ -3140,8 +3146,8 @@ var _SEC={
   attempts:{},     // {uid: count}
   locked:{},       // {uid: unlockTimestamp}
   log:[],          // [{ts,uid,type,detail,ip:'—'}]
-  MAX_ATTEMPTS:5,
-  LOCKOUT_MS:30*60*1000  // 30 minutes
+  MAX_ATTEMPTS:10,
+  LOCKOUT_MS:5*60*1000  // 5 minutes
 };
 function _secLoad(){
   try{var d=localStorage.getItem('ip_sec');if(d){var p=JSON.parse(d);_SEC.attempts=p.attempts||{};_SEC.locked=p.locked||{};_SEC.log=p.log||[];}}catch(e){}
