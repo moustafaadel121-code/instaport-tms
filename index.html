@@ -4429,7 +4429,28 @@ let S={
   vendors: [],
   // Tier 14 — HR & Compliance
   shifts: [],
-  driverProfiles: {}
+  driverProfiles: {},
+  // ── Trip Completion Workflow Config ──────────────────
+  workflowConfig: {
+    // Who triggers final "completed" — who confirms truck returned to warehouse
+    // 'driver'         : driver clicks complete → direct to completed (no inbound)
+    // 'security'       : driver arrives → skips ctrl → security confirms return → completed
+    // 'ctrl_security'  : driver arrives → ctrl approves inbound → security confirms → completed
+    returnBy: 'ctrl_security',
+    // Require specific inbound steps (only relevant when returnBy is not 'driver')
+    inboundRequireCtrl: true,      // control room must approve inbound
+    inboundRequireSecurity: true,  // security must confirm truck at gate
+    // GPS integration for actual KM
+    gpsEnabled: false,
+    gpsEndpoint: '',               // REST endpoint that returns {km: number} for a trip
+    gpsApiKey: '',
+    // Invoice filter — only invoice trips that completed the full inbound approval chain
+    invoiceRequireInbound: true,
+    // Roles allowed to attach graphs / monitoring data to completed trips
+    attachAllowedRoles: ['admin','supervisor','controlroom','security'],
+    // Allow driver to attach POD / photos during completion
+    driverAttach: true
+  }
 };
 _secLoad(); // load brute-force state immediately on page load
 // Auto-unlock if ?unlock param in URL (clears lockout caused by technical issues)
@@ -4606,6 +4627,7 @@ async function doLogin(){
     var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
     // Show dashboard instantly, silently refresh data from Supabase in background
     _applyBranding();
+    _wfLoad(); // restore saved workflow config
     nav(_startPage);
     initApp().then(function(){var _sp=S.role==='client'?'client_portal':_startPage;nav(_sp);_checkMaintenanceAlerts();}).catch(function(){});
     _initPWA();
@@ -4674,6 +4696,8 @@ function _checkMaintenanceAlerts(){
 // ══ AUTO-INVOICE ON TRIP COMPLETE ════════════════════════
 function _autoInvoiceOnComplete(trip){
   if(!trip||!trip.customer||!trip.cost||+trip.cost<=0)return;
+  var wf=S.workflowConfig||{};
+  if(wf.invoiceRequireInbound!==false&&!trip.inboundApproved)return; // not inbound-approved yet
   if(!S.invoices)S.invoices=[];
   if(S.invoices.some(function(inv){return(inv.tripIds||[]).includes(trip.id);}))return;
   var cfg=S.billingConfig||{};
@@ -5161,6 +5185,112 @@ window._resetBranding=function(){
   document.documentElement.style.removeProperty('--sidebar-bg');
   toast('🔄 Branding reset to defaults','ok');rAdminBranding();
 };
+
+// ══ WORKFLOW CONFIG ADMIN TAB ════════════════════════════════
+function rAdminWorkflow(){
+  var c=document.getElementById('admin-content');if(!c)return;
+  if(!S.workflowConfig)S.workflowConfig={};
+  var wf=S.workflowConfig;
+  var tog=function(key,label,desc){
+    var val=wf[key]!==false;
+    return '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bd)">'+
+      '<div><div style="font-size:13px;font-weight:600;color:var(--t)">'+label+'</div>'+
+      (desc?'<div style="font-size:11px;color:var(--t2);margin-top:3px">'+desc+'</div>':'')+
+      '</div>'+
+      '<label class="fg-toggle" style="flex-shrink:0;margin:0 0 0 14px">'+
+        '<input type="checkbox" id="wf-'+key+'" '+(val?'checked':'')+' onchange="_wfToggle(\''+key+'\',this.checked)"/>'+
+        '<span class="fg-slider"></span>'+
+      '</label>'+
+    '</div>';
+  };
+  var sel=function(key,label,opts,desc){
+    var cur=wf[key]||opts[0].v;
+    return '<div style="padding:12px 0;border-bottom:1px solid var(--bd)">'+
+      '<label style="font-size:13px;font-weight:600;color:var(--t);display:block;margin-bottom:4px">'+label+'</label>'+
+      (desc?'<div style="font-size:11px;color:var(--t2);margin-bottom:8px">'+desc+'</div>':'')+
+      '<select id="wf-'+key+'" onchange="_wfSet(\''+key+'\',this.value)" style="padding:8px 10px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;background:var(--bg);color:var(--t);width:100%">'+
+      opts.map(function(o){return '<option value="'+o.v+'"'+(cur===o.v?' selected':'')+'>'+o.l+'</option>';}).join('')+
+      '</select></div>';
+  };
+  var roles=['admin','supervisor','controlroom','security','quality','ops','finance','driver'];
+  var attachRoles=wf.attachAllowedRoles||['admin','supervisor','controlroom','security'];
+  c.innerHTML=
+    '<div style="max-width:720px">' +
+    '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:16px">'+
+    '<div style="font-size:14px;font-weight:800;color:var(--t);margin-bottom:4px">&#9881; Trip Completion Workflow</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Configure how trips are completed and verified</div>'+
+    sel('returnBy','Return Confirmation Method',[
+      {v:'ctrl_security',l:'Control Room → Security (Full inbound approval — recommended)'},
+      {v:'security',l:'Security Only (Driver arrives → Security confirms truck at gate)'},
+      {v:'driver',l:'Driver Only (Driver marks complete → no inbound approval needed)'}
+    ],'Determines who must confirm the truck has returned to the warehouse before the trip is marked "completed".')+
+    tog('inboundRequireCtrl','Require Control Room Inbound Approval','When enabled, the control room must approve the inbound leg before security confirmation.')+
+    tog('inboundRequireSecurity','Require Security Gate Confirmation','Security confirms physical truck return at the warehouse gate.')+
+    '</div>'+
+
+    '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:16px">'+
+    '<div style="font-size:14px;font-weight:800;color:var(--t);margin-bottom:4px">&#128196; Invoice Eligibility</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Control which completed trips appear on invoices</div>'+
+    tog('invoiceRequireInbound','Require Inbound Approval Before Invoicing','If ON, only trips that completed the full inbound/return approval flow will appear on invoices. Trips completed by driver only or force-completed will be excluded.')+
+    '</div>'+
+
+    '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:16px">'+
+    '<div style="font-size:14px;font-weight:800;color:var(--t);margin-bottom:4px">&#127752; GPS / Fleet Monitor Integration</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Auto-fill actual KM from your GPS or fleet monitoring system</div>'+
+    tog('gpsEnabled','Enable GPS KM Auto-fill','Shows a GPS button on the driver completion screen to fetch actual KM from your fleet monitoring API.')+
+    '<div class="fg f1" style="margin-top:12px"><label style="font-size:12px;font-weight:600">GPS/Monitor API Endpoint</label>'+
+    '<input id="wf-gpsEndpoint" value="'+(wf.gpsEndpoint||'')+'" placeholder="https://your-monitor.com/api/trips/{tripId}/km" oninput="_wfSet(\'gpsEndpoint\',this.value)"/>'+
+    '<div style="font-size:10px;color:var(--t3);margin-top:4px">Use <code>{tripId}</code> and <code>{truck}</code> as placeholders. Must return JSON with a <code>km</code> field.</div></div>'+
+    '<div class="fg f1" style="margin-top:10px"><label style="font-size:12px;font-weight:600">GPS API Key (Bearer token, optional)</label>'+
+    '<input id="wf-gpsApiKey" value="'+(wf.gpsApiKey||'')+'" placeholder="your-api-key-here" type="password" oninput="_wfSet(\'gpsApiKey\',this.value)"/></div>'+
+    '</div>'+
+
+    '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:var(--r);padding:20px;margin-bottom:16px">'+
+    '<div style="font-size:14px;font-weight:800;color:var(--t);margin-bottom:4px">&#128206; Document / Graph Attachments</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Configure which roles can attach graphs, reports, and monitoring data to completed trips</div>'+
+    tog('driverAttach','Allow Drivers to Attach Photos / POD During Completion','')+
+    '<div style="padding-top:12px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:8px">Roles that can attach docs/graphs to completed trips</label>'+
+    '<div style="display:flex;flex-wrap:wrap;gap:10px">'+
+    roles.map(function(r){
+      var checked=attachRoles.indexOf(r)>-1;
+      return '<label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">'+
+        '<input type="checkbox" value="'+r+'" '+(checked?'checked':'')+' onchange="_wfAttachRole(\''+r+'\',this.checked)" style="width:15px;height:15px;accent-color:var(--c1)"/>'+
+        r+'</label>';
+    }).join('')+
+    '</div></div>'+
+    '</div>'+
+
+    '<div style="background:linear-gradient(135deg,var(--c1)22,var(--c1)08);border:1px solid var(--c1)33;border-radius:var(--r);padding:16px;font-size:12px;color:var(--t2)">'+
+    '&#128161; <strong>Current workflow:</strong> '+
+    (function(){var rb=wf.returnBy||'ctrl_security';var m={driver:'Driver marks arrived → trip immediately completed',security:'Driver arrives → Security confirms truck at gate → completed',ctrl_security:'Driver arrives → Control room approves inbound → Security confirms gate return → completed'}; return m[rb]||rb;})()+'<br>'+
+    '&#128196; <strong>Invoice filter:</strong> '+(wf.invoiceRequireInbound!==false?'Only inbound-approved trips appear on invoices':'All completed trips can be invoiced')+
+    '</div>'+
+    '</div>';
+}
+window._wfToggle=function(key,val){
+  if(!S.workflowConfig)S.workflowConfig={};
+  S.workflowConfig[key]=val;
+  _wfSave();
+};
+window._wfSet=function(key,val){
+  if(!S.workflowConfig)S.workflowConfig={};
+  S.workflowConfig[key]=val;
+  _wfSave();
+};
+window._wfAttachRole=function(role,add){
+  if(!S.workflowConfig)S.workflowConfig={};
+  if(!S.workflowConfig.attachAllowedRoles)S.workflowConfig.attachAllowedRoles=['admin','supervisor','controlroom','security'];
+  var arr=S.workflowConfig.attachAllowedRoles;
+  if(add&&arr.indexOf(role)<0)arr.push(role);
+  else if(!add){var i=arr.indexOf(role);if(i>-1)arr.splice(i,1);}
+  _wfSave();
+};
+function _wfSave(){
+  try{localStorage.setItem('ip_workflow',JSON.stringify(S.workflowConfig));}catch(e){}
+}
+function _wfLoad(){
+  try{var s=localStorage.getItem('ip_workflow');if(s){var cfg=JSON.parse(s);S.workflowConfig=Object.assign(S.workflowConfig||{},cfg);}}catch(e){}
+}
 
 // Apply saved branding on load
 function _applyBranding(){
@@ -5918,27 +6048,26 @@ function _doUExport(fmt){
     a2.href=URL.createObjectURL(new Blob([tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
     a2.download=fname+'.xls';a2.click();toast('Excel downloaded!','ok');
   } else if(fmt==='pdf'){
-    var w=window.open('','_blank','width=1050,height=780');if(!w){toast('Allow popups for PDF','err');return;}
-    var trs=d.rows.map(function(r,i){return '<tr'+(i%2?' style="background:#fafafa"':'')+'>'
+    var _b=_pdfBrand();
+    var trs=d.rows.map(function(r,i){return '<tr'+(i%2?' style="background:#f8fafc"':'')+'>'
       +r.map(function(v){return '<td>'+String(v).replace(/</g,'&lt;')+'</td>';}).join('')+'</tr>';}).join('');
-    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+d.title+'</title>'
-      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10.5px;padding:24px 28px;color:#111}'
-      +'.logo{color:#6C3FF5;font-size:18px;font-weight:900;margin-bottom:2px}'
-      +'.meta{color:#555;font-size:10px;margin-bottom:16px;padding-bottom:10px;border-bottom:2px solid #6C3FF5}'
-      +'table{width:100%;border-collapse:collapse;margin-top:4px;font-size:10px}'
-      +'th{background:#1E1453;color:#fff;padding:7px 8px;text-align:left}'
-      +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb}'
-      +'.foot{margin-top:14px;font-size:9px;color:#999;border-top:1px solid #e5e7eb;padding-top:8px;display:flex;justify-content:space-between}'
-      +'@media print{.no-print{display:none}}'
-      +'</style></head><body>'
-      +'<div class="logo">&#128230; InstaPort TMS</div>'
-      +'<div class="meta">Report: <strong>'+d.title+'</strong> &nbsp;|&nbsp; Generated: '+ts+' &nbsp;|&nbsp; User: '+user+' &nbsp;|&nbsp; Role: '+role+' &nbsp;|&nbsp; Records: '+d.rows.length+'</div>'
+    var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+d.title+'</title>'
+      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10px;padding:24px;color:#1e293b}'
+      +'table{width:100%;border-collapse:collapse;margin-top:4px}'
+      +'th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;font-weight:700}'
+      +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}'
+      +'.foot{margin-top:14px;font-size:8px;color:#94a3b8;border-top:2px solid '+_b.primary+'22;padding-top:8px;display:flex;justify-content:space-between}'
+      +'@media print{.no-print{display:none}@page{margin:10mm}}</style></head><body>'
+      +_b.header('Report: '+d.title,'Generated: '+ts)
+      +'<div style="font-size:9px;color:#64748b;padding:8px 10px;background:#f8fafc;border-left:3px solid '+_b.primary+';border-radius:4px;margin-bottom:12px">User: <strong>'+user+'</strong> &nbsp;|&nbsp; Role: '+role+' &nbsp;|&nbsp; Records: '+d.rows.length+'</div>'
       +'<table><thead><tr>'+d.headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'
       +'<tbody>'+trs+'</tbody></table>'
-      +'<div class="foot"><span>InstaPort TMS &bull; '+ts+'</span><span>'+user+' / '+role+'</span></div>'
-      +'<br><button class="no-print" onclick="window.print()" style="margin-top:8px;padding:8px 22px;background:#6C3FF5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">&#128424; Print / Save PDF</button>'
-      +'</body></html>');
-    w.document.close();toast('PDF ready — use Print button','ok');
+      +'<div class="foot"><span>'+_b.footer+'</span><span>'+user+' / '+role+' &bull; '+ts+'</span></div>'
+      +'<br><button class="no-print" onclick="window.print()" style="margin-top:8px;padding:8px 22px;background:'+_b.primary+';color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">&#128424; Print / Save PDF</button>'
+      +'</body></html>';
+    var w=window.open('','_blank','width=1050,height=780');
+    if(!w){toast('Allow popups for PDF','err');return;}
+    w.document.write(html);w.document.close();toast('PDF ready — use Print button','ok');
   }
 }
 
@@ -6529,12 +6658,52 @@ function ctNoConfirm(id){
     audit('CTRL_REJECT','['+cat+'] '+reason,id);closeM();toast('Back to quality','err');rCtrl();
   });
 }
-function inbCtrlOkConfirm(id){requirePwd('Approve Inbound — '+id,function(){var t=S.trips.find(function(x){return x.id===id;});if(!t)return;t.status='inbound_security';t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Inbound Ctrl OK',detail:''});audit('INBOUND_CTRL_OK','',id);toast('Inbound ctrl approved!','ok');rCtrl();});}
+function inbCtrlOkConfirm(id){requirePwd('Approve Inbound — '+id,function(){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var wf=S.workflowConfig||{};
+  if(wf.inboundRequireSecurity!==false){
+    t.status='inbound_security';
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Inbound Ctrl OK',detail:'Awaiting security gate confirm'});
+    audit('INBOUND_CTRL_OK','',id);toast('Inbound approved — security to confirm gate return','ok');
+  } else {
+    // Security step skipped — ctrl approval completes the inbound
+    t.status='completed';t.inboundApproved=true;
+    var km=t.actualKm||t.km||0;
+    var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
+    t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Completed via Ctrl Inbound',detail:'EGP '+r.cost});
+    audit('INBOUND_CTRL_COMPLETE','',id);
+    _autoInvoiceOnComplete(t);
+    toast('Inbound approved — trip completed!','ok');
+  }
+  rCtrl();
+});}
 function startInbound(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  t.status='inbound_ctrl';
-  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Arrived',detail:'Inbound flow started'});
-  audit('INBOUND_START','Driver arrived',id);notif('Trip '+id+' arrived — inbound approval needed','warn');
+  var wf=S.workflowConfig||{};
+  var returnBy=wf.returnBy||'ctrl_security';
+  if(returnBy==='driver'){
+    // No inbound flow — driver action = completed
+    t.status='completed';t.inboundApproved=true;
+    var km=t.actualKm||t.km||0;
+    var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
+    t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Completed',detail:'Driver confirmed return · EGP '+r.cost});
+    audit('DRIVER_COMPLETE_DIRECT','KM:'+km,id);
+    _autoInvoiceOnComplete(t);
+  } else if(returnBy==='security'){
+    // Skip ctrl inbound — go straight to security gate for return confirmation
+    t.status='inbound_security';
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Arrived at Gate',detail:'Awaiting security return confirmation'});
+    audit('INBOUND_START','Driver at gate — security confirm return',id);
+    notif('&#9203; Trip '+id+' at gate — Security: confirm truck returned','warn');
+  } else {
+    // ctrl_security (default): full inbound approval chain
+    t.status=(wf.inboundRequireCtrl!==false)?'inbound_ctrl':'inbound_security';
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Arrived',detail:'Inbound flow started'});
+    audit('INBOUND_START','Driver arrived',id);
+    notif('&#9203; Trip '+id+' arrived — inbound approval needed','warn');
+  }
 }
 // ══════════════════════════════════════════════════
 // SECURITY — Full workflow + all trip types
@@ -6583,14 +6752,21 @@ function secHold(id){
 }
 // Security can complete workflow for stuck trips
 function secCompleteWorkflow(id){
-  requirePwd('Complete Workflow — '+id,function(){
-    var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var isInboundReturn=(t.status==='inbound_security');
+  var label=isInboundReturn?'Confirm Truck Return — '+id:'Force Complete — '+id;
+  requirePwd(label,function(){
     t.status='completed';
+    t.inboundApproved=isInboundReturn; // only set true if going through proper inbound flow
     var km=t.actualKm||t.km||0;
     var result=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
     t.cost=result.cost;t.co2=result.co2;t.km=km;
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Completed by Security',detail:'EGP '+t.cost});
-    audit('SEC_COMPLETE_WORKFLOW','',id);toast('Workflow completed!','ok');rSec();
+    var actionLabel=isInboundReturn?'Truck Returned — Inbound Approved':'Completed by Security (Override)';
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:actionLabel,detail:'EGP '+t.cost+' · KM: '+km});
+    audit(isInboundReturn?'INBOUND_SECURITY_APPROVE':'SEC_COMPLETE_WORKFLOW','',id);
+    if(isInboundReturn){_autoInvoiceOnComplete(t);}
+    toast(isInboundReturn?'&#9989; Truck confirmed returned — trip completed!':'Workflow completed!','ok');
+    if(typeof rSec==='function')rSec();
   });
 }
 
@@ -7590,13 +7766,21 @@ function rDriverTrips(){
     (t.destsArr||[t.dests]).map(function(d,i){var col=i===0?'var(--c4)':i===(t.destsArr||[t.dests]).length-1?'var(--c2)':'var(--c1)';return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--tb)"><div style="width:22px;height:22px;border-radius:50%;background:'+col+';color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700">'+(i+1)+'</div><span>'+d+'</span></div>';}).join('')+'</div>'+
     (t.status==='in_transit'?
     '<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:var(--r);padding:14px;margin-bottom:14px">'+
-    '<div style="font-size:13px;font-weight:600;color:#D97706;margin-bottom:10px">🏁 Complete Trip</div>'+
-    '<div class="fg f1" style="margin-bottom:10px"><label>Actual KM Driven *</label><input type="number" id="akm-'+t.id+'" value="'+(t.km||150)+'" placeholder="Actual kilometers..." oninput="updActualCost(\''+t.id+'\',this.value)"/></div>'+
+    '<div style="font-size:13px;font-weight:600;color:#D97706;margin-bottom:10px">&#127937; Complete Trip</div>'+
+    (function(){var wf=S.workflowConfig||{};var rb=wf.returnBy||'ctrl_security';
+      var lbl={driver:'Driver confirms completion directly',security:'Security will confirm truck return at gate',ctrl_security:'Control room + Security inbound approval required'}[rb];
+      return '<div style="background:#F0FDF4;border:1px solid #6EE7B7;border-radius:8px;padding:8px 12px;font-size:11px;color:#065F46;margin-bottom:10px">&#128337; Return flow: <strong>'+lbl+'</strong></div>';
+    })()+
+    '<div class="fg f1" style="margin-bottom:8px"><label>Actual KM Driven *'+(((S.workflowConfig||{}).gpsEnabled)?' <span style="font-size:10px;color:#6C3FF5;font-weight:600">(GPS)</span>':' <span style="font-size:10px;color:#94a3b8">(Manual)</span>')+'</label>'+
+    '<div style="display:flex;gap:6px">'+
+    '<input type="number" id="akm-'+t.id+'" value="'+(t.actualKm||t.km||150)+'" placeholder="Actual kilometers..." oninput="updActualCost(\''+t.id+'\',this.value)" style="flex:1"/>'+
+    (((S.workflowConfig||{}).gpsEnabled)?'<button class="btn btn-outline btn-sm" onclick="fetchGpsKm(\''+t.id+'\')" title="Auto-fill from GPS" style="font-size:11px;white-space:nowrap">&#127752; GPS</button>':'')+
+    '</div></div>'+
     '<div id="cost-prev-'+t.id+'" style="background:white;padding:10px;border-radius:6px;margin-bottom:10px;font-size:12px">'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="color:var(--t2)">Estimated Cost</span><span style="font-weight:700;color:var(--c1)" id="acp-'+t.id+'">EGP '+t.cost+'</span></div>'+
-    '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">CO₂ Emission</span><span style="font-weight:700;color:var(--c4)" id="ac2-'+t.id+'">'+t.co2+' kg</span></div></div>'+
+    '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">CO&#8322; Emission</span><span style="font-weight:700;color:var(--c4)" id="ac2-'+t.id+'">'+t.co2+' kg</span></div></div>'+
     '<div class="fg f1" style="margin-bottom:10px"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Trip notes..." style="min-height:55px">'+(t.driverNote||'')+'</textarea></div>'+
-    '<button class="btn btn-primary btn-block" onclick="driverComplete(\''+t.id+'\')">✅ Mark Arrived & Complete Trip</button></div>':
+    '<button class="btn btn-primary btn-block" onclick="driverComplete(\''+t.id+'\')">&#9989; Mark Arrived &amp; Submit</button></div>':
     '<div class="fg f1"><label>Driver Note</label><textarea id="dn-'+t.id+'" placeholder="Add note..." style="min-height:55px">'+(t.driverNote||'')+'</textarea></div>'+
     '<button class="btn btn-outline btn-sm" onclick="saveNote(\''+t.id+'\')">💬 Save Note</button>')+
     '</div>';}).join('');
@@ -7611,22 +7795,48 @@ function updActualCost(id,km){
 function saveNote(id){var t=S.trips.find(function(x){return x.id===id;});if(!t)return;var n=(document.getElementById('dn-'+id)||{}).value||'';t.driverNote=n;t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Driver Note',detail:n});audit('DRIVER_NOTE',n,id);toast('Note saved!','ok');}
 function driverComplete(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  var km=+((document.getElementById('akm-'+id)||{}).value||t.km||150);
-  if(!km||km<=0){toast('Enter actual KM','err');return;}
+  var wf=S.workflowConfig||{};
+  var km=+((document.getElementById('akm-'+id)||{}).value||t.actualKm||t.km||0);
+  // GPS auto-fill takes priority if set
+  if(wf.gpsEnabled&&t.gpsActualKm){km=t.gpsActualKm;}
+  if(!km||km<=0){toast('Enter actual KM before completing','err');return;}
   var note=(document.getElementById('dn-'+id)||{}).value||'';
-  if(note)t.driverNote=note;t.actualKm=km;
+  if(note)t.driverNote=note;
+  t.actualKm=km;
+  t.kmSource=wf.gpsEnabled&&t.gpsActualKm?'GPS':'Manual';
   var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
   t.km=km;t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
-  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Arrived',detail:'Actual KM: '+km+' · EGP '+r.cost+' · CO₂: '+r.co2+'kg'});
-  startInbound(id);audit('DRIVER_ARRIVE','KM:'+km,id);
-  // Auto-hold if maintenance trip
-  if(t.type==='Non-Revenue'||t.customer==='Internal'){
-    autoHoldTruckAfterTrip(t);
-  }
-  toast('Arrived! Cost: EGP '+r.cost,'ok');rDriverTrips();
-  // Offer notification to interested parties if recipients are configured
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Driver Arrived',detail:'KM: '+km+' ('+t.kmSource+') · EGP '+r.cost+' · CO₂: '+r.co2+'kg'});
+  startInbound(id);
+  audit('DRIVER_ARRIVE','KM:'+km+'('+t.kmSource+')',id);
+  if(t.type==='Non-Revenue'||t.customer==='Internal'){autoHoldTruckAfterTrip(t);}
+  var wfLabel={driver:'Completed',security:'Awaiting security gate confirmation',ctrl_security:'Awaiting inbound control approval'}[wf.returnBy||'ctrl_security'];
+  toast('&#128338; '+wfLabel+' — KM: '+km,'ok');
+  rDriverTrips();
   var _nr=(S.billingConfig&&S.billingConfig.notifRecipients)||[];
   if(_nr.length>0){setTimeout(function(){_notifTripComplete(t);},400);}
+}
+// GPS KM auto-fetch for a trip (called by driver UI button)
+async function fetchGpsKm(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var wf=S.workflowConfig||{};
+  if(!wf.gpsEnabled||!wf.gpsEndpoint){toast('GPS not configured','err');return;}
+  toast('&#127752; Fetching GPS data...','info');
+  try{
+    var url=wf.gpsEndpoint.replace('{tripId}',id).replace('{truck}',t.truck||'');
+    var headers={'Content-Type':'application/json'};
+    if(wf.gpsApiKey)headers['Authorization']='Bearer '+wf.gpsApiKey;
+    var res=await fetch(url,{headers:headers});
+    if(!res.ok)throw new Error('GPS API error '+res.status);
+    var data=await res.json();
+    var gpsKm=data.km||data.distance||data.actual_km||0;
+    if(!gpsKm||gpsKm<=0)throw new Error('No KM data returned');
+    t.gpsActualKm=+gpsKm;
+    var inp=document.getElementById('akm-'+id);
+    if(inp){inp.value=gpsKm;inp.style.borderColor='#10B981';}
+    toast('&#127752; GPS KM: '+gpsKm+' km fetched','ok');
+    audit('GPS_KM_FETCH','KM:'+gpsKm,id);
+  }catch(e){toast('GPS fetch failed: '+e.message,'err');}
 }
 
 // TRIPS
@@ -7804,23 +8014,36 @@ function rTrips(){
 
   function _pdf(){
     var trips=_getFiltered();var tot=_totals(trips);
+    var _b=_pdfBrand();
+    var ts2=new Date().toLocaleString('en-GB');
+    var rows=trips.map(function(t,i){return '<tr style="'+(i%2?'background:#f8fafc':'')+'"><td>'+t.id+'</td><td>'+t.customer+'</td><td style="font-size:9px">'+t.ts+'</td><td>'+t.type+'</td><td>'+(t.truck||'—')+'</td><td>'+t.km+'</td>'+(canFin?'<td style="color:#059669;font-weight:600">'+(t.cost||'—')+'</td>':'')+'<td style="font-size:9px">'+t.status.replace(/_/g,' ')+'</td></tr>';}).join('');
+    var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Trips Report</title>'
+      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10px;color:#1e293b;background:#fff}'
+      +'table{width:100%;border-collapse:collapse;margin-top:8px}'
+      +'th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;font-weight:700}'
+      +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}'
+      +'.tot-row td{background:#F4F5FA;font-weight:700}'
+      +'.kpis{display:flex;gap:10px;margin:12px 0 16px}'
+      +'.kpi{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#fafafa}'
+      +'.kpi-lbl{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:2px}'
+      +'.kpi-val{font-size:16px;font-weight:900}'
+      +'.foot{margin-top:14px;font-size:8px;color:#94a3b8;border-top:2px solid '+_b.primary+'22;padding-top:6px;display:flex;justify-content:space-between}'
+      +'@media print{button{display:none}@page{margin:10mm}}</style></head><body>'
+      +_b.header('&#128203; Trips Report',ts2)
+      +'<div class="kpis">'
+      +'<div class="kpi"><div class="kpi-lbl">Total Trips</div><div class="kpi-val" style="color:'+_b.primary+'">'+trips.length+'</div></div>'
+      +(canFin?'<div class="kpi"><div class="kpi-lbl">Total Cost</div><div class="kpi-val" style="color:#059669">EGP '+tot.cost.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'</div></div>':'')
+      +'<div class="kpi"><div class="kpi-lbl">Total KM</div><div class="kpi-val" style="color:#06B6D4">'+tot.km.toLocaleString()+'</div></div>'
+      +'<div class="kpi"><div class="kpi-lbl">CO&#8322; (kg)</div><div class="kpi-val" style="color:#10B981">'+tot.co2.toFixed(1)+'</div></div></div>'
+      +'<table><thead><tr><th>ID</th><th>Customer</th><th>Date</th><th>Type</th><th>Truck</th><th>KM</th>'+(canFin?'<th>Cost (EGP)</th>':'')+'<th>Status</th></tr></thead><tbody>'
+      +rows
+      +'<tr class="tot-row"><td colspan="5">Totals</td><td>'+tot.km.toLocaleString()+'</td>'+(canFin?'<td style="color:#059669">EGP '+tot.cost.toFixed(2)+'</td>':'')+'<td></td></tr>'
+      +'</tbody></table>'
+      +'<div class="foot"><span>'+_b.footer+'</span><span>'+S.user.name+' &bull; '+ts2+'</span></div>'
+      +'<div style="margin-top:14px;text-align:center"><button onclick="window.print()" style="background:'+_b.primary+';color:#fff;border:none;padding:9px 28px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">&#128424; Print / Save as PDF</button></div>'
+      +'</body></html>';
     var w=window.open('','_blank','width=900,height=700');if(!w){toast('Allow popups for PDF export','err');return;}
-    var rows=trips.map(function(t){return '<tr><td>'+t.id+'</td><td>'+t.customer+'</td><td style="font-size:10px">'+t.ts+'</td><td>'+t.type+'</td><td>'+(t.truck||'—')+'</td><td>'+t.km+'</td>'+(canFin?'<td style="color:#059669;font-weight:600">'+(t.cost||'—')+'</td>':'')+'<td style="font-size:10px">'+t.status.replace(/_/g,' ')+'</td></tr>';}).join('');
-    w.document.write('<!DOCTYPE html><html><head><title>InstaPort Trips Report</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:11px;padding:24px;color:#111}h2{color:#6C3FF5;margin-bottom:4px;font-size:18px}.meta{color:#666;font-size:11px;margin-bottom:16px}table{width:100%;border-collapse:collapse;margin-top:8px}th{background:#1E1453;color:#fff;padding:7px 8px;text-align:left;font-size:11px}td{padding:6px 8px;border-bottom:1px solid #eee}.tot-row{background:#F4F5FA;font-weight:700}tr:nth-child(even) td{background:#fafafa}.kpis{display:flex;gap:12px;margin-bottom:16px}.kpi{flex:1;border:1px solid #ddd;border-radius:8px;padding:10px 14px}.kpi-lbl{font-size:9px;text-transform:uppercase;letter-spacing:.5px;color:#999;margin-bottom:3px}.kpi-val{font-size:18px;font-weight:800}@media print{button{display:none}}</style></head><body>'+
-    '<h2>🚛 InstaPort TMS — Trips Report</h2>'+
-    '<p class="meta">Generated: '+new Date().toLocaleString('en-GB')+' &nbsp;|&nbsp; User: '+S.user.name+' &nbsp;|&nbsp; Role: '+(S.role||'')+'</p>'+
-    '<div class="kpis">'+
-    '<div class="kpi"><div class="kpi-lbl">Total Trips</div><div class="kpi-val" style="color:#6C3FF5">'+trips.length+'</div></div>'+
-    (canFin?'<div class="kpi"><div class="kpi-lbl">Total Cost</div><div class="kpi-val" style="color:#059669">EGP '+tot.cost.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'</div></div>':'')+
-    '<div class="kpi"><div class="kpi-lbl">Total KM</div><div class="kpi-val" style="color:#06B6D4">'+tot.km.toLocaleString()+'</div></div>'+
-    '<div class="kpi"><div class="kpi-lbl">CO₂ (kg)</div><div class="kpi-val" style="color:#10B981">'+tot.co2.toFixed(1)+'</div></div></div>'+
-    '<table><thead><tr><th>ID</th><th>Customer</th><th>Date</th><th>Type</th><th>Truck</th><th>KM</th>'+(canFin?'<th>Cost (EGP)</th>':'')+'<th>Status</th></tr></thead><tbody>'+
-    rows+
-    '<tr class="tot-row"><td colspan="5">Totals</td><td>'+tot.km.toLocaleString()+'</td>'+(canFin?'<td style="color:#059669">EGP '+tot.cost.toFixed(2)+'</td>':'')+'<td></td></tr>'+
-    '</tbody></table>'+
-    '<div style="margin-top:16px;text-align:center"><button onclick="window.print()" style="background:#6C3FF5;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:13px;cursor:pointer">🖨 Print / Save as PDF</button></div>'+
-    '</body></html>');
-    w.document.close();w.focus();
+    w.document.write(html);w.document.close();w.focus();
     toast('PDF preview opened — click Print','ok');
   }
 
@@ -8105,25 +8328,8 @@ function _spExport(fmt,title,headers,rows){
     a2.href=URL.createObjectURL(new Blob([tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
     a2.download=fname+'.xls';a2.click();toast('Excel downloaded!','ok');
   } else if(fmt==='pdf'){
-    var w=window.open('','_blank','width=1050,height=780');if(!w){toast('Allow popups for PDF','err');return;}
-    var trs=rows.map(function(r,i){return '<tr'+(i%2?' style="background:#fafafa"':'')+'>'
-      +r.map(function(v){return '<td>'+String(v).replace(/</g,'&lt;')+'</td>';}).join('')+'</tr>';}).join('');
-    w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+title+'</title>'
-      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10.5px;padding:24px;color:#111}'
-      +'.logo{color:#6C3FF5;font-size:17px;font-weight:900;margin-bottom:3px}'
-      +'.meta{color:#555;font-size:10px;margin-bottom:14px;padding-bottom:10px;border-bottom:2px solid #6C3FF5}'
-      +'table{width:100%;border-collapse:collapse}th{background:#1E1453;color:#fff;padding:7px 8px;text-align:left;font-size:10px}'
-      +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:10px}'
-      +'.foot{margin-top:14px;font-size:9px;color:#999;border-top:1px solid #e5e7eb;padding-top:8px}'
-      +'@media print{.noprint{display:none}}</style></head><body>'
-      +'<div class="logo">&#128230; InstaPort TMS</div>'
-      +'<div class="meta"><strong>'+title+'</strong> &nbsp;|&nbsp; '+ts+' &nbsp;|&nbsp; '+user+' ('+role+') &nbsp;|&nbsp; '+rows.length+' records</div>'
-      +'<table><thead><tr>'+headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'
-      +'<tbody>'+trs+'</tbody></table>'
-      +'<div class="foot">InstaPort TMS &bull; '+ts+' &bull; '+user+'</div>'
-      +'<br><button class="noprint" onclick="window.print()" style="margin-top:8px;padding:8px 22px;background:#6C3FF5;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">&#128424; Print / Save PDF</button>'
-      +'</body></html>');
-    w.document.close();toast('PDF ready — click Print','ok');
+    _expPDF(title,headers,rows,ts,user);
+    return;
   }
 }
 function _spExpBtns(fn,title){
@@ -8745,9 +8951,10 @@ function rAdmin(){
   '<div class="tab'+(tab==='security'?' on':'')+'" onclick="S.adminTab=\'security\';rAdmin()">🔐 Security</div>'+
   '<div class="tab'+(tab==='apikeys'?' on':'')+'" onclick="S.adminTab=\'apikeys\';rAdmin()">🔑 API Keys</div>'+
   '<div class="tab'+(tab==='branding'?' on':'')+'" onclick="S.adminTab=\'branding\';rAdmin()">🎨 Branding</div>'+
+  '<div class="tab'+(tab==='workflow'?' on':'')+'" onclick="S.adminTab=\'workflow\';rAdmin()">&#9881; Workflow</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity,workflow:rAdminWorkflow};
   (fn[tab]||rAdminUsers)();
 }
 
@@ -12935,14 +13142,21 @@ function secHoldC(id) { var r = (document.getElementById('shr') || {}).value; if
 // openTripSP and openCapSP
 function openTripSP(id) {
   var t = S.trips.find(function(x) { return x.id === id; }); if(!t) return;
+  var wf=S.workflowConfig||{};
+  var allowedRoles=wf.attachAllowedRoles||['admin','supervisor','controlroom','security'];
+  var canAttach=can('all')||allowedRoles.indexOf(S.role)>-1;
+  var isCompleted=t.status==='completed';
+  var attachCount=(t.tripAttachments||[]).length;
   openSP('&#128230; ' + id,
     '<div class="sp-tabs">' +
-    ['Details','Route','Temp','Timeline','Cost'].map(function(n, i) {
+    ['Details','Route','Temp','Timeline','Cost','Docs'+(attachCount?'('+attachCount+')':'')].map(function(n, i) {
       return '<div class="sp-tab' + (i === 0 ? ' on' : '') + '" onclick="spTab(this,\'tp' + i + '\')">' + n + '</div>';
     }).join('') + '</div>' +
     '<div id="tp0" class="sp-pane"><div class="ig">' +
-    [['Customer', t.customer], ['Type', t.type], ['Condition', t.condition], ['Status', t.status.replace(/_/g, ' ')],
-     ['Truck', t.truck || '&#8212;'], ['Driver', t.driver || '&#8212;'], ['KM', t.km || '&#8212;'],
+    [['Customer', t.customer], ['Type', t.type], ['Condition', t.condition],
+     ['Status', '<span style="font-weight:700">'+(t.status==='completed'&&t.inboundApproved?'&#9989; Completed (Inbound Approved)':t.status.replace(/_/g,' '))+'</span>'],
+     ['Truck', t.truck || '&#8212;'], ['Driver', t.driver || '&#8212;'],
+     ['KM', (t.km||'&#8212;')+(t.kmSource?' <span style="font-size:10px;color:#94a3b8">('+t.kmSource+')</span>':'')],
      ['Route', (t.from || '&#8212;') + ' &#8594; ' + (t.dests || '&#8212;')],
      ['Cost', t.cost ? 'EGP ' + t.cost : 'Pending'], ['CO&#178;', (t.co2 || '&#8212;') + ' kg']
     ].map(function(x) { return '<div class="ib"><div class="ib-l">' + x[0] + '</div><div class="ib-v">' + x[1] + '</div></div>'; }).join('') +
@@ -12950,13 +13164,119 @@ function openTripSP(id) {
     (t.driverNote ? '<div style="background:var(--bg);padding:12px;border-radius:var(--r);border-left:3px solid var(--c2);margin-bottom:12px"><div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:4px">Driver Note</div>' + t.driverNote + '</div>' : '') +
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">' +
     (t.status === 'in_transit' && (can('all') || S.role === 'supervisor') ? '<button class="btn btn-success btn-sm" onclick="compT(\'' + t.id + '\');closeSP()">&#10003; Complete</button>' : '') +
-    (can('complete_workflow') ? '<button class="btn btn-outline btn-sm" data-id="' + t.id + '" onclick="secCompleteWorkflow(this.dataset.id);closeSP()">&#9889; Force Complete</button>' : '') +
+    (t.status === 'inbound_security' && (can('complete_workflow')||S.role==='security') ? '<button class="btn btn-success btn-sm" onclick="secCompleteWorkflow(\''+t.id+'\');closeSP()">&#9745; Confirm Truck Return</button>' : '') +
+    (can('complete_workflow')&&t.status!=='completed' ? '<button class="btn btn-outline btn-sm" data-id="' + t.id + '" onclick="secCompleteWorkflow(this.dataset.id);closeSP()">&#9889; Force Complete</button>' : '') +
+    (isCompleted&&canAttach ? '<button class="btn btn-outline btn-sm" onclick="openTripAttach(\''+t.id+'\')">&#128206; Attach Docs/Graphs</button>' : '') +
     '</div></div>' +
     '<div id="tp1" class="sp-pane" style="display:none"><div style="background:linear-gradient(135deg,#0F0E2E,#1A1736);border-radius:var(--r-lg);height:150px;position:relative;overflow:hidden;margin-bottom:14px"><svg style="position:absolute;inset:0;width:100%;height:100%"><path d="M 40 110 Q 140 50 260 80 Q 320 95 420 40" stroke="rgba(108,63,245,.8)" stroke-width="2" fill="none" stroke-dasharray="6,4"/><circle cx="40" cy="110" r="7" fill="#10B981"/><circle cx="420" cy="40" r="7" fill="#6C3FF5"/></svg></div><div class="ig">' + [['From', t.from || '&#8212;'], ['To', t.dests || '&#8212;'], ['KM', t.km || '&#8212;'], ['Stops', (t.destsArr || []).length || 1]].map(function(x) { return '<div class="ib"><div class="ib-l">' + x[0] + '</div><div class="ib-v">' + x[1] + '</div></div>'; }).join('') + '</div></div>' +
     '<div id="tp2" class="sp-pane" style="display:none"><div style="text-align:center;padding:20px;background:rgba(16,185,129,.06);border-radius:var(--r-lg);margin-bottom:14px"><div style="font-size:42px;font-weight:900;color:#10B981;font-family:Space Grotesk,sans-serif">' + (_tb || 3.5).toFixed(1) + '&deg;C</div><div style="font-size:12px;color:var(--t2)">Live &bull; Range: 2&ndash;8&deg;C</div></div><div class="gauge-bar"><div class="gauge-fill" style="width:55%;background:#10B981"></div></div></div>' +
     '<div id="tp3" class="sp-pane" style="display:none">' + (t.tl || []).map(function(l) { return '<div style="font-size:12px;padding:8px 12px;border-left:3px solid var(--c1);margin-bottom:5px;color:var(--t2);background:var(--bg);border-radius:0 8px 8px 0"><span style="color:var(--t3)">' + l.ts + '</span> &bull; <strong>' + l.user + '</strong> &bull; ' + l.action + (l.detail ? ' &mdash; ' + l.detail : '') + '</div>'; }).join('') + '</div>' +
-    '<div id="tp4" class="sp-pane" style="display:none">' + (t.costBreakdown ? Object.keys(t.costBreakdown).filter(function(k) { return +t.costBreakdown[k] !== 0; }).map(function(k) { return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--bd);font-size:13px"><span style="color:var(--t2)">' + k + '</span><span style="font-weight:700">EGP ' + t.costBreakdown[k] + '</span></div>'; }).join('') + '<div style="display:flex;justify-content:space-between;padding:12px 0;font-size:16px;font-weight:800"><span>Total</span><span style="color:var(--c1)">EGP ' + t.cost + '</span></div>' : '<div style="color:var(--t2);padding:20px;text-align:center">Cost calculated after completion</div>') + '</div>'
+    '<div id="tp4" class="sp-pane" style="display:none">' + (t.costBreakdown ? Object.keys(t.costBreakdown).filter(function(k) { return +t.costBreakdown[k] !== 0; }).map(function(k) { return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--bd);font-size:13px"><span style="color:var(--t2)">' + k + '</span><span style="font-weight:700">EGP ' + t.costBreakdown[k] + '</span></div>'; }).join('') + '<div style="display:flex;justify-content:space-between;padding:12px 0;font-size:16px;font-weight:800"><span>Total</span><span style="color:var(--c1)">EGP ' + t.cost + '</span></div>' : '<div style="color:var(--t2);padding:20px;text-align:center">Cost calculated after completion</div>') + '</div>' +
+    // TAB 5: Docs/Graphs Attachments
+    '<div id="tp5" class="sp-pane" style="display:none">'+
+    (canAttach&&isCompleted?'<button class="btn btn-primary btn-sm" onclick="openTripAttach(\''+id+'\')" style="margin-bottom:12px;width:100%">&#128206; + Add Document / Graph</button>':'')+
+    ((t.tripAttachments||[]).length?
+      (t.tripAttachments.map(function(a,i){
+        var icon={image:'&#128444;',pdf:'&#128196;',url:'&#127760;',data:'&#128202;'}[a.type]||'&#128206;';
+        return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 12px;background:var(--bg);border-radius:var(--r);border:1px solid var(--bd);margin-bottom:8px">'+
+          '<div style="display:flex;align-items:center;gap:8px"><span style="font-size:18px">'+icon+'</span>'+
+          '<div><div style="font-size:12px;font-weight:700;color:var(--t)">'+a.label+'</div>'+
+          '<div style="font-size:10px;color:var(--t3)">'+a.addedBy+' &bull; '+a.ts+'</div></div></div>'+
+          '<div style="display:flex;gap:6px">'+
+          (a.url||a.dataUrl?'<a href="'+(a.url||a.dataUrl)+'" target="_blank" class="btn btn-outline btn-sm" style="font-size:11px">&#128065; View</a>':'')+
+          (canAttach?'<button class="btn btn-danger btn-sm" onclick="deleteTripAttach(\''+id+'\','+i+')" style="font-size:11px">&#128465;</button>':'')+
+          '</div></div>';
+      }).join(''))
+      :'<div style="text-align:center;padding:30px;color:var(--t2);font-size:13px">&#128206; No documents or graphs attached yet</div>')+
+    '</div>'
   );
+}
+
+// ── Trip Attachments: open modal ──────────────────────────────────────────────
+function openTripAttach(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var wf=S.workflowConfig||{};
+  openM('<div class="m-title">&#128206; Attach to Trip '+id+'</div>'+
+    '<div class="tabs" style="margin-bottom:14px">'+
+    '<div class="tab on" id="atab-file" onclick="_atab(\'file\')">&#128444; File/Image</div>'+
+    '<div class="tab" id="atab-url" onclick="_atab(\'url\')">&#127760; URL / Link</div>'+
+    '<div class="tab" id="atab-data" onclick="_atab(\'data\')">&#128202; Monitoring Data</div>'+
+    '</div>'+
+    '<div id="atab-pane-file">'+
+    '<div class="fg f1"><label>Label / Description *</label><input id="att-label" placeholder="e.g. Temperature Graph, Route Report..."/></div>'+
+    '<div class="fg f1"><label>File (image, PDF, CSV)</label>'+
+    '<input type="file" id="att-file" accept="image/*,.pdf,.csv,.xlsx" style="padding:8px 0"/></div>'+
+    '</div>'+
+    '<div id="atab-pane-url" style="display:none">'+
+    '<div class="fg f1"><label>Label / Description *</label><input id="att-label-url" placeholder="e.g. GPS Dashboard, Fleet Monitor..."/></div>'+
+    '<div class="fg f1"><label>URL / Link *</label><input id="att-url" placeholder="https://monitoring.example.com/trip/..." type="url"/></div>'+
+    '</div>'+
+    '<div id="atab-pane-data" style="display:none">'+
+    '<div class="fg f1"><label>Label / Description *</label><input id="att-label-data" placeholder="e.g. Actual KM from Fleet Monitor"/></div>'+
+    '<div class="fg f1"><label>Actual KM (from external system)</label>'+
+    '<div style="display:flex;gap:8px">'+
+    '<input type="number" id="att-km" placeholder="e.g. 248" style="flex:1" value="'+(t.actualKm||t.km||'')+'"/>'+
+    (wf.gpsEnabled?'<button class="btn btn-outline btn-sm" onclick="fetchGpsKm(\''+id+'\').then(function(){var v=document.getElementById(\'akm-'+id+'\');var k=document.getElementById(\'att-km\');if(v&&k)k.value=v.value;})" style="white-space:nowrap">&#127752; GPS</button>':'')+
+    '</div></div>'+
+    '<div class="fg f1"><label>Notes / Data JSON (optional)</label><textarea id="att-json" placeholder="{&quot;maxTemp&quot;: 7.2, &quot;avgSpeed&quot;: 65}" style="min-height:70px;font-size:11px;font-family:monospace"></textarea></div>'+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="saveTripAttach(\''+id+'\')">&#10003; Save Attachment</button></div>');
+}
+function _atab(tab){
+  ['file','url','data'].forEach(function(t){
+    var btn=document.getElementById('atab-'+t);
+    var pane=document.getElementById('atab-pane-'+t);
+    if(btn)btn.className='tab'+(t===tab?' on':'');
+    if(pane)pane.style.display=t===tab?'':'none';
+  });
+}
+function saveTripAttach(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(!t.tripAttachments)t.tripAttachments=[];
+  var activeTab=['file','url','data'].find(function(tb){var el=document.getElementById('atab-'+tb);return el&&el.className.indexOf('on')>-1;})||'file';
+  var ts=new Date().toLocaleString('en-GB');
+  var by=S.user?S.user.name:'System';
+  if(activeTab==='file'){
+    var label=(document.getElementById('att-label')||{}).value||'';
+    var file=(document.getElementById('att-file')||{}).files;
+    if(!label){toast('Enter a label','err');return;}
+    if(!file||!file.length){toast('Select a file','err');return;}
+    var reader=new FileReader();
+    reader.onload=function(e){
+      var mime=file[0].type||'';
+      var atype=mime.startsWith('image/')?'image':mime.includes('pdf')?'pdf':'data';
+      t.tripAttachments.push({type:atype,label:label,dataUrl:e.target.result,filename:file[0].name,addedBy:by,ts:ts});
+      syncTrip(t);audit('TRIP_ATTACH',label+' · '+file[0].name,id);
+      toast('&#10003; Attachment saved','ok');closeM();
+    };
+    reader.readAsDataURL(file[0]);
+  } else if(activeTab==='url'){
+    var label2=(document.getElementById('att-label-url')||{}).value||'';
+    var url=(document.getElementById('att-url')||{}).value||'';
+    if(!label2||!url){toast('Fill label and URL','err');return;}
+    t.tripAttachments.push({type:'url',label:label2,url:url,addedBy:by,ts:ts});
+    syncTrip(t);audit('TRIP_ATTACH',label2+' · '+url,id);
+    toast('&#10003; Link saved','ok');closeM();
+  } else {
+    var label3=(document.getElementById('att-label-data')||{}).value||'Monitoring Data';
+    var km=(document.getElementById('att-km')||{}).value||'';
+    var json=(document.getElementById('att-json')||{}).value||'';
+    if(km&&+km>0){t.actualKm=+km;t.km=+km;t.kmSource='External System';
+      var r=calcTripCost(t.customer,+km,t.type,t.condition,(t.destsArr||[]).length,0);
+      t.cost=r.cost;t.co2=r.co2;
+      t.tl.push({ts:ts,user:by,action:'KM Updated from External System',detail:'KM: '+km});
+    }
+    var dataPayload={type:'data',label:label3,km:km,json:json,addedBy:by,ts:ts};
+    t.tripAttachments.push(dataPayload);
+    syncTrip(t);audit('TRIP_ATTACH_DATA',label3+' · KM:'+km,id);
+    toast('&#10003; Data saved — KM updated to '+km,'ok');closeM();
+  }
+}
+function deleteTripAttach(id,idx){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t||!t.tripAttachments)return;
+  t.tripAttachments.splice(idx,1);syncTrip(t);
+  toast('Attachment removed','ok');openTripSP(id);
 }
 
 function openCapSP() {
@@ -14435,11 +14755,21 @@ function createInvoice(){
   var due=(document.getElementById('ni-due')||{}).value;
   var notes=(document.getElementById('ni-notes')||{}).value;
   if(!cu){toast('Select a customer','err');return;}
+  var wf=S.workflowConfig||{};
+  var needInbound=wf.invoiceRequireInbound!==false;
   var trips=S.trips.filter(function(t){
-    return t.customer===cu&&t.status==='completed'&&
-      (!frm||(t.ts||'')>=frm)&&(!to||(t.ts||'')<=to+' 23:59');
+    if(t.customer!==cu||t.status!=='completed')return false;
+    if(needInbound&&!t.inboundApproved)return false;
+    if(frm&&(t.ts||'')<frm)return false;
+    if(to&&(t.ts||'')>to+' 23:59')return false;
+    return true;
   });
-  if(!trips.length){toast('No completed trips found — adjust period or customer','err');return;}
+  if(!trips.length){
+    var msg=needInbound
+      ?'No inbound-approved completed trips found. Only trips verified by Control Room + Security appear in invoices. Adjust the Workflow Config to change this.'
+      :'No completed trips found — adjust the period or customer.';
+    toast(msg,'err');return;
+  }
   var sub=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
   var taxR=(S.billingConfig&&S.billingConfig.taxRate)||14;
   var tax=Math.round(sub*taxR/100);
@@ -14578,13 +14908,14 @@ function _doInvoiceExport(){
 
 function _exportInvoicePDF(inv){
   var cfg=S.billingConfig||{};
+  var _b=_pdfBrand();
   var stC={draft:'#94A3B8',sent:'#F97316',paid:'#10B981',overdue:'#EF4444',cancelled:'#64748B'};
   var statusColor=stC[inv.status]||'#64748B';
   var w=window.open('','_blank','width=900,height=780');
   if(!w){toast('Allow popups to export PDF','err');return;}
   var items=(inv.lineItems||[]).map(function(li,i){
     return '<tr style="'+(i%2?'background:#f8f7ff':'')+'">'
-      +'<td style="padding:7px 10px;font-size:11px;color:#6C3FF5;font-weight:700">'+li.tripId+'</td>'
+      +'<td style="padding:7px 10px;font-size:11px;color:'+_b.primary+';font-weight:700">'+li.tripId+'</td>'
       +'<td style="padding:7px 10px;font-size:11px;color:#334155">'+li.desc+'</td>'
       +'<td style="padding:7px 10px;text-align:right;font-weight:700;font-size:11px">EGP '+Number(li.amount||0).toLocaleString()+'</td>'
       +'</tr>';
@@ -14594,36 +14925,38 @@ function _exportInvoicePDF(inv){
     +'*{margin:0;padding:0;box-sizing:border-box}'
     +'body{font-family:Arial,sans-serif;font-size:12px;color:#1E293B;background:#fff;padding:0}'
     +'.page{max-width:820px;margin:0 auto;padding:32px 36px}'
-    +'.header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:28px}'
-    +'.logo-block .company{font-size:22px;font-weight:900;color:#6C3FF5}'
-    +'.logo-block .meta{font-size:11px;color:#64748B;margin-top:4px;line-height:1.6}'
+    +'.inv-header{background:linear-gradient(135deg,'+_b.sidebar+','+_b.primary+');padding:22px 32px;display:flex;justify-content:space-between;align-items:center;margin:-32px -36px 28px}'
+    +'.logo-block .company{font-size:20px;font-weight:900;color:#fff}'
+    +'.logo-block .meta{font-size:10px;color:rgba(255,255,255,.75);margin-top:3px;line-height:1.6}'
+    +'.logo-img{height:36px;border-radius:5px;margin-bottom:6px;display:block}'
     +'.inv-block{text-align:right}'
-    +'.inv-block .inv-label{font-size:11px;font-weight:700;color:#94A3B8;letter-spacing:1px;text-transform:uppercase}'
-    +'.inv-block .inv-num{font-size:24px;font-weight:900;color:#1E1453;margin:4px 0}'
-    +'.status-badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:800;border:2px solid '+statusColor+';color:'+statusColor+'}'
-    +'.divider{height:3px;background:linear-gradient(90deg,#6C3FF5,#10B981);border-radius:2px;margin:20px 0}'
+    +'.inv-block .inv-label{font-size:10px;font-weight:700;color:rgba(255,255,255,.7);letter-spacing:1px;text-transform:uppercase}'
+    +'.inv-block .inv-num{font-size:22px;font-weight:900;color:#fff;margin:4px 0}'
+    +'.status-badge{display:inline-block;padding:4px 14px;border-radius:20px;font-size:10px;font-weight:800;border:2px solid '+statusColor+';color:'+statusColor+';background:#fff}'
+    +'.divider{height:3px;background:linear-gradient(90deg,'+_b.primary+',#10B981);border-radius:2px;margin:20px 0}'
     +'.info-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px;margin-bottom:24px}'
     +'.info-box .label{font-size:10px;font-weight:700;color:#94A3B8;letter-spacing:.8px;text-transform:uppercase;margin-bottom:4px}'
     +'.info-box .value{font-size:13px;font-weight:700;color:#1E293B}'
     +'table{width:100%;border-collapse:collapse;margin-bottom:20px}'
-    +'thead{background:#1E1453}'
+    +'thead{background:'+_b.sidebar+'}'
     +'thead th{padding:9px 10px;text-align:left;font-size:10px;font-weight:700;color:#fff;letter-spacing:.5px;text-transform:uppercase}'
     +'thead th:last-child{text-align:right}'
     +'.totals{display:flex;justify-content:flex-end;margin-bottom:24px}'
     +'.totals-box{background:#F8F7FF;border-radius:10px;padding:16px 20px;min-width:260px}'
     +'.totals-row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:#475569}'
-    +'.totals-row.final{font-size:16px;font-weight:900;color:#6C3FF5;border-top:2px solid #E2E8F0;margin-top:8px;padding-top:10px}'
+    +'.totals-row.final{font-size:16px;font-weight:900;color:'+_b.primary+';border-top:2px solid #E2E8F0;margin-top:8px;padding-top:10px}'
     +'.bank-box{background:#F1F5F9;border-radius:10px;padding:14px 16px;margin-bottom:20px;font-size:11px;color:#475569;line-height:1.8}'
     +'.bank-box strong{color:#1E293B}'
     +'.notes-box{background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:12px 14px;font-size:11px;color:#92400E;margin-bottom:20px}'
     +'.footer{text-align:center;font-size:10px;color:#94A3B8;border-top:1px solid #E2E8F0;padding-top:14px;margin-top:4px}'
-    +'@media print{.no-print{display:none}body{padding:0}.page{padding:20px 24px}}'
+    +'@media print{.no-print{display:none}body{padding:0}.page{padding:20px 24px}.inv-header{margin:-20px -24px 22px}}'
     +'</style></head><body>'
     +'<div class="page">'
-    // Header
-    +'<div class="header">'
+    // Branded gradient header
+    +'<div class="inv-header">'
     +'<div class="logo-block">'
-    +'<div class="company">📦 '+(cfg.companyName||'InstaPort Logistics')+'</div>'
+    +(_b.logo?'<img class="logo-img" src="'+_b.logo+'" onerror="this.style.display=\'none\'"/>':'')
+    +'<div class="company">'+_b.company+'</div>'
     +'<div class="meta">'+(cfg.companyAddress?cfg.companyAddress+'<br>':'')+'VAT No: '+(cfg.vatNo||'—')+'</div>'
     +'</div>'
     +'<div class="inv-block">'
@@ -14665,9 +14998,9 @@ function _exportInvoicePDF(inv){
     // Notes
     +(inv.notes?'<div class="notes-box">📝 <strong>Notes:</strong> '+inv.notes+'</div>':'')
     // Footer
-    +'<div class="footer">'+( cfg.companyName||'InstaPort Logistics')+' &bull; Generated '+new Date().toLocaleString('en-GB')+' &bull; '+inv.id+'</div>'
+    +'<div class="footer">'+_b.footer+' &bull; Generated '+new Date().toLocaleString('en-GB')+' &bull; '+inv.id+'</div>'
     +'<div class="no-print" style="text-align:center;margin-top:20px">'
-    +'<button onclick="window.print()" style="background:#6C3FF5;color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">🖨️ Print / Save as PDF</button>'
+    +'<button onclick="window.print()" style="background:'+_b.primary+';color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">&#128424; Print / Save as PDF</button>'
     +'</div>'
     +'</div>'
     +'</body></html>');
@@ -15491,7 +15824,44 @@ function _expExcel(title,headers,rows,ts,usr){
 }
 
 // ── PDF via print window (Blob fallback if popup blocked) ──
+// ── Shared PDF branding helper ─────────────────────────────────────
+function _pdfBrand(){
+  var br=S.branding||{};
+  return {
+    primary: br.primaryColor||'#6C3FF5',
+    sidebar: br.sidebarColor||'#1E1453',
+    company: br.companyName||_tenantName||'InstaPort Logistics',
+    logo:    br.logoUrl||'',
+    footer:  br.footerText||'InstaPort TMS — Confidential',
+    // Returns styled header HTML for PDF pages
+    header: function(title,meta){
+      var p=br.primaryColor||'#6C3FF5';
+      var s=br.sidebarColor||'#1E1453';
+      var co=br.companyName||_tenantName||'InstaPort Logistics';
+      var lo=br.logoUrl||'';
+      return '<div style="background:linear-gradient(135deg,'+s+','+p+');padding:16px 24px;display:flex;align-items:center;gap:12px;margin:-24px -24px 18px -24px">'
+        +(lo?'<img src="'+lo+'" style="height:32px;border-radius:4px;flex-shrink:0" onerror="this.style.display=\'none\'"/>':'<div style="width:32px;height:32px;border-radius:6px;background:rgba(255,255,255,.2);flex-shrink:0"></div>')
+        +'<div style="flex:1">'
+        +'<div style="color:#fff;font-weight:800;font-size:14px">'+co+'</div>'
+        +'<div style="color:rgba(255,255,255,.8);font-size:10px">'+title+'</div>'
+        +'</div>'
+        +'<div style="color:rgba(255,255,255,.7);font-size:9px;text-align:right">'+meta+'</div>'
+        +'</div>';
+    },
+    // Returns branded CSS variables for injection into PDF <style>
+    css: function(){
+      var p=br.primaryColor||'#6C3FF5';
+      var s=br.sidebarColor||'#1E1453';
+      return 'thead th{background:'+s+';color:#fff}'
+        +'.section-title{color:'+p+';border-bottom-color:'+p+'}'
+        +'.kpi .n{color:'+p+'}'
+        +'th{background:'+s+';color:#fff}'
+        +'.footer-bar{border-top-color:'+p+'22}';
+    }
+  };
+}
 function _expPDF(title,headers,rows,ts,usr){
+  var _b=_pdfBrand();
   var ths=headers.map(function(h){return'<th>'+h+'</th>';}).join('');
   var trs=rows.map(function(r,i){
     return'<tr class="'+(i%2===0?'ev':'')+'">'+r.map(function(v){return'<td>'+String(v==null?'':v)+'</td>';}).join('')+'</tr>';
@@ -15499,21 +15869,21 @@ function _expPDF(title,headers,rows,ts,usr){
   var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+title+'</title>'+
     '<style>'+
     '*{box-sizing:border-box;margin:0;padding:0}'+
-    'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#1e293b;padding:20px}'+
-    'h2{font-size:16px;color:#4F46E5;margin-bottom:2px}'+
-    '.meta{color:#64748b;font-size:9px;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #4F46E5}'+
+    'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#1e293b;padding:24px;background:#fff}'+
     'table{width:100%;border-collapse:collapse}'+
-    'thead th{background:#4F46E5;color:#fff;padding:6px 7px;text-align:left;font-size:9px;white-space:nowrap}'+
+    'thead th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;white-space:nowrap;font-weight:700}'+
     'td{padding:5px 7px;font-size:9px;border-bottom:1px solid #e2e8f0;vertical-align:top}'+
     'tr.ev td{background:#f8fafc}'+
-    '.footer{margin-top:18px;font-size:8px;color:#94a3b8;border-top:1px solid #e2e8f0;padding-top:6px;display:flex;justify-content:space-between}'+
-    '@page{margin:15mm}'+
-    '@media print{body{padding:0}}'+
+    '.footer{margin-top:18px;font-size:8px;color:#94a3b8;border-top:2px solid '+_b.primary+'22;padding-top:6px;display:flex;justify-content:space-between}'+
+    '.meta-bar{font-size:9px;color:#64748b;margin-bottom:14px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid '+_b.primary+'}'+
+    '@page{margin:12mm}'+
+    '@media print{body{padding:0}.no-print{display:none}}'+
     '</style></head><body>'+
-    '<h2>'+title+'</h2>'+
-    '<div class="meta">Exported: '+ts+'&nbsp;&nbsp;|&nbsp;&nbsp;By: '+usr+'&nbsp;&nbsp;|&nbsp;&nbsp;'+rows.length+' records</div>'+
+    _b.header(title,ts)+
+    '<div class="meta-bar">Exported by: <strong>'+usr+'</strong> &nbsp;|&nbsp; '+rows.length+' records</div>'+
     '<table><thead><tr>'+ths+'</tr></thead><tbody>'+trs+'</tbody></table>'+
-    '<div class="footer"><span>InstaPort TMS &mdash; Confidential</span><span>'+title+' &mdash; '+ts+'</span></div>'+
+    '<div class="footer"><span>'+_b.footer+'</span><span>'+title+' — '+ts+'</span></div>'+
+    '<div class="no-print" style="text-align:center;margin-top:16px"><button onclick="window.print()" style="background:'+_b.primary+';color:#fff;border:none;padding:9px 28px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button></div>'+
     '<scr'+'ipt>window.onload=function(){window.print();};<\/scr'+'ipt>'+
     '</body></html>';
   var w=null;
@@ -16480,14 +16850,14 @@ function _anBuildPDF(_captured){
 
   // Build chart section from pre-captured canvas images
   var chartDefs=[
-    {id:'an-trips-chart', title:'&#128201; Trips per Day — Last 30 Days'},
-    {id:'an-rev-chart',   title:'&#128200; Revenue Trend — 30 Days'},
-    {id:'an-cond-chart',  title:'&#127777;&#65039; Condition Mix'},
-    {id:'an-sla-donut',   title:'&#9201;&#65039; SLA Compliance'},
-    {id:'an-sla-bar',     title:'&#9201;&#65039; SLA Bar Breakdown'},
-    {id:'an-driver-chart',title:'&#128666; Driver Performance'},
-    {id:'an-cust-chart',  title:'&#128100; Customer Breakdown'},
-    {id:'an-fleet-chart', title:'&#128664; Fleet Utilisation'}
+    {id:'an-trips-chart', title:'&#128201; Trips / Day',    detail: trips.length+' trips &bull; '+Math.round(km).toLocaleString()+' km total'},
+    {id:'an-rev-chart',   title:'&#128200; Revenue Trend',  detail: 'EGP '+Math.round(rev).toLocaleString()+' &bull; '+comp+' completed'},
+    {id:'an-cond-chart',  title:'&#127777; Condition Mix',  detail: TRUCKS.length+' trucks in fleet'},
+    {id:'an-sla-donut',   title:'&#9201; SLA Compliance',   detail: comp+' on-time &bull; '+(trips.length-comp)+' delayed'},
+    {id:'an-sla-bar',     title:'&#9201; SLA Bar Detail',   detail: period+' period breakdown'},
+    {id:'an-driver-chart',title:'&#128666; Driver Perf.',   detail: (S.drivers||[]).length+' active drivers'},
+    {id:'an-cust-chart',  title:'&#128100; By Customer',    detail: CUSTOMERS.length+' customers &bull; EGP '+Math.round(rev).toLocaleString()},
+    {id:'an-fleet-chart', title:'&#128664; Fleet Util.',    detail: TRUCKS.filter(function(t){return t.valid;}).length+'/'+TRUCKS.length+' active'}
   ];
   var chartSection='';
   var hasCharts=false;
@@ -16496,7 +16866,8 @@ function _anBuildPDF(_captured){
     if(img){
       chartSection+='<div class="chart-box">'+
         '<div class="chart-title">'+ci.title+'</div>'+
-        '<img src="'+img+'" style="width:100%;border-radius:6px;display:block"/></div>';
+        '<img src="'+img+'" style="width:100%;border-radius:5px;display:block"/>'+
+        '<div class="chart-detail">'+ci.detail+'</div></div>';
       hasCharts=true;
     }
   });
@@ -16551,12 +16922,13 @@ function _anBuildPDF(_captured){
   '.section{padding:0 32px;margin-bottom:20px}'+
   '.section-title{font-size:12px;font-weight:800;border-bottom:2px solid '+_brPrimary+';padding-bottom:5px;margin-bottom:12px;color:'+_brPrimary+'}'+
   'table{width:100%;border-collapse:collapse;font-size:9px}'+
-  'th{background:'+_brPrimary+';color:#fff;padding:6px 8px;text-align:left;font-weight:700}'+
+  'th{background:'+_brSidebar+';color:#fff;padding:6px 8px;text-align:left;font-weight:700}'+
   'td{padding:5px 8px;border-bottom:1px solid #e2e8f0}'+
   'tr:nth-child(even) td{background:#f8fafc}'+
-  '.charts-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px}'+
-  '.chart-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:12px;break-inside:avoid}'+
-  '.chart-title{font-size:10px;font-weight:700;color:#475569;margin-bottom:6px}'+
+  '.charts-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px}'+
+  '.chart-box{background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:8px;break-inside:avoid}'+
+  '.chart-title{font-size:9px;font-weight:700;color:#475569;margin-bottom:5px;text-transform:uppercase;letter-spacing:.4px}'+
+  '.chart-detail{font-size:8px;color:#94a3b8;margin-top:5px;padding-top:4px;border-top:1px solid #e2e8f0;line-height:1.4}'+
   '.footer{background:#f1f5f9;padding:12px 32px;display:flex;justify-content:space-between;font-size:8px;color:#94a3b8;border-top:1px solid #e2e8f0}'+
   '@media print{body{-webkit-print-color-adjust:exact;print-color-adjust:exact}@page{margin:10mm;size:A4}}'+
   '</style></head><body>'+
