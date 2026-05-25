@@ -4696,8 +4696,6 @@ function _checkMaintenanceAlerts(){
 // ══ AUTO-INVOICE ON TRIP COMPLETE ════════════════════════
 function _autoInvoiceOnComplete(trip){
   if(!trip||!trip.customer||!trip.cost||+trip.cost<=0)return;
-  var wf=S.workflowConfig||{};
-  if(wf.invoiceRequireInbound!==false&&!trip.inboundApproved)return; // not inbound-approved yet
   if(!S.invoices)S.invoices=[];
   if(S.invoices.some(function(inv){return(inv.tripIds||[]).includes(trip.id);}))return;
   var cfg=S.billingConfig||{};
@@ -5599,7 +5597,20 @@ function nav(page){
 // HELPERS
 // ══════════════════════════════════════════════════
 function stB(s){
-  var m={awaiting_truck:'<span class="tag tag-pend">⏳ Awaiting Truck</span>',awaiting_quality:'<span class="tag tag-blue">🧪 Quality</span>',awaiting_ctrl:'<span class="tag tag-info">🎛️ Control Room</span>',awaiting_security:'<span class="tag tag-pend">🔒 Gate</span>',in_transit:'<span class="tag tag-ok">🚛 In Transit</span>',inbound_ctrl:'<span class="tag tag-info">📥 Inbound Ctrl</span>',inbound_security:'<span class="tag tag-pend">📥 Inbound Gate</span>',inbound_quality:'<span class="tag tag-blue">📥 Inbound QA</span>',completed:'<span class="tag tag-ok">✅ Completed</span>',cancelled:'<span class="tag tag-hold">❌ Cancelled</span>'};
+  // Outbound flow: awaiting_truck → awaiting_quality → awaiting_ctrl → awaiting_security → in_transit
+  // Inbound flow:  inbound_ctrl → inbound_security → inbound_quality → completed
+  var m={
+    awaiting_truck:   '<span class="tag tag-pend">&#9203; Awaiting Truck</span>',
+    awaiting_quality: '<span class="tag tag-blue">&#129514; OUT-1: Quality</span>',
+    awaiting_ctrl:    '<span class="tag tag-info">&#127775; OUT-2: Control Room</span>',
+    awaiting_security:'<span class="tag tag-pend">&#128274; OUT-3: Security Gate</span>',
+    in_transit:       '<span class="tag tag-ok">&#128666; In Transit</span>',
+    inbound_ctrl:     '<span class="tag tag-info">&#128228; IN-1: Control Room</span>',
+    inbound_security: '<span class="tag tag-pend">&#128274; IN-2: Security Gate</span>',
+    inbound_quality:  '<span class="tag tag-blue">&#129514; IN-3: Quality Check</span>',
+    completed:        '<span class="tag tag-ok">&#9989; Completed</span>',
+    cancelled:        '<span class="tag tag-hold">&#10060; Cancelled</span>'
+  };
   return m[s]||('<span class="tag tag-gray">'+s+'</span>');
 }
 function openM(h){
@@ -6538,18 +6549,27 @@ function apQConfirm(id,isInbound){
   if(done<qa.checkReq){toast('Need '+qa.checkReq+'/8 ('+done+' done)','err');return;}
   requirePwd('Approve Quality — '+id,function(){
     var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
-    t.qualityPin=true;t.status=isInbound?'completed':'awaiting_ctrl';
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound)':''),detail:done+'/8'});
+    t.qualityPin=true;
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound Return)':'(Outbound)'),detail:done+'/8'});
     audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
     if(isInbound){
-      var rate=S.custModifiers[t.customer]&&S.custModifiers[t.customer].baseRate||8;
+      // INBOUND quality final step → COMPLETED with inboundApproved flag
+      t.status='completed';
+      t.inboundApproved=true;
       var km=t.actualKm||t.km||150;t.km=km;
       var result=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
-      t.cost=result.cost;t.co2=result.co2;
-      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'Auto Calculated',detail:'KM: '+km+' · EGP '+t.cost+' · CO₂: '+t.co2+'kg'});
+      t.cost=result.cost;t.co2=result.co2;t.costBreakdown=result.breakdown;
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'Trip Completed (Inbound Approved)',detail:'KM: '+km+' · EGP '+t.cost+' · CO&#8322;: '+t.co2+'kg'});
+      if(t.truck&&km>0){_addTruckOdometer(t.truck,km);}
+      _autoInvoiceOnComplete(t);
       setTimeout(function(){aiAss(t);},500);
-      toast('Trip completed! EGP '+t.cost,'ok');
-    }else{notif(id+' quality ok');toast('Quality approved!','ok');}
+      toast('&#9989; Inbound complete! Trip closed — EGP '+t.cost,'ok');
+    }else{
+      // OUTBOUND quality → send to control room
+      t.status='awaiting_ctrl';
+      notif(id+' quality approved — awaiting control room');
+      toast('&#9989; Quality approved — sent to Control Room','ok');
+    }
     rQuality();
   });
 }
@@ -6658,23 +6678,24 @@ function ctNoConfirm(id){
     audit('CTRL_REJECT','['+cat+'] '+reason,id);closeM();toast('Back to quality','err');rCtrl();
   });
 }
-function inbCtrlOkConfirm(id){requirePwd('Approve Inbound — '+id,function(){
+function inbCtrlOkConfirm(id){requirePwd('&#9989; Approve Inbound (Control) — '+id,function(){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var wf=S.workflowConfig||{};
   if(wf.inboundRequireSecurity!==false){
+    // Next: Security gate confirmation
     t.status='inbound_security';
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Inbound Ctrl OK',detail:'Awaiting security gate confirm'});
-    audit('INBOUND_CTRL_OK','',id);toast('Inbound approved — security to confirm gate return','ok');
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#128203; Inbound: Control Approved',detail:'Awaiting security gate confirmation'});
+    audit('INBOUND_CTRL_OK','',id);
+    notif('Trip '+id+' inbound ctrl approved — security gate confirmation needed','info');
+    toast('Inbound ctrl approved — security to confirm truck at gate','ok');
   } else {
-    // Security step skipped — ctrl approval completes the inbound
-    t.status='completed';t.inboundApproved=true;
-    var km=t.actualKm||t.km||0;
-    var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
-    t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'Completed via Ctrl Inbound',detail:'EGP '+r.cost});
-    audit('INBOUND_CTRL_COMPLETE','',id);
-    _autoInvoiceOnComplete(t);
-    toast('Inbound approved — trip completed!','ok');
+    // Security step skipped — go to quality inspection
+    t.status='inbound_quality';
+    if(!t.checklist)t.checklist=Array(8).fill(false);
+    t.qualityPin=false;
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#128203; Inbound: Control Approved (Security skipped)',detail:'Awaiting inbound quality inspection'});
+    audit('INBOUND_CTRL_COMPLETE','Security step skipped',id);
+    toast('Inbound ctrl approved — sent to Quality for inbound inspection','ok');
   }
   rCtrl();
 });}
@@ -6719,9 +6740,10 @@ function rSec(){
     '<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px">'+
     [['Truck',t.truck||'—'],['Driver',t.driver||'—'],['Customer',t.customer],['Condition',t.condition],['Route',(t.from||'—')+' > '+t.dests],['KM',t.km+' km']].map(function(x){return '<div style="background:var(--bg);padding:10px;border-radius:var(--r)"><div style="font-size:11px;color:var(--t2)">'+x[0]+'</div><div style="font-weight:600;margin-top:2px">'+x[1]+'</div></div>';}).join('')+'</div>'+
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-    (isInb?'<button class="btn btn-success" onclick="inbSecOkConfirm(\''+t.id+'\')">✅ Inbound Security Clear</button>':'<button class="btn btn-success" onclick="secOkConfirm(\''+t.id+'\')">🚦 Open Gate — Release</button>')+
-    '<button class="btn btn-danger" onclick="secHold(\''+t.id+'\')">🛑 Hold at Gate</button>'+
-    // Security can also complete the workflow for all statuses
+    (isInb
+      ?'<button class="btn btn-success" onclick="inbSecOkConfirm(\''+t.id+'\')">&#9989; Truck Returned — Confirm Gate IN</button>'
+      :'<button class="btn btn-success" onclick="secOkConfirm(\''+t.id+'\')">&#128678; Open Gate — Release OUT</button>')+
+    '<button class="btn btn-danger" onclick="secHold(\''+t.id+'\')">&#128721; Hold at Gate</button>'+
     '</div></div>';}).join('')+
   '<div class="card"><div class="card-hd"><div class="card-title">📋 Gate Log — Today</div></div>'+
   (S.trips.filter(function(t){return ['in_transit','completed'].includes(t.status);}).slice(-8).map(function(t){return '<div style="display:flex;justify-content:space-between;padding:9px;border-bottom:1px solid var(--tb);font-size:13px"><div><span style="font-weight:600">'+t.id+'</span> — '+(t.truck||'—')+' · '+t.customer+'</div>'+stB(t.status)+'</div>';}).join('')||'<div style="color:var(--t2);padding:10px;font-size:13px">No vehicles today</div>')+'</div>';
@@ -6754,18 +6776,30 @@ function secHold(id){
 function secCompleteWorkflow(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var isInboundReturn=(t.status==='inbound_security');
-  var label=isInboundReturn?'Confirm Truck Return — '+id:'Force Complete — '+id;
+  var isForcedComplete=!isInboundReturn&&t.status!=='completed';
+  var label=isInboundReturn?'&#9989; Confirm Truck Returned to Warehouse — '+id:'&#9889; Force Complete — '+id;
   requirePwd(label,function(){
-    t.status='completed';
-    t.inboundApproved=isInboundReturn; // only set true if going through proper inbound flow
-    var km=t.actualKm||t.km||0;
-    var result=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
-    t.cost=result.cost;t.co2=result.co2;t.km=km;
-    var actionLabel=isInboundReturn?'Truck Returned — Inbound Approved':'Completed by Security (Override)';
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:actionLabel,detail:'EGP '+t.cost+' · KM: '+km});
-    audit(isInboundReturn?'INBOUND_SECURITY_APPROVE':'SEC_COMPLETE_WORKFLOW','',id);
-    if(isInboundReturn){_autoInvoiceOnComplete(t);}
-    toast(isInboundReturn?'&#9989; Truck confirmed returned — trip completed!':'Workflow completed!','ok');
+    if(isInboundReturn){
+      // INBOUND: security gate confirm → send to quality for final inbound check
+      t.status='inbound_quality';
+      if(!t.checklist)t.checklist=Array(8).fill(false);
+      t.qualityPin=false;
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#128274; Gate: Truck Returned',detail:'Awaiting inbound quality inspection'});
+      audit('INBOUND_SECURITY_GATE_OK','Truck at warehouse',id);
+      notif('&#9989; Trip '+id+' — truck returned. Quality: inbound inspection needed','ok');
+      toast('&#9989; Truck confirmed at gate — sent to Quality for inbound check','ok');
+    } else {
+      // FORCE COMPLETE (override) — only for roles with complete_workflow permission
+      t.status='completed';
+      t.inboundApproved=false; // not through proper flow
+      var km=t.actualKm||t.km||0;
+      var result=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
+      t.cost=result.cost;t.co2=result.co2;t.km=km;
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#9889; Force Completed (Override)',detail:'EGP '+t.cost+' · KM: '+km});
+      audit('SEC_FORCE_COMPLETE','Override',id);
+      _autoInvoiceOnComplete(t);
+      toast('&#9889; Force completed','ok');
+    }
     if(typeof rSec==='function')rSec();
   });
 }
@@ -7771,11 +7805,18 @@ function rDriverTrips(){
       var lbl={driver:'Driver confirms completion directly',security:'Security will confirm truck return at gate',ctrl_security:'Control room + Security inbound approval required'}[rb];
       return '<div style="background:#F0FDF4;border:1px solid #6EE7B7;border-radius:8px;padding:8px 12px;font-size:11px;color:#065F46;margin-bottom:10px">&#128337; Return flow: <strong>'+lbl+'</strong></div>';
     })()+
-    '<div class="fg f1" style="margin-bottom:8px"><label>Actual KM Driven *'+(((S.workflowConfig||{}).gpsEnabled)?' <span style="font-size:10px;color:#6C3FF5;font-weight:600">(GPS)</span>':' <span style="font-size:10px;color:#94a3b8">(Manual)</span>')+'</label>'+
-    '<div style="display:flex;gap:6px">'+
-    '<input type="number" id="akm-'+t.id+'" value="'+(t.actualKm||t.km||150)+'" placeholder="Actual kilometers..." oninput="updActualCost(\''+t.id+'\',this.value)" style="flex:1"/>'+
-    (((S.workflowConfig||{}).gpsEnabled)?'<button class="btn btn-outline btn-sm" onclick="fetchGpsKm(\''+t.id+'\')" title="Auto-fill from GPS" style="font-size:11px;white-space:nowrap">&#127752; GPS</button>':'')+
-    '</div></div>'+
+    (function(){
+      var wf=S.workflowConfig||{};
+      var gpsOn=wf.gpsEnabled&&wf.gpsEndpoint;
+      var kmSrc=gpsOn?'<span style="font-size:10px;color:#10B981;font-weight:600">&#127752; GPS Active</span>':'<span style="font-size:10px;color:#94a3b8">(Manual)</span>';
+      return '<div class="fg f1" style="margin-bottom:8px"><label>Actual KM Driven * '+kmSrc+'</label>'+
+        '<div style="display:flex;gap:6px">'+
+        '<input type="number" id="akm-'+t.id+'" value="'+(t.actualKm||t.km||150)+'" placeholder="Actual kilometers..." oninput="updActualCost(\''+t.id+'\',this.value)" style="flex:1"/>'+
+        '<button class="btn '+(gpsOn?'btn-success':'btn-outline')+' btn-sm" onclick="fetchGpsKm(\''+t.id+'\')" title="'+(gpsOn?'Auto-fill from GPS':'GPS not configured — go to Admin → Workflow to enable')+'" style="font-size:11px;white-space:nowrap">&#127752; GPS</button>'+
+        '</div>'+
+        (gpsOn?'':'<div style="font-size:10px;color:#94a3b8;margin-top:3px">Enable GPS in Admin &#8594; &#9881; Workflow for auto KM</div>')+
+        '</div>';
+    })()+
     '<div id="cost-prev-'+t.id+'" style="background:white;padding:10px;border-radius:6px;margin-bottom:10px;font-size:12px">'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:3px"><span style="color:var(--t2)">Estimated Cost</span><span style="font-weight:700;color:var(--c1)" id="acp-'+t.id+'">EGP '+t.cost+'</span></div>'+
     '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">CO&#8322; Emission</span><span style="font-weight:700;color:var(--c4)" id="ac2-'+t.id+'">'+t.co2+' kg</span></div></div>'+
@@ -8050,7 +8091,7 @@ function rTrips(){
   // ── Unique values for filter dropdowns ─────────────────────
   var _custs=[...new Set(S.trips.map(function(t){return t.customer;}))].filter(Boolean).sort();
   var _types=[...new Set(S.trips.map(function(t){return t.type;}))].filter(Boolean);
-  var _stats=['awaiting_truck','awaiting_quality','awaiting_ctrl','awaiting_security','in_transit','completed'];
+  var _stats=['awaiting_truck','awaiting_quality','awaiting_ctrl','awaiting_security','in_transit','inbound_ctrl','inbound_security','inbound_quality','completed','cancelled'];
 
   // ── Render page shell ──────────────────────────────────────
   var _colDefs=[['id','ID'],['customer','Customer'],['date','Date'],['type','Type'],['truck','Truck'],['driver','Driver'],['km','KM']].concat(canFin?[['cost','Cost']]:[]).concat([['co2','CO₂'],['condition','Condition'],['status','Status']]);
@@ -10722,22 +10763,32 @@ apQConfirm=function(id,isInbound){
   var t=S.trips.find(function(x){return x.id===id;});
   var qa=S.qaAgr[t.customer]||{checkReq:7};var done=t.checklist.filter(Boolean).length;
   if(done<qa.checkReq){toast('Need '+qa.checkReq+'/8 ('+done+' done)','err');return;}
-  requirePwd('Approve Quality — '+id,function(){
+  requirePwd('&#9989; Approve Quality — '+id,function(){
     var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
-    t.qualityPin=true;t.status=isInbound?'completed':'awaiting_ctrl';
-    stampTrip(t,isInbound?'completed':'awaiting_ctrl');
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound)':''),detail:done+'/8'});
+    t.qualityPin=true;
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#129514; QA Approved'+(isInbound?' (Inbound IN-3)':'(Outbound OUT-1)'),detail:done+'/8'});
     audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
     if(isInbound){
+      // INBOUND final step: Quality → Completed ✅
+      t.status='completed';
+      t.inboundApproved=true;
       var km=t.actualKm||t.km||150;t.km=km;
       var r=calcTripCost(t.customer,km,t.type,t.condition,(t.destsArr||[]).length,0);
       t.cost=r.cost;t.co2=r.co2;t.costBreakdown=r.breakdown;
-      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'Auto Calculated',detail:'KM:'+km+' EGP '+r.cost+' CO₂:'+r.co2+'kg'});
-      setTimeout(function(){aiAss(t);},500);
-      // Auto-hold if maintenance
+      stampTrip(t,'completed');
+      t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',action:'&#9989; Trip Completed — Inbound Approved',detail:'KM:'+km+' · EGP '+r.cost+' · CO&#8322;:'+r.co2+'kg'});
+      if(t.truck&&km>0){_addTruckOdometer(t.truck,km);}
       if(t.type==='Non-Revenue'||t.customer==='Internal'){autoHoldTruckAfterTrip(t);}
-      toast('Trip completed! EGP '+r.cost,'ok');
-    }else{notif(id+' quality ok');toast('Quality approved!','ok');}
+      _autoInvoiceOnComplete(t);
+      setTimeout(function(){aiAss(t);},500);
+      toast('&#9989; Inbound approved — trip completed! EGP '+r.cost,'ok');
+    }else{
+      // OUTBOUND: Quality (OUT-1) → Control Room (OUT-2)
+      t.status='awaiting_ctrl';
+      stampTrip(t,'awaiting_ctrl');
+      notif('Trip '+id+' quality approved — awaiting Control Room (OUT-2)','info');
+      toast('&#9989; Quality approved — sent to Control Room','ok');
+    }
     rQuality();
   });
 };
@@ -12505,38 +12556,7 @@ function openCapSP(){
 }
 
 // ── openTripSP: Trip Side Panel ──
-function openTripSP(id){
-  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  openSP('&#128203; '+id,
-    '<div class="sp-tabs">'+
-    ['Details','Route','Temp','Timeline','Cost'].map(function(n,i){return '<div class="sp-tab'+(i===0?' on':'')+'" onclick="spTab(this,\'tp'+i+'\')">'+n+'</div>';}).join('')+
-    '</div>'+
-    '<div id="tp0" class="sp-pane"><div class="ig">'+
-    [['Customer',t.customer],['Type',t.type],['Condition',t.condition],['Status',t.status.replace(/_/g,' ')],['Truck',t.truck||'&#8212;'],['Driver',t.driver||'&#8212;'],['KM',t.km||'&#8212;'],['Route',(t.from||'&#8212;')+' &#8594; '+(t.dests||'&#8212;')],['Cost',t.cost?'EGP '+t.cost:'Pending'],['CO&#178;',(t.co2||'&#8212;')+' kg']].map(function(x){return '<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+
-    '</div>'+
-    (t.driverNote?'<div style="background:var(--bg);padding:12px;border-radius:var(--r);border-left:3px solid var(--c2);margin-bottom:12px"><div style="font-size:11px;color:var(--t2);font-weight:600;margin-bottom:4px">Driver Note</div>'+t.driverNote+'</div>':'')+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'+
-    (t.status==='in_transit'&&(can('all')||S.role==='supervisor')?'<button class="btn btn-success btn-sm" onclick="compT(\''+t.id+'\');closeSP()">&#10003; Complete</button>':'')+
-    (can('complete_workflow')?'<button class="btn btn-outline btn-sm" onclick="secCompleteWorkflow(\''+t.id+'\');closeSP()">&#9889; Force Complete</button>':'')+
-    '</div></div>'+
-    '<div id="tp1" class="sp-pane" style="display:none">'+
-    '<div class="map-dark" style="height:150px;margin-bottom:14px">'+
-    '<svg style="position:absolute;inset:0;width:100%;height:100%"><path d="M 40 110 Q 140 50 260 80 Q 320 95 420 40" stroke="rgba(124,58,237,.8)" stroke-width="2" fill="none" stroke-dasharray="6,4"/><circle cx="40" cy="110" r="7" fill="#10B981"/><circle cx="420" cy="40" r="7" fill="#EF4444"/></svg>'+
-    '</div>'+
-    '<div class="ig">'+[['From',t.from||'&#8212;'],['To',t.dests||'&#8212;'],['KM',t.km||'&#8212;'],['Stops',(t.destsArr||[]).length||1]].map(function(x){return '<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+'</div></div>'+
-    '<div id="tp2" class="sp-pane" style="display:none">'+
-    '<div style="text-align:center;padding:20px;background:rgba(16,185,129,.06);border-radius:var(--r);margin-bottom:14px">'+
-    '<div style="font-size:42px;font-weight:900;color:#10B981">'+(_tb||3.5).toFixed(1)+'&deg;C</div>'+
-    '<div style="font-size:12px;color:var(--t2)">Live &bull; Range: 2&ndash;8&deg;C</div></div>'+
-    '<div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden"><div style="height:100%;width:55%;background:#10B981;border-radius:4px"></div></div></div>'+
-    '<div id="tp3" class="sp-pane" style="display:none">'+
-    (t.tl||[]).map(function(l){return '<div style="font-size:12px;padding:7px 12px;border-left:3px solid var(--c1);margin-bottom:5px;color:var(--t2);background:var(--bg);border-radius:0 7px 7px 0"><span style="color:var(--t3)">'+l.ts+'</span> &bull; <strong>'+l.user+'</strong> &bull; '+l.action+(l.detail?' &mdash; '+l.detail:'')+'</div>';}).join('')+
-    '</div>'+
-    '<div id="tp4" class="sp-pane" style="display:none">'+
-    (t.costBreakdown?Object.keys(t.costBreakdown).filter(function(k){return+t.costBreakdown[k]!==0;}).map(function(k){return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px"><span style="color:var(--t2)">'+k+'</span><span style="font-weight:700">EGP '+t.costBreakdown[k]+'</span></div>';}).join('')+'<div style="display:flex;justify-content:space-between;padding:12px 0;font-size:15px;font-weight:800"><span>Total</span><span style="color:var(--c1)">EGP '+t.cost+'</span></div>':'<div style="color:var(--t2);padding:20px;text-align:center">After completion</div>')+
-    '</div>'
-  );
-}
+function openTripSP(id){_openTripSPv2(id);} // unified — see definition below
 
 // ── PATCH rSpareParts: pending always visible ──
 var _origSP=rSpareParts;
@@ -13140,7 +13160,7 @@ function secHold(id) { openM('<div class="m-title">&#9940; Hold at Gate &mdash; 
 function secHoldC(id) { var r = (document.getElementById('shr') || {}).value; if(!r) { toast('Enter reason', 'err'); return; } requirePwd('Confirm Hold', function() { var t = S.trips.find(function(x) { return x.id === id; }); if(!t) return; t.tl.push({ ts: new Date().toLocaleString('en-GB'), user: S.user.name, action: 'Gate Hold', detail: r }); audit('GATE_HOLD', r, id); closeM(); toast('Vehicle held at gate', 'err'); rSec(); }); }
 
 // openTripSP and openCapSP
-function openTripSP(id) {
+function _openTripSPv2(id) {
   var t = S.trips.find(function(x) { return x.id === id; }); if(!t) return;
   var wf=S.workflowConfig||{};
   var allowedRoles=wf.attachAllowedRoles||['admin','supervisor','controlroom','security'];
@@ -14755,21 +14775,13 @@ function createInvoice(){
   var due=(document.getElementById('ni-due')||{}).value;
   var notes=(document.getElementById('ni-notes')||{}).value;
   if(!cu){toast('Select a customer','err');return;}
-  var wf=S.workflowConfig||{};
-  var needInbound=wf.invoiceRequireInbound!==false;
   var trips=S.trips.filter(function(t){
     if(t.customer!==cu||t.status!=='completed')return false;
-    if(needInbound&&!t.inboundApproved)return false;
     if(frm&&(t.ts||'')<frm)return false;
     if(to&&(t.ts||'')>to+' 23:59')return false;
     return true;
   });
-  if(!trips.length){
-    var msg=needInbound
-      ?'No inbound-approved completed trips found. Only trips verified by Control Room + Security appear in invoices. Adjust the Workflow Config to change this.'
-      :'No completed trips found — adjust the period or customer.';
-    toast(msg,'err');return;
-  }
+  if(!trips.length){toast('No completed trips found for this customer and period','err');return;}
   var sub=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
   var taxR=(S.billingConfig&&S.billingConfig.taxRate)||14;
   var tax=Math.round(sub*taxR/100);
