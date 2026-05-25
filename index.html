@@ -3291,14 +3291,15 @@ async function _loadTenant(orgCode){
     _tenantUsers=[]; // populated after server confirms auth
     return true;
   }
-  // instaport: start with built-in demo users, then merge real Supabase users
+  // instaport/demo: use hardcoded demo users only — no Supabase call (avoids freeze)
   if(orgCode==='instaport'||orgCode==='demo'){
     _tenantId='instaport';_tenantName='InstaPort Logistics';_tenantPlan='enterprise';
     _tenantUsers=_DEMO_USERS.slice();
-    // Also load any users added via admin panel from Supabase
+    // Merge Supabase users with short timeout so login never freezes
     if(_sb){
       try{
-        var _ur=await _sb.from('users').select('id,employee_id,name,role,pin,active,email').eq('tenant_id','instaport');
+        var _sbTimeout=new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},3000);});
+        var _ur=await Promise.race([_sb.from('users').select('id,employee_id,name,role,pin,active,email').eq('tenant_id','instaport'),_sbTimeout]);
         if(!_ur.error&&_ur.data&&_ur.data.length){
           _ur.data.forEach(function(u){
             if(u.active===false||u.active===0||u.active===null)return;
@@ -4544,6 +4545,7 @@ async function doLogin(){
   var lockKey=orgCode+':'+uid;
   if(_secIsLocked(lockKey)){lerr.innerHTML='🔒 '+_secLockoutMsg(lockKey)+'<br><a href="#" onclick="_secResetLockout();return false;" style="font-size:11px;color:#6C3FF5;text-decoration:underline;margin-top:4px;display:inline-block">🔓 Unlock my account</a>';lerr.style.display='block';return;}
   var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
+  var _btnTimeout=setTimeout(function(){if(btn){btn.disabled=false;btn.textContent='LOGIN';}lerr.textContent='Login timed out — check your connection and try again.';lerr.style.display='block';},8000);
   try{
     var ok=await _loadTenant(orgCode);
     if(ok==='deactivated'){lerr.innerHTML='🔴 <b>This organization has been deactivated.</b><br><span style="font-size:11px;opacity:.8">Contact InstaPort support to reactivate your account.</span>';lerr.style.display='block';return;}
@@ -4663,6 +4665,7 @@ async function doLogin(){
     lerr.textContent='Login error: '+authErr.message;
     lerr.style.display='block';
   }finally{
+    clearTimeout(_btnTimeout);
     if(btn){btn.disabled=false;btn.textContent='LOGIN';}
   }
 }
