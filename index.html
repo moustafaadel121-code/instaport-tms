@@ -13273,6 +13273,79 @@ rSec = function() {
       }).join('') + '</div>' : '');
 };
 
+// ══ TRIP PDF REPORT — Proof of Delivery ══════════════════════
+function tripPDF(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t){toast('Trip not found','err');return;}
+  var isDone=t.status==='completed';
+  var br={};try{br=JSON.parse(localStorage.getItem('ip_branding')||'{}');}catch(e){}
+  var co=br.companyName||_tenantName||'InstaPort Logistics';
+  var logo=br.logo?'<img src="'+br.logo+'" style="height:44px;max-width:160px;object-fit:contain"/>':'';
+  var now=new Date().toLocaleString('en-GB');
+  var docNo='POD-'+t.id+'-'+new Date().toISOString().slice(0,10).replace(/-/g,'');
+  var esc=function(s){return String(s==null?'—':s).replace(/</g,'&lt;');};
+  var row=function(l,v){return '<tr><td class="lb">'+l+'</td><td class="vl">'+v+'</td></tr>';};
+  var tlRows=(t.tl||[]).map(function(l){
+    return '<tr><td>'+esc(l.ts)+'</td><td>'+esc(l.user)+'</td><td>'+String(l.action||'').replace(/<[^>]*>/g,'')+(l.detail?' — '+esc(l.detail):'')+'</td></tr>';
+  }).join('');
+  var costRows='';
+  if(t.costBreakdown){
+    costRows=Object.keys(t.costBreakdown).filter(function(k){return +t.costBreakdown[k]!==0;})
+      .map(function(k){return '<tr><td class="lb">'+esc(k)+'</td><td class="vl" style="text-align:right">EGP '+t.costBreakdown[k]+'</td></tr>';}).join('')+
+      '<tr class="tot"><td>TOTAL</td><td style="text-align:right">EGP '+(t.cost||0)+'</td></tr>';
+  }
+  var checklist='';
+  if(t.checklist&&typeof t.checklist==='object'){
+    var cks=Object.keys(t.checklist);
+    if(cks.length)checklist='<div class="sec">Quality Checklist</div><table class="tb">'+cks.map(function(k){
+      return '<tr><td class="lb">'+esc(k.replace(/_/g,' '))+'</td><td class="vl">'+(t.checklist[k]?'✔ Pass':'✘ Fail')+'</td></tr>';}).join('')+'</table>';
+  }
+  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+docNo+'</title><style>'+
+    '*{margin:0;padding:0;box-sizing:border-box}body{font-family:Segoe UI,Arial,sans-serif;color:#1a1a2e;padding:34px 42px;font-size:12.5px;line-height:1.5}'+
+    '.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #4F1FD4;padding-bottom:14px;margin-bottom:6px}'+
+    '.hd h1{font-size:21px;color:#2a1a66}.hd .sub{font-size:11px;color:#777}'+
+    '.meta{display:flex;justify-content:space-between;font-size:11px;color:#555;margin-bottom:18px;padding:7px 0;border-bottom:1px solid #e5e5ef}'+
+    '.badge{display:inline-block;padding:3px 14px;border-radius:20px;font-weight:700;font-size:11px;'+(isDone?'background:#e7f8ef;color:#0a7a45;border:1px solid #0a7a45':'background:#fff4e0;color:#b26a00;border:1px solid #b26a00')+'}'+
+    '.sec{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#4F1FD4;margin:20px 0 8px;padding-bottom:4px;border-bottom:1.5px solid #ded6f7}'+
+    'table.tb{width:100%;border-collapse:collapse}table.tb td{padding:6px 10px;border:1px solid #e8e6f2;vertical-align:top}'+
+    'td.lb{width:32%;background:#f7f6fc;font-weight:600;color:#444}td.vl{font-weight:500}'+
+    'table.tl{width:100%;border-collapse:collapse;font-size:11px}table.tl th{background:#2a1a66;color:#fff;text-align:left;padding:6px 10px;font-size:10.5px;text-transform:uppercase;letter-spacing:.6px}table.tl td{padding:5px 10px;border:1px solid #e8e6f2}'+
+    'tr.tot td{font-weight:800;font-size:13.5px;background:#f0ecfb;border-top:2px solid #4F1FD4}'+
+    '.sigs{display:flex;gap:18px;margin-top:26px}.sig{flex:1;border:1px solid #d8d4ec;border-radius:8px;padding:12px 14px 8px}'+
+    '.sig .who{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#4F1FD4;margin-bottom:34px}'+
+    '.sig .ln{border-top:1.3px solid #999;padding-top:5px;font-size:10px;color:#888}'+
+    '.ft{margin-top:26px;padding-top:10px;border-top:1px solid #e5e5ef;font-size:10px;color:#999;display:flex;justify-content:space-between}'+
+    '@media print{body{padding:18px 24px}.noprint{display:none}}'+
+    '</style></head><body>'+
+    '<div class="hd"><div><h1>'+(isDone?'PROOF OF DELIVERY':'TRIP REPORT')+'</h1><div class="sub">'+esc(co)+' — Temperature-Controlled Transport</div></div>'+logo+'</div>'+
+    '<div class="meta"><span>Document No: <b>'+docNo+'</b></span><span>Generated: '+now+'</span><span class="badge">'+(isDone?'✔ COMPLETED':esc(t.status).replace(/_/g,' ').toUpperCase())+'</span></div>'+
+    '<div class="sec">Shipment Details</div><table class="tb">'+
+    row('Trip ID','<b>'+esc(t.id)+'</b>')+row('Customer',esc(t.customer))+
+    row('Service Type',esc(t.type))+row('Temperature Condition','<b>'+esc(t.condition)+'</b>')+
+    row('Route',esc(t.from)+' → '+esc(t.dests))+
+    row('Planned / Actual KM',(t.km||'—')+' km'+(t.actualKm?' / <b>'+t.actualKm+' km</b>':''))+
+    row('Vehicle',esc(t.truck))+row('Driver',esc(t.driver))+
+    row('Created',esc(t.ts)+(t.createdBy?' by '+esc(t.createdBy):''))+
+    (t.co2?row('CO₂ Emissions',t.co2+' kg'):'')+
+    '</table>'+
+    checklist+
+    '<div class="sec">Chain of Custody — Timeline</div>'+
+    '<table class="tl"><tr><th style="width:22%">Date / Time</th><th style="width:20%">By</th><th>Event</th></tr>'+(tlRows||'<tr><td colspan="3">No events recorded</td></tr>')+'</table>'+
+    (costRows&&(can('all')||S.role==='finance')?'<div class="sec">Charges</div><table class="tb">'+costRows+'</table>':'')+
+    '<div class="sec">Signatures</div>'+
+    '<div class="sigs">'+
+    ['Driver','Quality Inspector','Security Gate','Received By (Customer)'].map(function(w){
+      return '<div class="sig"><div class="who">'+w+'</div><div class="ln">Name / Signature / Date</div></div>';}).join('')+
+    '</div>'+
+    '<div class="ft"><span>Generated by InstaPort TMS — '+esc(S.user?S.user.name:'')+'</span><span>'+docNo+' • Page 1 of 1</span></div>'+
+    '<div class="noprint" style="position:fixed;top:12px;right:14px"><button onclick="window.print()" style="padding:10px 22px;background:#4F1FD4;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button></div>'+
+    '</body></html>';
+  var w=window.open('','_blank');
+  if(!w){toast('Popup blocked — allow popups to generate the PDF','err');return;}
+  w.document.write(html);w.document.close();
+  setTimeout(function(){try{w.focus();}catch(e){}},300);
+  audit('TRIP_PDF',(isDone?'PoD':'Report')+' generated',t.id);
+}
+
 function secHold(id) { openM('<div class="m-title">&#9940; Hold at Gate &mdash; ' + id + '</div><div class="fg"><label>Reason *</label><textarea id="shr" placeholder="Enter reason..."></textarea></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-danger" onclick="secHoldC(\'' + id + '\')">Confirm Hold</button></div>'); }
 function secHoldC(id) { var r = (document.getElementById('shr') || {}).value; if(!r) { toast('Enter reason', 'err'); return; } requirePwd('Confirm Hold', function() { var t = S.trips.find(function(x) { return x.id === id; }); if(!t) return; t.tl.push({ ts: new Date().toLocaleString('en-GB'), user: S.user.name, action: 'Gate Hold', detail: r }); audit('GATE_HOLD', r, id); closeM(); toast('Vehicle held at gate', 'err'); rSec(); }); }
 
@@ -13304,6 +13377,7 @@ function _openTripSPv2(id) {
     (t.status === 'inbound_security' && (can('complete_workflow')||S.role==='security') ? '<button class="btn btn-success btn-sm" onclick="secCompleteWorkflow(\''+t.id+'\');closeSP()">&#9745; Confirm Truck Return</button>' : '') +
     (can('complete_workflow')&&t.status!=='completed' ? '<button class="btn btn-outline btn-sm" data-id="' + t.id + '" onclick="secCompleteWorkflow(this.dataset.id);closeSP()">&#9889; Force Complete</button>' : '') +
     (isCompleted&&canAttach ? '<button class="btn btn-outline btn-sm" onclick="openTripAttach(\''+t.id+'\')">&#128206; Attach Docs/Graphs</button>' : '') +
+    '<button class="btn btn-outline btn-sm" onclick="tripPDF(\''+t.id+'\')">&#128196; '+(isCompleted?'Proof of Delivery (PDF)':'Trip Report (PDF)')+'</button>' +
     '</div></div>' +
     '<div id="tp1" class="sp-pane" style="display:none"><div style="background:linear-gradient(135deg,#0F0E2E,#1A1736);border-radius:var(--r-lg);height:150px;position:relative;overflow:hidden;margin-bottom:14px"><svg style="position:absolute;inset:0;width:100%;height:100%"><path d="M 40 110 Q 140 50 260 80 Q 320 95 420 40" stroke="rgba(108,63,245,.8)" stroke-width="2" fill="none" stroke-dasharray="6,4"/><circle cx="40" cy="110" r="7" fill="#10B981"/><circle cx="420" cy="40" r="7" fill="#6C3FF5"/></svg></div><div class="ig">' + [['From', t.from || '&#8212;'], ['To', t.dests || '&#8212;'], ['KM', t.km || '&#8212;'], ['Stops', (t.destsArr || []).length || 1]].map(function(x) { return '<div class="ib"><div class="ib-l">' + x[0] + '</div><div class="ib-v">' + x[1] + '</div></div>'; }).join('') + '</div></div>' +
     '<div id="tp2" class="sp-pane" style="display:none"><div style="text-align:center;padding:20px;background:rgba(16,185,129,.06);border-radius:var(--r-lg);margin-bottom:14px"><div style="font-size:42px;font-weight:900;color:#10B981;font-family:Space Grotesk,sans-serif">' + (_tb || 3.5).toFixed(1) + '&deg;C</div><div style="font-size:12px;color:var(--t2)">Live &bull; Range: 2&ndash;8&deg;C</div></div><div class="gauge-bar"><div class="gauge-fill" style="width:55%;background:#10B981"></div></div></div>' +
