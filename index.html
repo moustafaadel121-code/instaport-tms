@@ -5308,7 +5308,11 @@ function rAdminBranding(){
   '<div class="fg"><label>Sidebar Color</label><input type="color" id="br-sidebar" value="'+(br.sidebarColor||'#1E1453')+'" style="height:38px;width:100%;border-radius:8px;border:1.5px solid var(--bd);cursor:pointer" oninput="_previewBranding()"/></div>'+
   '</div>'+
   '<div class="fg" style="margin-bottom:12px"><label>Support Email</label><input id="br-email" value="'+(br.supportEmail||'')+'" placeholder="support@yourcompany.com"/></div>'+
-  '<div class="fg" style="margin-bottom:16px"><label>Footer Text (appears on PDF reports)</label><input id="br-footer" value="'+(br.footerText||'')+'" placeholder="Powered by YourCompany"/></div>'+
+  '<div style="margin-bottom:16px;background:var(--bg);border:1.5px solid var(--bd);border-radius:10px;padding:10px 14px;display:flex;align-items:center;gap:10px">'+
+  '<span style="font-size:18px">&#9889;</span>'+
+  '<div><div style="font-size:12.5px;font-weight:700;color:var(--t)">Powered by InstaPort TMS</div>'+
+  '<div style="font-size:10.5px;color:var(--t3)">Permanent product signature — appears in the sidebar, login page and all PDF reports. Cannot be changed or removed.</div></div>'+
+  '<span style="margin-left:auto;font-size:14px" title="Locked">&#128274;</span></div>'+
   '<div class="m-foot" style="border:none;padding:0"><button class="btn btn-primary" onclick="_saveBranding()">💾 Save & Apply Branding</button>'+
   '<button class="btn btn-outline" onclick="_resetBranding()" style="margin-left:8px">🔄 Reset Defaults</button></div>'+
   '</div>'+
@@ -5352,7 +5356,7 @@ function _brandingPreviewHTML(br){
       return '<div style="padding:7px 10px;border-radius:8px;margin-bottom:4px;font-size:12px;color:var(--t2)">'+p+'</div>';
     }).join('')+
     '</div>'+
-    '<div style="background:'+col+';padding:6px 12px;font-size:11px;color:#fff;text-align:center">'+(br.footerText||'Powered by InstaPort')+'</div>';
+    '<div style="background:'+col+';padding:6px 12px;font-size:11px;color:#fff;text-align:center">&#9889; Powered by InstaPort TMS</div>';
 }
 window._saveBranding=function(){
   var br={
@@ -5363,7 +5367,7 @@ window._saveBranding=function(){
     primaryColor:(document.getElementById('br-color')||{}).value||'#6C3FF5',
     sidebarColor:(document.getElementById('br-sidebar')||{}).value||'#1E1453',
     supportEmail:(document.getElementById('br-email')||{}).value||'',
-    footerText:(document.getElementById('br-footer')||{}).value||''
+    footerText:'Powered by InstaPort TMS' // fixed product signature — never editable
   };
   S.branding=br;
   try{localStorage.setItem('ip_branding',JSON.stringify(br));}catch(e){}
@@ -5393,8 +5397,8 @@ function _applyBrandingLive(br){
     if(!fav){fav=document.createElement('link');fav.rel='icon';document.head.appendChild(fav);}
     fav.href=br.favUrl;
   }
-  // Page title
-  if(br.companyName){document.title=br.companyName+' TMS';}
+  // Page title — company name + permanent product mark
+  if(br.companyName){document.title=br.companyName+' — InstaPort TMS';}
 }
 window._previewBranding=function(){
   var br={
@@ -13223,7 +13227,8 @@ buildSB = function() {
       badge + '</div>';
   }).join('') +
   '<div class="sb-divider"></div>' +
-  '<div class="sbi" onclick="openLangMenu(event)"><div class="sbi-icon">&#127760;</div><span class="sbi-label">'+((_L_I18N[_lang]||_L_I18N.en).langWord)+'</span></div>';
+  '<div class="sbi" onclick="openLangMenu(event)"><div class="sbi-icon">&#127760;</div><span class="sbi-label">'+((_L_I18N[_lang]||_L_I18N.en).langWord)+'</span></div>' +
+  '<div style="padding:10px 14px 4px;font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.5px;text-align:center">&#9889; Powered by <b style="color:rgba(255,255,255,.6)">InstaPort</b> TMS</div>';
 };
 
 // ════ ENHANCED rDash ════
@@ -13612,7 +13617,7 @@ function tripPDF(id){
     '.ft{margin-top:26px;padding-top:10px;border-top:1px solid #e5e5ef;font-size:10px;color:#999;display:flex;justify-content:space-between}'+
     '@media print{body{padding:18px 24px}.noprint{display:none}}'+
     '</style></head><body>'+
-    '<div class="hd"><div><h1>'+(isDone?'PROOF OF DELIVERY':'TRIP REPORT')+'</h1><div class="sub">'+esc(co)+' — Temperature-Controlled Transport</div></div>'+logo+'</div>'+
+    '<div class="hd"><div><h1>'+(isDone?'PROOF OF DELIVERY':'TRIP REPORT')+'</h1><div class="sub">'+esc(co)+' — Temperature-Controlled Transport &bull; &#9889; Powered by InstaPort TMS</div></div>'+logo+'</div>'+
     '<div class="meta"><span>Document No: <b>'+docNo+'</b></span><span>Generated: '+now+'</span><span class="badge">'+(isDone?'✔ COMPLETED':esc(t.status).replace(/_/g,' ').toUpperCase())+'</span></div>'+
     '<div class="sec">Shipment Details</div><table class="tb">'+
     row('Trip ID','<b>'+esc(t.id)+'</b>')+row('Customer',esc(t.customer))+
