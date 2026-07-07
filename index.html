@@ -12917,19 +12917,44 @@ function toggleDark(){
 
 // Language
 var _lang = 'en';
-var AR_NAV = {dashboard:'الرئيسية',shipments:'الشحنات',fleet:'الأسطول',drivers:'السائقون',customers:'العملاء',routes:'المسارات',tracking:'التتبع',reports:'التقارير',maintenance:'الصيانة',alerts:'التنبيهات',settings:'الإعدادات',quality:'الجودة',controlroom:'غرفة التحكم',security:'الأمن',finance:'المالية',spare_parts:'قطع الغيار',validation:'التحقق',ai:'الذكاء الاصطناعي',admin_mgmt:'الإدارة',analytics:'التحليلات',audit:'المراجعة',nr_trip:'رحلة غير إيرادية',my_trips:'رحلاتي',exceptions:'الاستثناءات',billing:'الفواتير',fuel:'الوقود',esg:'الاستدامة'};
+var AR_NAV = {dashboard:'الرئيسية',shipments:'الشحنات',fleet:'الأسطول',drivers:'السائقون',customers:'العملاء',routes:'المسارات',tracking:'التتبع',reports:'التقارير',maintenance:'الصيانة',alerts:'التنبيهات',settings:'الإعدادات',quality:'الجودة',controlroom:'غرفة التحكم',security:'الأمن',finance:'المالية',spare_parts:'قطع الغيار',validation:'التحقق',ai:'الذكاء الاصطناعي',admin_mgmt:'الإدارة',analytics:'التحليلات',audit:'المراجعة',nr_trip:'رحلة غير إيرادية',my_trips:'رحلاتي',exceptions:'الاستثناءات',billing:'الفواتير',fuel:'الوقود',esg:'الاستدامة',trips:'الشحنات',forecast:'شحنة جديدة',client_portal:'شحناتي'};
+var FR_NAV = {dashboard:'Tableau de bord',shipments:'Expéditions',fleet:'Flotte',drivers:'Chauffeurs',customers:'Clients',routes:'Itinéraires',tracking:'Suivi',reports:'Rapports',maintenance:'Maintenance',alerts:'Alertes',settings:'Paramètres',quality:'Qualité',controlroom:'Salle de contrôle',security:'Sécurité',finance:'Finance',spare_parts:'Pièces détachées',validation:'Validation',ai:'IA',admin_mgmt:'Administration',analytics:'Rapports',audit:'Audit',nr_trip:'Non facturable',my_trips:'Mes trajets',exceptions:'Exceptions',billing:'Factures',fuel:'Carburant',esg:'Rapport ESG',trips:'Expéditions',forecast:'Nouvelle expédition',client_portal:'Mes expéditions'};
+var _L_I18N={
+  en:{title:'Welcome back',sub:'Sign in to your organization',org:'Organization Code',emp:'Employee ID',pw:'Password',btn:'LOGIN',headline:'Smart Logistics,<br><span>Seamless Control</span>',langWord:'Language'},
+  ar:{title:'مرحبًا بعودتك',sub:'سجّل الدخول إلى مؤسستك',org:'كود المؤسسة',emp:'رقم الموظف',pw:'كلمة المرور',btn:'دخول',headline:'لوجستيات ذكية،<br><span>تحكم سلس</span>',langWord:'اللغة'},
+  fr:{title:'Bon retour',sub:'Connectez-vous à votre organisation',org:"Code de l'organisation",emp:'ID employé',pw:'Mot de passe',btn:'CONNEXION',headline:'Logistique intelligente,<br><span>contrôle fluide</span>',langWord:'Langue'}
+};
+function _applyLoginLang(){
+  var d=_L_I18N[_lang]||_L_I18N.en;
+  var q=function(s){return document.querySelector(s);};
+  var t=q('.lcard-title');if(t)t.textContent=d.title;
+  var s2=q('.lcard-sub');if(s2)s2.textContent=d.sub;
+  var labs=document.querySelectorAll('.l-field-label');
+  if(labs[0])labs[0].textContent=d.org;
+  if(labs[1])labs[1].textContent=d.emp;
+  if(labs[2])labs[2].textContent=d.pw;
+  var b=q('.l-login-btn');if(b&&!b.disabled)b.textContent=d.btn;
+  var h=q('.ll-headline');if(h)h.innerHTML=d.headline;
+}
+function _applyLangChrome(){
+  var ar=_lang==='ar';
+  document.documentElement.lang=_lang;
+  document.documentElement.dir=ar?'rtl':'ltr';
+  document.body.style.fontFamily=ar?"'Noto Sans Arabic','Plus Jakarta Sans',sans-serif":"'Plus Jakarta Sans',sans-serif";
+  var next=_lang==='en'?'AR':_lang==='ar'?'FR':'EN';
+  var lb=document.getElementById('tb-lang-btn');if(lb)lb.innerHTML='&#127760; '+next;
+  var llb=document.getElementById('l-lang-btn');if(llb)llb.innerHTML='&#127760; '+next;
+  _applyLoginLang();
+}
 function toggleLang(){
-  _lang = _lang === 'en' ? 'ar' : 'en';
-  var ar = _lang === 'ar';
-  document.documentElement.lang = ar ? 'ar' : 'en';
-  document.documentElement.dir = ar ? 'rtl' : 'ltr';
-  document.body.style.fontFamily = ar ? "'Noto Sans Arabic','Plus Jakarta Sans',sans-serif" : "'Plus Jakarta Sans',sans-serif";
-  var lb = document.getElementById('tb-lang-btn');
-  var llb = document.getElementById('l-lang-btn');
-  if(lb) lb.innerHTML = ar ? '&#127760; EN' : '&#127760; AR';
-  if(llb) llb.innerHTML = ar ? '&#127760; EN' : '&#127760; AR';
+  _lang = _lang==='en' ? 'ar' : _lang==='ar' ? 'fr' : 'en';
+  try{localStorage.setItem('ip_lang',_lang);}catch(e){}
+  _applyLangChrome();
   if(S.user) { buildSB(); nav(S.page); }
 }
+// Restore saved language on startup
+try{var _slng=localStorage.getItem('ip_lang');if(_slng&&['en','ar','fr'].indexOf(_slng)>-1)_lang=_slng;}catch(e){}
+document.addEventListener('DOMContentLoaded',function(){if(_lang!=='en')_applyLangChrome();});
 
 function fillD(id, pin, org) {
   if(document.getElementById('uorg'))document.getElementById('uorg').value=org||'instaport';
@@ -13060,7 +13085,7 @@ buildSB = function() {
   if(!navEl) return;
 
   navEl.innerHTML = pp.map(function(p) {
-    var lbl = ar ? (AR_NAV[p.id] || PGL[p.id] || p.id) : (PGL[p.id] || p.id);
+    var lbl = _lang==='ar' ? (AR_NAV[p.id] || PGL[p.id] || p.id) : _lang==='fr' ? (FR_NAV[p.id] || PGL[p.id] || p.id) : (PGL[p.id] || p.id);
     var ic = ICO[p.id] || '&#128196;';
     var isActive = S.page === p.id;
     var exOpen=(S.exceptions||[]).filter(function(e){return e.status==='open';}).length;
@@ -13073,7 +13098,7 @@ buildSB = function() {
       badge + '</div>';
   }).join('') +
   '<div class="sb-divider"></div>' +
-  '<div class="sbi" onclick="toggleLang()"><div class="sbi-icon">&#127760;</div><span class="sbi-label">Language</span></div>';
+  '<div class="sbi" onclick="toggleLang()"><div class="sbi-icon">&#127760;</div><span class="sbi-label">'+((_L_I18N[_lang]||_L_I18N.en).langWord)+'</span></div>';
 };
 
 // ════ ENHANCED rDash ════
