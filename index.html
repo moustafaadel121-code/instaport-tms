@@ -2732,7 +2732,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
       <div class="l-theme-pill">
         <button type="button" class="l-topbtn" id="l-dark-btn" onclick="toggleDark()">&#9728;&#65039; Light</button>
       </div>
-      <button type="button" class="l-lang-corner" id="l-lang-btn" onclick="toggleLang()">&#127760; AR</button>
+      <button type="button" class="l-lang-corner" id="l-lang-btn" onclick="openLangMenu(event)">&#127760; EN</button>
     </div>
     <div class="login-right-inner">
     <!-- LOGIN PANEL -->
@@ -2937,7 +2937,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
           <div class="tb-theme-dot" id="tb-th-dot">&#9728;&#65039;</div>
           <span class="tb-theme-lbl" id="tb-th-lbl">Light</span>
         </div>
-        <div class="tb-theme-toggle" onclick="toggleLang()" id="tb-lang-btn" style="font-size:13px">
+        <div class="tb-theme-toggle" onclick="openLangMenu(event)" id="tb-lang-btn" style="font-size:13px">
           &#127760; AR
         </div>
         <div class="tb-divider"></div>
@@ -12281,7 +12281,7 @@ buildSB=function(){
     '<div style="flex:1"></div>'+
     '<div class="sb-bottom" style="display:flex;flex-direction:column;align-items:center;gap:4px">'+
       '<div class="sbi" onclick="toggleDark()" title="Theme" style="justify-content:center">&#127769;<span class="sbi-tip">Toggle Theme</span></div>'+
-      '<div class="sbi" onclick="toggleLang()" title="Language" style="justify-content:center">&#127760;<span class="sbi-tip">Language</span></div>'+
+      '<div class="sbi" onclick="openLangMenu(event)" title="Language" style="justify-content:center">&#127760;<span class="sbi-tip">Language</span></div>'+
       '<div class="sbi" onclick="logout()" title="Log Out" style="justify-content:center">&#128682;<span class="sbi-tip">Log Out</span></div>'+
     '</div>';
   var sb=document.getElementById('sidebar');
@@ -12941,16 +12941,53 @@ function _applyLangChrome(){
   document.documentElement.lang=_lang;
   document.documentElement.dir=ar?'rtl':'ltr';
   document.body.style.fontFamily=ar?"'Noto Sans Arabic','Plus Jakarta Sans',sans-serif":"'Plus Jakarta Sans',sans-serif";
-  var next=_lang==='en'?'AR':_lang==='ar'?'FR':'EN';
-  var lb=document.getElementById('tb-lang-btn');if(lb)lb.innerHTML='&#127760; '+next;
-  var llb=document.getElementById('l-lang-btn');if(llb)llb.innerHTML='&#127760; '+next;
+  var cur=_lang.toUpperCase();
+  var lb=document.getElementById('tb-lang-btn');if(lb)lb.innerHTML='&#127760; '+cur;
+  var llb=document.getElementById('l-lang-btn');if(llb)llb.innerHTML='&#127760; '+cur;
   _applyLoginLang();
 }
-function toggleLang(){
-  _lang = _lang==='en' ? 'ar' : _lang==='ar' ? 'fr' : 'en';
-  try{localStorage.setItem('ip_lang',_lang);}catch(e){}
+function setLang(l){
+  if(['en','ar','fr'].indexOf(l)<0)return;
+  _lang=l;
+  try{localStorage.setItem('ip_lang',l);}catch(e){}
+  var m=document.getElementById('lang-menu');if(m)m.remove();
   _applyLangChrome();
-  if(S.user) { buildSB(); nav(S.page); }
+  if(S.user){buildSB();nav(S.page);}
+}
+function toggleLang(){ // kept for backward compat — now opens the menu
+  openLangMenu(window.event);
+}
+function openLangMenu(ev){
+  if(ev&&ev.stopPropagation)ev.stopPropagation();
+  var old=document.getElementById('lang-menu');if(old){old.remove();return;}
+  var langs=[['en','🇬🇧','English'],['ar','🇪🇬','العربية'],['fr','🇫🇷','Français']];
+  var m=document.createElement('div');
+  m.id='lang-menu';
+  m.style.cssText='position:fixed;z-index:99999;background:var(--surf,#fff);border:1px solid var(--bd,#e2e0ef);border-radius:12px;box-shadow:0 12px 32px rgba(20,10,60,.22);padding:6px;min-width:170px';
+  m.innerHTML=langs.map(function(L){
+    var cur=_lang===L[0];
+    return '<div onclick="setLang(\''+L[0]+'\')" '+
+      'style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;cursor:pointer;font-size:13.5px;font-weight:600;color:var(--t,#222);'+(cur?'background:rgba(108,63,245,.13);color:#6C3FF5;':'')+'" '+
+      'onmouseover="if(!this.dataset.cur)this.style.background=\'rgba(108,63,245,.07)\'" '+
+      'onmouseout="if(!this.dataset.cur)this.style.background=\'\'" '+
+      (cur?'data-cur="1" ':'')+'>'+
+      '<span style="font-size:17px">'+L[1]+'</span><span>'+L[2]+'</span>'+
+      (cur?'<span style="margin-inline-start:auto;color:#6C3FF5;font-weight:800">✓</span>':'')+
+    '</div>';
+  }).join('');
+  document.body.appendChild(m);
+  var tgt=ev&&(ev.currentTarget||ev.target);
+  var b=tgt&&tgt.getBoundingClientRect?tgt.getBoundingClientRect():{top:60,bottom:60,left:window.innerWidth-200};
+  var top=b.bottom+8;
+  if(top+m.offsetHeight>window.innerHeight-10)top=b.top-m.offsetHeight-8;
+  var left=Math.max(8,Math.min(b.left,window.innerWidth-m.offsetWidth-10));
+  m.style.top=top+'px';m.style.left=left+'px';
+  setTimeout(function(){
+    document.addEventListener('click',function _h(){
+      var mm=document.getElementById('lang-menu');if(mm)mm.remove();
+      document.removeEventListener('click',_h);
+    });
+  },0);
 }
 // Restore saved language on startup
 try{var _slng=localStorage.getItem('ip_lang');if(_slng&&['en','ar','fr'].indexOf(_slng)>-1)_lang=_slng;}catch(e){}
@@ -13098,7 +13135,7 @@ buildSB = function() {
       badge + '</div>';
   }).join('') +
   '<div class="sb-divider"></div>' +
-  '<div class="sbi" onclick="toggleLang()"><div class="sbi-icon">&#127760;</div><span class="sbi-label">'+((_L_I18N[_lang]||_L_I18N.en).langWord)+'</span></div>';
+  '<div class="sbi" onclick="openLangMenu(event)"><div class="sbi-icon">&#127760;</div><span class="sbi-label">'+((_L_I18N[_lang]||_L_I18N.en).langWord)+'</span></div>';
 };
 
 // ════ ENHANCED rDash ════
