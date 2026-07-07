@@ -18627,6 +18627,444 @@ function confirmImportCSV(target){
   }
 }
 
+// ══════════════════════════════════════════════════
+// FULL UI TRANSLATION LAYER (EN / AR / FR)
+// Translates every rendered screen after paint — no per-screen edits needed.
+// Keys are exact English strings (emoji-stripped core also matched).
+// ══════════════════════════════════════════════════
+var I18N_DICT={
+// ── Page titles / headers ─────────────────────────
+'Dashboard':{ar:'لوحة القيادة',fr:'Tableau de bord'},
+'Fleet':{ar:'الأسطول',fr:'Flotte'},
+'Trips':{ar:'الرحلات',fr:'Trajets'},
+'Shipments':{ar:'الشحنات',fr:'Expéditions'},
+'My Shipments':{ar:'شحناتي',fr:'Mes expéditions'},
+'My Trips':{ar:'رحلاتي',fr:'Mes trajets'},
+'My Active Trips':{ar:'رحلاتي النشطة',fr:'Mes trajets actifs'},
+'Dispatch':{ar:'الإرسال',fr:'Répartition'},
+'Quality':{ar:'الجودة',fr:'Qualité'},
+'Quality Check':{ar:'فحص الجودة',fr:'Contrôle qualité'},
+'Control Room':{ar:'غرفة التحكم',fr:'Salle de contrôle'},
+'Security':{ar:'الأمن',fr:'Sécurité'},
+'Gate Security':{ar:'أمن البوابة',fr:'Sécurité du portail'},
+'Gate & Workflow':{ar:'البوابة وسير العمل',fr:'Portail et flux'},
+'Finance':{ar:'المالية',fr:'Finance'},
+'Maintenance':{ar:'الصيانة',fr:'Maintenance'},
+'Validation':{ar:'التحقق',fr:'Validation'},
+'Invoices':{ar:'الفواتير',fr:'Factures'},
+'Invoice & Billing':{ar:'الفواتير والمحاسبة',fr:'Factures et facturation'},
+'Fuel':{ar:'الوقود',fr:'Carburant'},
+'Fuel Management':{ar:'إدارة الوقود',fr:'Gestion du carburant'},
+'Fuel Entry':{ar:'تسجيل وقود',fr:'Saisie carburant'},
+'ESG Report':{ar:'تقرير الاستدامة',fr:'Rapport ESG'},
+'ESG & Sustainability Report':{ar:'تقرير الاستدامة والبيئة',fr:'Rapport ESG et durabilité'},
+'Analytics':{ar:'التحليلات',fr:'Analytique'},
+'Analytics & BI':{ar:'التحليلات والتقارير',fr:'Analytique et BI'},
+'Exceptions':{ar:'الاستثناءات',fr:'Exceptions'},
+'Exception Monitor':{ar:'مراقبة الاستثناءات',fr:'Moniteur d\'exceptions'},
+'Audit Trail':{ar:'سجل المراجعة',fr:'Journal d\'audit'},
+'Audit':{ar:'المراجعة',fr:'Audit'},
+'Admin':{ar:'الإدارة',fr:'Administration'},
+'Settings':{ar:'الإعدادات',fr:'Paramètres'},
+'PM Scheduler':{ar:'جدولة الصيانة الوقائية',fr:'Planificateur PM'},
+'Vendors':{ar:'الموردون',fr:'Fournisseurs'},
+'Vendors & Workshops':{ar:'الموردون والورش',fr:'Fournisseurs et ateliers'},
+'HR & Compliance':{ar:'الموارد البشرية والامتثال',fr:'RH et conformité'},
+'Fleet Map':{ar:'خريطة الأسطول',fr:'Carte de la flotte'},
+'Spare Parts':{ar:'قطع الغيار',fr:'Pièces détachées'},
+'Non-Revenue':{ar:'غير إيرادية',fr:'Non facturable'},
+'New Shipment':{ar:'شحنة جديدة',fr:'Nouvelle expédition'},
+'Shipment track':{ar:'تتبع الشحنة',fr:'Suivi d\'expédition'},
+'AI Insights':{ar:'رؤى الذكاء الاصطناعي',fr:'Analyses IA'},
+'Reports':{ar:'التقارير',fr:'Rapports'},
+// ── Common buttons / actions ──────────────────────
+'Save':{ar:'حفظ',fr:'Enregistrer'},
+'Cancel':{ar:'إلغاء',fr:'Annuler'},
+'Close':{ar:'إغلاق',fr:'Fermer'},
+'Delete':{ar:'حذف',fr:'Supprimer'},
+'Edit':{ar:'تعديل',fr:'Modifier'},
+'Add':{ar:'إضافة',fr:'Ajouter'},
+'Confirm':{ar:'تأكيد',fr:'Confirmer'},
+'Approve':{ar:'اعتماد',fr:'Approuver'},
+'Reject':{ar:'رفض',fr:'Rejeter'},
+'Export':{ar:'تصدير',fr:'Exporter'},
+'Import':{ar:'استيراد',fr:'Importer'},
+'Search':{ar:'بحث',fr:'Rechercher'},
+'Filter':{ar:'تصفية',fr:'Filtrer'},
+'Print':{ar:'طباعة',fr:'Imprimer'},
+'Download':{ar:'تنزيل',fr:'Télécharger'},
+'Details':{ar:'التفاصيل',fr:'Détails'},
+'Detail':{ar:'تفاصيل',fr:'Détail'},
+'View':{ar:'عرض',fr:'Voir'},
+'Back':{ar:'رجوع',fr:'Retour'},
+'Next':{ar:'التالي',fr:'Suivant'},
+'Submit':{ar:'إرسال',fr:'Envoyer'},
+'Refresh':{ar:'تحديث',fr:'Actualiser'},
+'Assign':{ar:'تعيين',fr:'Affecter'},
+'Complete':{ar:'إكمال',fr:'Terminer'},
+'Complete Trip':{ar:'إكمال الرحلة',fr:'Terminer le trajet'},
+'Force Complete':{ar:'إكمال إجباري',fr:'Forcer la clôture'},
+'Save Note':{ar:'حفظ الملاحظة',fr:'Enregistrer la note'},
+'New Trip':{ar:'رحلة جديدة',fr:'Nouveau trajet'},
+'Add Trip':{ar:'إضافة رحلة',fr:'Ajouter un trajet'},
+'Add Truck':{ar:'إضافة شاحنة',fr:'Ajouter un camion'},
+'Add User':{ar:'إضافة مستخدم',fr:'Ajouter un utilisateur'},
+'Add Customer':{ar:'إضافة عميل',fr:'Ajouter un client'},
+'Add Vendor':{ar:'إضافة مورد',fr:'Ajouter un fournisseur'},
+'Add Part':{ar:'إضافة قطعة',fr:'Ajouter une pièce'},
+'Open Gate':{ar:'فتح البوابة',fr:'Ouvrir le portail'},
+'Hold':{ar:'إيقاف',fr:'Bloquer'},
+'Grid':{ar:'شبكة',fr:'Grille'},
+'List':{ar:'قائمة',fr:'Liste'},
+'CSV':{ar:'CSV',fr:'CSV'},
+'Excel':{ar:'Excel',fr:'Excel'},
+'Log Out':{ar:'تسجيل خروج',fr:'Déconnexion'},
+'Language':{ar:'اللغة',fr:'Langue'},
+'Light':{ar:'فاتح',fr:'Clair'},
+'Dark':{ar:'داكن',fr:'Sombre'},
+'Toggle Theme':{ar:'تبديل المظهر',fr:'Changer le thème'},
+// ── Table headers ─────────────────────────────────
+'Status':{ar:'الحالة',fr:'Statut'},
+'Customer':{ar:'العميل',fr:'Client'},
+'Customers':{ar:'العملاء',fr:'Clients'},
+'Actions':{ar:'إجراءات',fr:'Actions'},
+'Type':{ar:'النوع',fr:'Type'},
+'Truck':{ar:'الشاحنة',fr:'Camion'},
+'Trucks':{ar:'الشاحنات',fr:'Camions'},
+'ID':{ar:'المعرف',fr:'ID'},
+'Date':{ar:'التاريخ',fr:'Date'},
+'KM':{ar:'كم',fr:'KM'},
+'Name':{ar:'الاسم',fr:'Nom'},
+'Trip ID':{ar:'رقم الرحلة',fr:'N° trajet'},
+'Qty':{ar:'الكمية',fr:'Qté'},
+'Cost':{ar:'التكلفة',fr:'Coût'},
+'Condition':{ar:'الحالة الحرارية',fr:'Condition'},
+'Trip':{ar:'الرحلة',fr:'Trajet'},
+'Revenue (EGP)':{ar:'الإيراد (ج.م)',fr:'Revenu (EGP)'},
+'Cost (EGP)':{ar:'التكلفة (ج.م)',fr:'Coût (EGP)'},
+'Plate':{ar:'اللوحة',fr:'Plaque'},
+'Driver':{ar:'السائق',fr:'Chauffeur'},
+'Drivers':{ar:'السائقون',fr:'Chauffeurs'},
+'Role':{ar:'الدور',fr:'Rôle'},
+'User':{ar:'المستخدم',fr:'Utilisateur'},
+'Users':{ar:'المستخدمون',fr:'Utilisateurs'},
+'Route':{ar:'المسار',fr:'Itinéraire'},
+'Event':{ar:'الحدث',fr:'Événement'},
+'Supplier':{ar:'المورد',fr:'Fournisseur'},
+'Stock':{ar:'المخزون',fr:'Stock'},
+'Severity':{ar:'الخطورة',fr:'Gravité'},
+'Odometer':{ar:'العداد',fr:'Compteur'},
+'Unit Cost':{ar:'تكلفة الوحدة',fr:'Coût unitaire'},
+'Total':{ar:'الإجمالي',fr:'Total'},
+'Total KM':{ar:'إجمالي الكيلومترات',fr:'KM total'},
+'Cal. Expiry':{ar:'انتهاء المعايرة',fr:'Expir. calibrage'},
+'Part':{ar:'القطعة',fr:'Pièce'},
+'Notes':{ar:'ملاحظات',fr:'Notes'},
+'Time':{ar:'الوقت',fr:'Heure'},
+'From':{ar:'من',fr:'De'},
+'To':{ar:'إلى',fr:'À'},
+'Action':{ar:'الإجراء',fr:'Action'},
+'Amount':{ar:'المبلغ',fr:'Montant'},
+'Email':{ar:'البريد الإلكتروني',fr:'E-mail'},
+'Active':{ar:'نشط',fr:'Actif'},
+'Inactive':{ar:'غير نشط',fr:'Inactif'},
+// ── Statuses / badges ─────────────────────────────
+'Awaiting Truck':{ar:'بانتظار شاحنة',fr:'En attente de camion'},
+'OUT-1: Quality':{ar:'خروج-1: الجودة',fr:'OUT-1 : Qualité'},
+'OUT-2: Control Room':{ar:'خروج-2: غرفة التحكم',fr:'OUT-2 : Salle de contrôle'},
+'OUT-3: Security Gate':{ar:'خروج-3: بوابة الأمن',fr:'OUT-3 : Portail sécurité'},
+'In Transit':{ar:'في الطريق',fr:'En transit'},
+'IN-1: Control Room':{ar:'دخول-1: غرفة التحكم',fr:'IN-1 : Salle de contrôle'},
+'IN-2: Security Gate':{ar:'دخول-2: بوابة الأمن',fr:'IN-2 : Portail sécurité'},
+'IN-3: Quality Check':{ar:'دخول-3: فحص الجودة',fr:'IN-3 : Contrôle qualité'},
+'Completed':{ar:'مكتملة',fr:'Terminé'},
+'Cancelled':{ar:'ملغاة',fr:'Annulé'},
+'Pending':{ar:'قيد الانتظار',fr:'En attente'},
+'Open':{ar:'مفتوح',fr:'Ouvert'},
+'Closed':{ar:'مغلق',fr:'Fermé'},
+'Resolved':{ar:'تم الحل',fr:'Résolu'},
+'Assigned':{ar:'معيّن',fr:'Affecté'},
+'Unassigned':{ar:'غير معيّن',fr:'Non affecté'},
+'Released':{ar:'مسموح',fr:'Autorisé'},
+'On Hold':{ar:'موقوف',fr:'En attente'},
+'Overdue':{ar:'متأخر',fr:'En retard'},
+'Paid':{ar:'مدفوعة',fr:'Payée'},
+'Unpaid':{ar:'غير مدفوعة',fr:'Impayée'},
+'Draft':{ar:'مسودة',fr:'Brouillon'},
+'Live':{ar:'مباشر',fr:'En direct'},
+'All Clear':{ar:'لا توجد مشاكل',fr:'Tout est en ordre'},
+'Finished':{ar:'منتهية',fr:'Terminé'},
+'Collected':{ar:'محصّلة',fr:'Encaissé'},
+'Acknowledged':{ar:'تم الاطلاع',fr:'Pris en compte'},
+// ── Dashboard / KPI ───────────────────────────────
+'Revenue':{ar:'الإيرادات',fr:'Revenus'},
+'Total Revenue':{ar:'إجمالي الإيرادات',fr:'Revenu total'},
+'Total Cost':{ar:'إجمالي التكلفة',fr:'Coût total'},
+'Total Invoices':{ar:'إجمالي الفواتير',fr:'Total factures'},
+'Completed Trips':{ar:'الرحلات المكتملة',fr:'Trajets terminés'},
+'Avg Trip Cost':{ar:'متوسط تكلفة الرحلة',fr:'Coût moyen/trajet'},
+'Live Temp':{ar:'الحرارة الآن',fr:'Temp. en direct'},
+'Live Fleet Temperature':{ar:'حرارة الأسطول المباشرة',fr:'Température flotte en direct'},
+'Temperature Graph':{ar:'رسم الحرارة',fr:'Graphique de température'},
+'Recent Trips':{ar:'أحدث الرحلات',fr:'Trajets récents'},
+'Recent Shipments':{ar:'أحدث الشحنات',fr:'Expéditions récentes'},
+'Weekly Deliveries':{ar:'التسليمات الأسبوعية',fr:'Livraisons hebdo'},
+'Open Tickets':{ar:'التذاكر المفتوحة',fr:'Tickets ouverts'},
+'Fuel Consumption':{ar:'استهلاك الوقود',fr:'Consommation carburant'},
+'Team Members':{ar:'أعضاء الفريق',fr:'Membres de l\'équipe'},
+'Log Entries':{ar:'إدخالات السجل',fr:'Entrées du journal'},
+'Pending Approval':{ar:'بانتظار الاعتماد',fr:'En attente d\'approbation'},
+'Overdue / Delayed':{ar:'متأخرة',fr:'En retard'},
+'Insights':{ar:'الرؤى',fr:'Analyses'},
+'Performance':{ar:'الأداء',fr:'Performance'},
+'Alerts':{ar:'التنبيهات',fr:'Alertes'},
+'Capacity':{ar:'السعة',fr:'Capacité'},
+'Active Trips':{ar:'الرحلات النشطة',fr:'Trajets actifs'},
+'On-Time Rate':{ar:'نسبة الالتزام بالوقت',fr:'Taux de ponctualité'},
+// ── Screens: quality / security / ctrl ────────────
+'Awaiting Quality Check':{ar:'بانتظار فحص الجودة',fr:'En attente de contrôle qualité'},
+'Trucks at Gate':{ar:'شاحنات عند البوابة',fr:'Camions au portail'},
+'Gate Log — Today':{ar:'سجل البوابة — اليوم',fr:'Journal du portail — aujourd\'hui'},
+'In-Transit Monitor':{ar:'مراقبة النقل',fr:'Moniteur en transit'},
+'Live Sensors':{ar:'الحساسات المباشرة',fr:'Capteurs en direct'},
+'Excursion Analysis':{ar:'تحليل تجاوزات الحرارة',fr:'Analyse des excursions'},
+'Trucks On Hold':{ar:'شاحنات موقوفة',fr:'Camions bloqués'},
+'Approve Gate Pass (OUT-3)':{ar:'اعتماد تصريح الخروج (خروج-3)',fr:'Approuver le laissez-passer (OUT-3)'},
+'Confirm Return from Destination':{ar:'تأكيد العودة من الوجهة',fr:'Confirmer le retour de destination'},
+'Confirm Truck Return':{ar:'تأكيد عودة الشاحنة',fr:'Confirmer le retour du camion'},
+'Mark Arrived at Warehouse':{ar:'تأكيد الوصول للمخزن',fr:'Marquer arrivé à l\'entrepôt'},
+'Waiting for Control Room (IN-1)':{ar:'بانتظار غرفة التحكم (دخول-1)',fr:'En attente salle de contrôle (IN-1)'},
+'Returning to Warehouse':{ar:'في طريق العودة للمخزن',fr:'Retour à l\'entrepôt'},
+'In Transit — Confirm Return (IN-1)':{ar:'في الطريق — تأكيد العودة (دخول-1)',fr:'En transit — confirmer retour (IN-1)'},
+'Outbound — Awaiting Ctrl (OUT-2)':{ar:'خروج — بانتظار التحكم (خروج-2)',fr:'Sortant — attente contrôle (OUT-2)'},
+'No outbound trips awaiting approval':{ar:'لا توجد رحلات خروج بانتظار الاعتماد',fr:'Aucun trajet sortant en attente'},
+'Driver Note':{ar:'ملاحظة السائق',fr:'Note du chauffeur'},
+'Timeline':{ar:'الخط الزمني',fr:'Chronologie'},
+'Temp':{ar:'الحرارة',fr:'Temp'},
+'Docs':{ar:'مستندات',fr:'Docs'},
+'Attach Docs/Graphs':{ar:'إرفاق مستندات/رسوم',fr:'Joindre docs/graphiques'},
+'Proof of Delivery (PDF)':{ar:'إثبات التسليم (PDF)',fr:'Preuve de livraison (PDF)'},
+'Trip Report (PDF)':{ar:'تقرير الرحلة (PDF)',fr:'Rapport de trajet (PDF)'},
+// ── Fleet / maintenance ───────────────────────────
+'Truck Management':{ar:'إدارة الشاحنات',fr:'Gestion des camions'},
+'Fleet Validation':{ar:'التحقق من الأسطول',fr:'Validation de la flotte'},
+'Cooling Unit':{ar:'وحدة التبريد',fr:'Unité de refroidissement'},
+'Maintenance Open':{ar:'صيانة مفتوحة',fr:'Maintenance ouverte'},
+'Needs attention':{ar:'يحتاج متابعة',fr:'Attention requise'},
+'Spare Parts Stock Management':{ar:'إدارة مخزون قطع الغيار',fr:'Gestion du stock de pièces'},
+'Service Cost by Truck (EGP)':{ar:'تكلفة الصيانة لكل شاحنة (ج.م)',fr:'Coût d\'entretien par camion (EGP)'},
+'Pick from Stock':{ar:'اختيار من المخزون',fr:'Choisir du stock'},
+'Fuel Fill Log':{ar:'سجل تعبئة الوقود',fr:'Journal de carburant'},
+// ── Finance / billing ─────────────────────────────
+'Financial Engine':{ar:'المحرك المالي',fr:'Moteur financier'},
+'Customer Rates':{ar:'أسعار العملاء',fr:'Tarifs clients'},
+'Base Rate':{ar:'السعر الأساسي',fr:'Tarif de base'},
+'Refrigeration':{ar:'التبريد',fr:'Réfrigération'},
+'Fuel Adj':{ar:'تعديل الوقود',fr:'Ajust. carburant'},
+'Invoice':{ar:'فاتورة',fr:'Facture'},
+'Create Invoice':{ar:'إنشاء فاتورة',fr:'Créer une facture'},
+'My Invoices':{ar:'فواتيري',fr:'Mes factures'},
+'Charges':{ar:'الرسوم',fr:'Frais'},
+'Total CO₂':{ar:'إجمالي CO₂',fr:'CO₂ total'},
+'CO₂ Reduction':{ar:'خفض CO₂',fr:'Réduction CO₂'},
+'Tree Equivalent':{ar:'مكافئ الأشجار',fr:'Équivalent arbres'},
+'Car Equivalent':{ar:'مكافئ السيارات',fr:'Équivalent voitures'},
+// ── Admin ─────────────────────────────────────────
+'User Management':{ar:'إدارة المستخدمين',fr:'Gestion des utilisateurs'},
+'Customer Management':{ar:'إدارة العملاء',fr:'Gestion des clients'},
+'Pricing':{ar:'التسعير',fr:'Tarification'},
+'Branding':{ar:'الهوية البصرية',fr:'Image de marque'},
+'Workflow':{ar:'سير العمل',fr:'Flux de travail'},
+'Language & Region':{ar:'اللغة والمنطقة',fr:'Langue et région'},
+'Security Policy':{ar:'سياسة الأمان',fr:'Politique de sécurité'},
+'Notifications':{ar:'الإشعارات',fr:'Notifications'},
+'Theme':{ar:'المظهر',fr:'Thème'},
+'Backup & Restore':{ar:'النسخ الاحتياطي والاستعادة',fr:'Sauvegarde et restauration'},
+'Download Full Backup':{ar:'تنزيل نسخة احتياطية كاملة',fr:'Télécharger la sauvegarde complète'},
+'Restore from Backup':{ar:'استعادة من نسخة احتياطية',fr:'Restaurer une sauvegarde'},
+'Role Access Rights Configuration':{ar:'إعداد صلاحيات الأدوار',fr:'Configuration des droits d\'accès'},
+'Sidebar Page Access by Role':{ar:'صفحات القائمة حسب الدور',fr:'Accès aux pages par rôle'},
+'Dashboard Customization per Role':{ar:'تخصيص لوحة القيادة حسب الدور',fr:'Personnalisation par rôle'},
+'User Account Security':{ar:'أمان حسابات المستخدمين',fr:'Sécurité des comptes'},
+'Two-Factor Authentication (2FA)':{ar:'التحقق بخطوتين (2FA)',fr:'Authentification à deux facteurs (2FA)'},
+'Upload CSV File':{ar:'رفع ملف CSV',fr:'Importer un fichier CSV'},
+'Save Language Settings':{ar:'حفظ إعدادات اللغة',fr:'Enregistrer les paramètres de langue'},
+'Save Security':{ar:'حفظ الأمان',fr:'Enregistrer la sécurité'},
+// ── Login extras ──────────────────────────────────
+'Remember me':{ar:'تذكرني',fr:'Se souvenir de moi'},
+'Forgot Password?':{ar:'نسيت كلمة المرور؟',fr:'Mot de passe oublié ?'},
+'Register here':{ar:'سجّل هنا',fr:'Inscrivez-vous ici'},
+'New organization?':{ar:'مؤسسة جديدة؟',fr:'Nouvelle organisation ?'},
+'LOGIN':{ar:'دخول',fr:'CONNEXION'},
+'Welcome back':{ar:'مرحبًا بعودتك',fr:'Bon retour'},
+'Sign in to your organization':{ar:'سجّل الدخول إلى مؤسستك',fr:'Connectez-vous à votre organisation'},
+'Show password':{ar:'إظهار كلمة المرور',fr:'Afficher le mot de passe'},
+// ── Misc common ───────────────────────────────────
+'Today':{ar:'اليوم',fr:'Aujourd\'hui'},
+'This Week':{ar:'هذا الأسبوع',fr:'Cette semaine'},
+'This Month':{ar:'هذا الشهر',fr:'Ce mois'},
+'All':{ar:'الكل',fr:'Tous'},
+'None':{ar:'لا شيء',fr:'Aucun'},
+'Yes':{ar:'نعم',fr:'Oui'},
+'No':{ar:'لا',fr:'Non'},
+'Loading':{ar:'جارٍ التحميل',fr:'Chargement'},
+'No data':{ar:'لا توجد بيانات',fr:'Aucune donnée'},
+'Welcome':{ar:'مرحبًا',fr:'Bienvenue'},
+'Profile':{ar:'الملف الشخصي',fr:'Profil'},
+'Cost calculated after completion':{ar:'تُحسب التكلفة بعد الإكمال',fr:'Coût calculé après clôture'},
+'No open tickets or KM alerts':{ar:'لا توجد تذاكر مفتوحة أو تنبيهات كيلومترات',fr:'Aucun ticket ouvert ni alerte KM'},
+'Click for details':{ar:'اضغط للتفاصيل',fr:'Cliquer pour les détails'},
+'No Customer Account Linked':{ar:'لا يوجد حساب عميل مرتبط',fr:'Aucun compte client lié'},
+'All Customers':{ar:'كل العملاء',fr:'Tous les clients'},
+'All Types':{ar:'كل الأنواع',fr:'Tous les types'},
+'All Trucks':{ar:'كل الشاحنات',fr:'Tous les camions'},
+'All Statuses':{ar:'كل الحالات',fr:'Tous les statuts'},
+'All Shipments':{ar:'كل الشحنات',fr:'Toutes les expéditions'},
+'All Conditions':{ar:'كل الظروف',fr:'Toutes les conditions'},
+'All Changes':{ar:'كل التغييرات',fr:'Tous les changements'},
+'All Invoices':{ar:'كل الفواتير',fr:'Toutes les factures'},
+'Filters':{ar:'الفلاتر',fr:'Filtres'},
+'Truck Types':{ar:'أنواع الشاحنات',fr:'Types de camions'},
+'No data yet':{ar:'لا توجد بيانات بعد',fr:'Pas encore de données'},
+'No data for this period':{ar:'لا توجد بيانات لهذه الفترة',fr:'Aucune donnée pour cette période'},
+'No trips assigned yet':{ar:'لا توجد رحلات معيّنة بعد',fr:'Aucun trajet affecté'},
+'No trips match filters':{ar:'لا توجد رحلات مطابقة للفلاتر',fr:'Aucun trajet ne correspond aux filtres'},
+'No trips match your search':{ar:'لا توجد رحلات مطابقة لبحثك',fr:'Aucun trajet ne correspond à votre recherche'},
+'No completed trips yet':{ar:'لا توجد رحلات مكتملة بعد',fr:'Aucun trajet terminé'},
+'No shipments yet':{ar:'لا توجد شحنات بعد',fr:'Pas encore d\'expéditions'},
+'No vehicles at gate':{ar:'لا توجد مركبات عند البوابة',fr:'Aucun véhicule au portail'},
+'No trucks at gate':{ar:'لا توجد شاحنات عند البوابة',fr:'Aucun camion au portail'},
+'No vehicles today':{ar:'لا توجد مركبات اليوم',fr:'Aucun véhicule aujourd\'hui'},
+'No invoices yet':{ar:'لا توجد فواتير بعد',fr:'Pas encore de factures'},
+'No fuel logs yet':{ar:'لا توجد سجلات وقود بعد',fr:'Pas encore de journaux carburant'},
+'No file selected':{ar:'لم يتم اختيار ملف',fr:'Aucun fichier sélectionné'},
+'No active shipment':{ar:'لا توجد شحنة نشطة',fr:'Aucune expédition active'},
+'No temp data':{ar:'لا توجد بيانات حرارة',fr:'Aucune donnée de température'},
+'None active':{ar:'لا شيء نشط',fr:'Aucun actif'},
+'Awaiting action':{ar:'بانتظار إجراء',fr:'Action requise'},
+'Shipment Track':{ar:'تتبع الشحنة',fr:'Suivi d\'expédition'},
+'Create new':{ar:'إنشاء جديد',fr:'Créer'},
+'+ Add Truck':{ar:'+ إضافة شاحنة',fr:'+ Ajouter un camion'},
+'+ Add User':{ar:'+ إضافة مستخدم',fr:'+ Ajouter un utilisateur'},
+'+ Add Vendor':{ar:'+ إضافة مورد',fr:'+ Ajouter un fournisseur'},
+'+ Add Part':{ar:'+ إضافة قطعة',fr:'+ Ajouter une pièce'},
+'+ Add Shift':{ar:'+ إضافة وردية',fr:'+ Ajouter un poste'},
+'+ Add Rule':{ar:'+ إضافة قاعدة',fr:'+ Ajouter une règle'},
+'+ Add Stop':{ar:'+ إضافة محطة',fr:'+ Ajouter un arrêt'},
+'+ New Invoice':{ar:'+ فاتورة جديدة',fr:'+ Nouvelle facture'},
+'+ New Ticket':{ar:'+ تذكرة جديدة',fr:'+ Nouveau ticket'},
+'+ New Shipment':{ar:'+ شحنة جديدة',fr:'+ Nouvelle expédition'},
+'+ New Schedule':{ar:'+ جدولة جديدة',fr:'+ Nouveau planning'},
+'+ Add Maintenance Ticket':{ar:'+ إضافة تذكرة صيانة',fr:'+ Ajouter un ticket de maintenance'},
+'Add Photo':{ar:'إضافة صورة',fr:'Ajouter une photo'},
+'New Invoice':{ar:'فاتورة جديدة',fr:'Nouvelle facture'},
+'New Ticket':{ar:'تذكرة جديدة',fr:'Nouveau ticket'},
+'Export All':{ar:'تصدير الكل',fr:'Tout exporter'},
+'Due Soon':{ar:'مستحقة قريبًا',fr:'Bientôt due'},
+'Fill Log':{ar:'سجل التعبئة',fr:'Journal de remplissage'},
+'Litres':{ar:'لترات',fr:'Litres'},
+'Station':{ar:'المحطة',fr:'Station'},
+'Check!':{ar:'انتبه!',fr:'Vérifier !'},
+'No active trips':{ar:'لا توجد رحلات نشطة',fr:'Aucun trajet actif'},
+'Total Trips':{ar:'إجمالي الرحلات',fr:'Total des trajets'},
+'View All':{ar:'عرض الكل',fr:'Tout voir'},
+'View All Trucks ›':{ar:'عرض كل الشاحنات ›',fr:'Voir tous les camions ›'},
+'Fleet Cap.':{ar:'سعة الأسطول',fr:'Cap. flotte'},
+'All Status':{ar:'كل الحالات',fr:'Tous les statuts'},
+'Total Fuel':{ar:'إجمالي الوقود',fr:'Carburant total'},
+'Fleet fuel tracking & approval':{ar:'تتبع واعتماد وقود الأسطول',fr:'Suivi et validation du carburant'},
+'No Invoices Here':{ar:'لا توجد فواتير هنا',fr:'Aucune facture ici'},
+'No invoices match this filter. Try adjusting the filter or create a new invoice from the header above.':{ar:'لا توجد فواتير مطابقة لهذا الفلتر. جرّب تعديل الفلتر أو أنشئ فاتورة جديدة من الأعلى.',fr:'Aucune facture ne correspond à ce filtre. Ajustez le filtre ou créez une nouvelle facture depuis l\'en-tête.'},
+'All Quality Checks Passed':{ar:'كل فحوصات الجودة ناجحة',fr:'Tous les contrôles qualité réussis'},
+'No trips are currently awaiting quality inspection. Everything is cleared and on track.':{ar:'لا توجد رحلات بانتظار فحص الجودة حاليًا. كل شيء سليم وعلى المسار.',fr:'Aucun trajet en attente de contrôle qualité. Tout est en ordre.'},
+'Truck Head':{ar:'رأس قاطرة',fr:'Tracteur'},
+'Awaiting Quality':{ar:'بانتظار الجودة',fr:'En attente qualité'},
+'Checked Today':{ar:'تم فحصها اليوم',fr:'Contrôlés aujourd\'hui'},
+'Passed':{ar:'ناجح',fr:'Réussi'},
+'Failed':{ar:'فاشل',fr:'Échoué'},
+'Approved':{ar:'معتمد',fr:'Approuvé'},
+'Rejected':{ar:'مرفوض',fr:'Rejeté'},
+'At Gate':{ar:'عند البوابة',fr:'Au portail'},
+'Departed Today':{ar:'غادرت اليوم',fr:'Partis aujourd\'hui'},
+'Arrived Today':{ar:'وصلت اليوم',fr:'Arrivés aujourd\'hui'}
+};
+// Dynamic patterns (text containing names/numbers)
+var _I18N_PATTERNS=[
+[/^Welcome back, (.+)$/,{ar:'مرحبًا بعودتك، $1',fr:'Bon retour, $1'}],
+[/^(\d+) trips? ›$/,{ar:'$1 رحلة ›',fr:'$1 trajet(s) ›'}],
+[/^(\d+) trips?$/,{ar:'$1 رحلة',fr:'$1 trajet(s)'}],
+// "All (3)" / "Pending (2)" — translate the word, keep the count
+[/^(All|Pending|Paid|Open|Completed|Draft|Overdue|Collected) (\(\d+\))$/,{
+  _map:{All:{ar:'الكل',fr:'Tous'},Pending:{ar:'قيد الانتظار',fr:'En attente'},Paid:{ar:'مدفوعة',fr:'Payées'},Open:{ar:'مفتوحة',fr:'Ouvertes'},Completed:{ar:'مكتملة',fr:'Terminées'},Draft:{ar:'مسودة',fr:'Brouillons'},Overdue:{ar:'متأخرة',fr:'En retard'},Collected:{ar:'محصّلة',fr:'Encaissées'}}
+}]
+];
+// Engine: translate text nodes + placeholders/titles under a root
+var _i18nBusy=false;
+function _i18nApply(root){
+  if(_lang==='en'||!root)return;
+  var L=_lang;
+  try{
+    var w=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,null,false),n;
+    while(n=w.nextNode()){
+      var pt=n.parentNode&&n.parentNode.tagName;
+      if(pt==='SCRIPT'||pt==='STYLE'||pt==='TEXTAREA')continue;
+      var s=n.nodeValue;if(!s)continue;
+      var t=s.trim();if(!t||t.length<2)continue;
+      var e=I18N_DICT[t];
+      if(e&&e[L]){n.nodeValue=s.replace(t,e[L]);continue;}
+      // letter-core (strip emoji/symbols around)
+      var m=t.match(/^[^A-Za-z]*([A-Za-z+][A-Za-z0-9 &’'\/\-—–:().,%°₂?!+]*[A-Za-z?).%!]|[A-Za-z])[^A-Za-z]*$/);
+      if(m){var core=m[1].trim();var e2=I18N_DICT[core];
+        if(e2&&e2[L]){n.nodeValue=s.replace(core,e2[L]);continue;}}
+      // dynamic patterns (names / numbers)
+      for(var pi=0;pi<_I18N_PATTERNS.length;pi++){
+        var pm=t.match(_I18N_PATTERNS[pi][0]);
+        if(pm){
+          var spec=_I18N_PATTERNS[pi][1];
+          if(spec._map){ // word (count) form
+            var wt=spec._map[pm[1]];
+            if(wt&&wt[L])n.nodeValue=s.replace(t,wt[L]+' '+pm[2]);
+          }else if(spec[L]){
+            n.nodeValue=s.replace(t,spec[L].replace('$1',pm[1]));
+          }
+          break;
+        }
+      }
+    }
+    if(root.querySelectorAll){
+      root.querySelectorAll('input[placeholder],textarea[placeholder]').forEach(function(el){
+        var e=I18N_DICT[(el.placeholder||'').trim()];if(e&&e[L])el.placeholder=e[L];
+      });
+      root.querySelectorAll('[title]').forEach(function(el){
+        var e=I18N_DICT[(el.title||'').trim()];if(e&&e[L])el.title=e[L];
+      });
+    }
+  }catch(err){}
+}
+function _i18nAll(){
+  _i18nBusy=true;
+  _i18nApply(document.body);
+  setTimeout(function(){_i18nBusy=false;},25);
+}
+// Auto-translate anything newly rendered (nav, modals, side panels, tabs…)
+(function(){
+  // deterministic hook: translate right after every page render
+  var _origNavI18n=nav;
+  nav=function(p){var r=_origNavI18n(p);try{if(_lang!=='en')_i18nAll();}catch(e){}return r;};
+  // observer catches modals/panels/async renders (setTimeout — rAF freezes in background tabs)
+  var pending=false;
+  var mo=new MutationObserver(function(){
+    if(_i18nBusy||_lang==='en'||pending)return;
+    pending=true;
+    setTimeout(function(){pending=false;if(_lang!=='en')_i18nAll();},60);
+  });
+  mo.observe(document.body,{childList:true,subtree:true});
+  // re-translate fully on language switch
+  var _origSetLang=setLang;
+  setLang=function(l){_origSetLang(l);if(_lang!=='en')setTimeout(_i18nAll,30);};
+  document.addEventListener('DOMContentLoaded',function(){if(_lang!=='en')setTimeout(_i18nAll,100);});
+})();
+
 </script>
 </body>
 </html>
