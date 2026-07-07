@@ -3414,6 +3414,7 @@ async function initApp(){
   _showAppLoader('Connecting to '+_tenantName+'…');
   try{
     _setLoaderProgress(22,'Loading shipment records…');
+    try{await _stateCloudLoad();}catch(e){}
     // Run all queries in parallel — much faster than sequential
     var results=await Promise.all([
       _sb.from('trips').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}),
@@ -3506,7 +3507,72 @@ async function initApp(){
   }
 }
 
+// ══════════════════════════════════════════════════
+// LOCAL DATA PERSISTENCE — survives refresh/offline even without cloud
+// ══════════════════════════════════════════════════
+var _lcTimer=null;
+function _lcSaveNow(){
+  try{
+    localStorage.setItem('ip_core',JSON.stringify({
+      v:1,ts:Date.now(),tenant:_tenantId,
+      trips:S.trips,maint:S.maintTickets,valLog:S.valLog||[],
+      audit:(S.auditTrail||[]).slice(0,500),notifs:(S.notifs||[]).slice(0,100),
+      users:USERS,trucks:TRUCKS,customers:CUSTOMERS,
+      spare:S.sparePartsStock||[]
+    }));
+  }catch(e){console.warn('local save failed',e);}
+}
+function _lcSave(){clearTimeout(_lcTimer);_lcTimer=setTimeout(_lcSaveNow,400);}
+function _lcLoad(){
+  try{
+    var d=localStorage.getItem('ip_core');if(!d)return false;
+    var p=JSON.parse(d);if(!p||p.tenant!==_tenantId)return false;
+    var put=function(arr,src){if(src&&src.length){arr.length=0;src.forEach(function(x){arr.push(x);});}};
+    put(S.trips,p.trips);put(S.maintTickets,p.maint);put(S.valLog,p.valLog);
+    put(S.auditTrail,p.audit);put(S.notifs,p.notifs);
+    put(USERS,p.users);put(TRUCKS,p.trucks);put(CUSTOMERS,p.customers);
+    if(p.spare&&p.spare.length&&S.sparePartsStock)put(S.sparePartsStock,p.spare);
+    return true;
+  }catch(e){console.warn('local restore failed',e);return false;}
+}
+setInterval(function(){if(S.user)_lcSaveNow();},60000);
+window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
+
+// ══════════════════════════════════════════════════
+// GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
+// (table: app_state — tenant_id, key, value, updated_at)
+// ══════════════════════════════════════════════════
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig'];
+var _stateLoading=false;
+(function(){
+  var orig=localStorage.setItem.bind(localStorage);
+  var timers={};
+  localStorage.setItem=function(k,v){
+    orig(k,v);
+    if(_stateLoading||_ST_SYNC_KEYS.indexOf(k)<0||!_sb||!_tenantId||!navigator.onLine)return;
+    clearTimeout(timers[k]);
+    timers[k]=setTimeout(function(){
+      try{
+        _sb.from('app_state').upsert({tenant_id:_tenantId,key:k,value:v,updated_at:new Date().toISOString()},{onConflict:'tenant_id,key'})
+          .then(function(r){if(r.error&&r.error.code!=='42P01')console.warn('app_state sync',k,r.error.message);});
+      }catch(e){}
+    },1500);
+  };
+})();
+async function _stateCloudLoad(){
+  if(!_sb||!_tenantId)return;
+  try{
+    var r=await _sb.from('app_state').select('key,value').eq('tenant_id',_tenantId);
+    if(!r.error&&r.data&&r.data.length){
+      _stateLoading=true;
+      r.data.forEach(function(row){try{if(row.key!=='ip_core')localStorage.setItem(row.key,row.value);}catch(e){}});
+      _stateLoading=false;
+    }
+  }catch(e){_stateLoading=false;}
+}
+
 async function syncTrip(trip){
+  _lcSave();
   if(!_sb||_supabaseLoading||!trip||!trip.id||!_tenantId)return;
   if(!navigator.onLine){toast('Offline — trip not synced to cloud','err');return;}
   try{
@@ -3515,6 +3581,7 @@ async function syncTrip(trip){
 }
 
 async function syncTruck(truck){
+  _lcSave();
   if(!_sb||!truck||!truck.plate||!_tenantId)return;
   if(!navigator.onLine){toast('Offline — truck not synced to cloud','err');return;}
   try{
@@ -3523,6 +3590,7 @@ async function syncTruck(truck){
 }
 
 async function syncMaint(ticket){
+  _lcSave();
   if(!_sb||_supabaseLoading||!ticket||!ticket.id||!_tenantId)return;
   if(!navigator.onLine){toast('Offline — ticket not synced to cloud','err');return;}
   try{
@@ -3531,6 +3599,7 @@ async function syncMaint(ticket){
 }
 
 async function syncAudit(action,detail,ref){
+  _lcSave();
   if(!_sb||_supabaseLoading||!_tenantId)return;
   try{
     await _sb.from('audit_log').insert({ts:new Date().toLocaleString('en-GB'),username:S.user?S.user.name:'System',role:S.role||'',action:action,detail:detail||'',trip_id:ref||null,tenant_id:_tenantId});
@@ -3538,6 +3607,7 @@ async function syncAudit(action,detail,ref){
 }
 
 async function syncPart(part){
+  _lcSave();
   if(!_sb||!part||!part.id||!_tenantId)return;
   try{
     await _sb.from('spare_parts').upsert({id:part.id,tenant_id:_tenantId,name:part.name,sku:part.sku,qty:part.qty,min_qty:part.minQty,unit:part.unit,cost:part.cost,supplier:part.supplier,category:part.category},{onConflict:'id'});
@@ -4583,7 +4653,8 @@ async function doLogin(){
     } else {
       // ── Local match first (instaport/demo always local; real tenants try server then local) ──
       var _cands=_tenantUsers.filter(function(x){
-        return(String(x.id)===uid||String(x.employee_id||'')===uid)&&x.active!==false;
+        return(String(x.id)===uid||String(x.employee_id||'')===uid||x.email===uid||
+               (x.name&&x.name.toLowerCase()===uid.toLowerCase()))&&x.active!==false;
       });
       for(var _i=0;_i<_cands.length;_i++){
         var _cx2=_cands[_i];var _sp=String(_cx2.pin||'');var _ok=false;
@@ -4632,6 +4703,7 @@ async function doLogin(){
       audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
       _idleStart();
       if(u.pin&&!u.pin.startsWith('[')&&_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
+      try{_lcLoad();}catch(e){console.warn('local restore',e);}
       try{buildSB();}catch(e){console.error('buildSB',e);}
       try{_loadFeatureGates();}catch(e){}
       try{_applyBranding();}catch(e){}
@@ -10424,7 +10496,54 @@ function rAdminSettings(){
   '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
   '<button class="btn btn-primary" onclick="document.body.dataset.dark=\'0\';applyTheme()">☀️ Light</button>'+
   '<button class="btn btn-outline" onclick="document.body.dataset.dark=\'1\';applyTheme()">🌙 Dark</button></div></div>'+
+  '<div class="card"><div class="card-hd"><div class="card-title">💾 Backup & Restore</div></div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Export a full backup of all data (trips, users, trucks, invoices, settings…) to a file, or restore from a previous backup. Keep regular backups in a safe place.</div>'+
+  '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+  '<button class="btn btn-primary" onclick="backupExport()">⬇️ Download Full Backup</button>'+
+  '<button class="btn btn-outline" onclick="document.getElementById(\'bk-file\').click()">⬆️ Restore from Backup</button>'+
+  '<input type="file" id="bk-file" accept=".json" style="display:none" onchange="backupImport(this.files[0])"/></div>'+
+  '<div id="bk-info" style="font-size:11px;color:var(--t3);margin-top:10px">'+_backupInfo()+'</div></div>'+
   '</div>';
+}
+// ══ BACKUP & RESTORE ══════════════════════════════════════
+function _backupInfo(){
+  try{var d=localStorage.getItem('ip_core');if(!d)return 'No local snapshot yet.';
+    var p=JSON.parse(d);return 'Local snapshot: '+(p.trips||[]).length+' trips, '+(p.users||[]).length+' users, '+(p.trucks||[]).length+' trucks — saved '+new Date(p.ts).toLocaleString('en-GB');
+  }catch(e){return '';}
+}
+function backupExport(){
+  try{
+    _lcSaveNow(); // freshest snapshot first
+    var data={meta:{app:'InstaPort',ver:1,date:new Date().toISOString(),tenant:_tenantId,by:S.user?S.user.name:''},ls:{}};
+    for(var i=0;i<localStorage.length;i++){
+      var k=localStorage.key(i);
+      if(k&&k.indexOf('ip_')===0&&k!=='ip_sec')data.ls[k]=localStorage.getItem(k);
+    }
+    var stamp=new Date().toISOString().slice(0,16).replace(/[:T]/g,'-');
+    var blob=new Blob([JSON.stringify(data)],{type:'application/json'});
+    var a=document.createElement('a');a.href=URL.createObjectURL(blob);
+    a.download='instaport-backup-'+stamp+'.json';a.click();
+    setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+    audit('BACKUP','Full backup exported','');
+    toast('✅ Backup downloaded — keep it somewhere safe','ok');
+  }catch(e){toast('Backup failed: '+e.message,'err');}
+}
+function backupImport(file){
+  if(!file)return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    try{
+      var data=JSON.parse(rd.result);
+      if(!data||!data.meta||data.meta.app!=='InstaPort'||!data.ls){toast('❌ Not a valid InstaPort backup file','err');return;}
+      var n=Object.keys(data.ls).length;
+      if(!confirm('Restore backup from '+new Date(data.meta.date).toLocaleString('en-GB')+'?\n\nThis will REPLACE current local data ('+n+' data sets).\nThe app will reload after restore.'))return;
+      Object.keys(data.ls).forEach(function(k){localStorage.setItem(k,data.ls[k]);});
+      audit('RESTORE','Backup restored ('+n+' keys)','');
+      toast('✅ Backup restored — reloading…','ok');
+      setTimeout(function(){location.reload();},900);
+    }catch(e){toast('Restore failed: '+e.message,'err');}
+  };
+  rd.readAsText(file);
 }
 function saveSettings(){
   if(!S.settings)S.settings={};
@@ -12024,138 +12143,7 @@ function spTab(el,id){
   var t=document.getElementById(id);if(t)t.style.display='block';
 }
 
-// ── doLogin: unified server-auth + email/name lookup (replaces old client-only patch) ──
-doLogin=async function(){
-  _secLoad();
-  var orgCode=(document.getElementById('uorg')||{value:'instaport'}).value.trim().toLowerCase()||'instaport';
-  var val=(document.getElementById('uid').value||'').trim(); // accepts ID, email, or name
-  var pin=(document.getElementById('upin').value||'').trim();
-  var lerr=document.getElementById('lerr');lerr.style.display='none';
-  if(!orgCode){lerr.textContent='Enter your organization code.';lerr.style.display='block';return;}
-  if(!val||!pin){lerr.textContent='Enter your Employee ID and PIN.';lerr.style.display='block';return;}
-  if(orgCode==='ip-master'&&_IS_GITHUB_PAGES){
-    lerr.innerHTML='🔒 <b>Super Admin access is restricted to the local server.</b><br><span style="font-size:11px;opacity:.8">Open <code>http://localhost:7434</code> on your server machine instead.</span>';
-    lerr.style.display='block';return;
-  }
-  var lockKey=orgCode+':'+val;
-  if(_secIsLocked(lockKey)){lerr.innerHTML='🔒 '+_secLockoutMsg(lockKey)+'<br><a href="#" onclick="_secResetLockout();return false;" style="font-size:11px;color:#6C3FF5;text-decoration:underline;margin-top:4px;display:inline-block">🔓 Unlock my account</a>';lerr.style.display='block';return;}
-  var btn=document.querySelector('.l-login-btn');if(btn){btn.disabled=true;btn.textContent='Signing in…';}
-  try{
-    var ok=await _loadTenant(orgCode);
-    if(ok==='deactivated'){lerr.innerHTML='🔴 <b>This organization has been deactivated.</b><br><span style="font-size:11px;opacity:.8">Contact InstaPort support to reactivate your account.</span>';lerr.style.display='block';return;}
-    if(!ok){lerr.textContent='Organization "'+orgCode+'" not found. Please register first.';lerr.style.display='block';return;}
-    var u=null;
-    if(orgCode==='ip-master'){
-      // SA: server-side auth only
-      var totpCode=(document.getElementById('utotp')||{value:''}).value.trim();
-      var saRes=await fetch('/api/sa-auth',{method:'POST',headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({org:orgCode,userId:val,pin:pin,totp:totpCode||undefined})});
-      var saData=await saRes.json();
-      if(!saData.ok&&saData.require2FA){
-        var tRow=document.getElementById('totp-row');if(tRow)tRow.style.display='block';
-        lerr.textContent='Enter the 6-digit code from your Authenticator app.';lerr.style.display='block';return;
-      }
-      if(!saData.ok){
-        _secRecordFail(lockKey);
-        lerr.innerHTML=(saData.error||'Invalid credentials.')+'<br><span style="font-size:11px;opacity:.8">Check SA_USER_ID and SA_PIN in your .env file</span>';
-        lerr.style.display='block';return;
-      }
-      u={id:val,pin:'[server]',name:saData.name,role:'superadmin',email:'',active:true};
-      if(saData.token)sessionStorage.setItem('ip_token',saData.token);
-    } else {
-      // Regular users: try server auth first (handles bcrypt PINs)
-      try{
-        // Resolve val → employeeId (support email/name lookup)
-        var resolvedId=val;
-        var matchLocal=_tenantUsers.find(function(x){
-          return x.email===val||(x.name&&x.name.toLowerCase()===val.toLowerCase());
-        });
-        if(matchLocal)resolvedId=String(matchLocal.employee_id||matchLocal.id||val);
-        var authRes=await fetch('/api/auth',{method:'POST',headers:{'Content-Type':'application/json'},
-          body:JSON.stringify({org:orgCode,userId:resolvedId,pin:pin})});
-        var authData=await authRes.json();
-        if(authData.ok&&authData.token){
-          sessionStorage.setItem('ip_token',authData.token);
-          u={id:resolvedId,pin:'[server-verified]',name:authData.user.name,role:authData.user.role,
-             email:matchLocal?matchLocal.email||'':'',active:true,plan:authData.user.plan};
-          _tenantPlan=authData.user.plan||_tenantPlan;
-        } else if(!authData.ok){
-          _secRecordFail(lockKey);
-          lerr.textContent=authData.error||'Invalid Employee ID or PIN.';
-          lerr.style.display='block';return;
-        }
-      }catch(serverErr){
-        // Server unavailable (GitHub Pages / offline) — local fallback with bcrypt support
-        console.warn('Server auth unavailable, local fallback');
-        var _candidates=_tenantUsers.filter(function(x){
-          return(String(x.id)===val||String(x.employee_id||'')===val||x.email===val||
-                 (x.name&&x.name.toLowerCase()===val.toLowerCase()))
-            &&x.active!==false;
-        });
-        for(var _ci=0;_ci<_candidates.length;_ci++){
-          var _cx=_candidates[_ci];
-          var _storedPin=String(_cx.pin||'');
-          var _match=false;
-          if(_storedPin.startsWith('$2')&&typeof dcodeIO!=='undefined'&&dcodeIO.bcrypt){
-            // bcryptjs loaded — compare hash properly
-            try{_match=dcodeIO.bcrypt.compareSync(pin,_storedPin);}catch(e){_match=false;}
-          } else if(_storedPin.startsWith('$2')&&typeof dcodeIO==='undefined'){
-            // bcryptjs not yet loaded — try to load it on the fly
-            try{
-              var _bcMod=await new Promise(function(res,rej){
-                var s=document.createElement('script');
-                s.src='https://cdn.jsdelivr.net/npm/bcryptjs@2.4.3/dist/bcrypt.min.js';
-                s.onload=function(){res(dcodeIO&&dcodeIO.bcrypt);};s.onerror=rej;
-                document.head.appendChild(s);
-              });
-              if(_bcMod)_match=_bcMod.compareSync(pin,_storedPin);
-            }catch(e){_match=false;}
-          } else {
-            _match=_storedPin===pin;
-          }
-          if(_match){u=_cx;break;}
-        }
-      }
-    }
-    if(!u){
-      _secRecordFail(lockKey);
-      lerr.textContent='Invalid Employee ID or PIN.';lerr.style.display='block';return;
-    }
-    _secRecordOk(lockKey,u.name,u.role);
-    lerr.style.display='none';
-    S.user=u;S.role=u.role;
-    var lg=document.getElementById('login');lg.style.cssText='display:none!important';
-    var ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='row';
-    var av=document.getElementById('tb-avatar');if(av)av.textContent=u.name.split(' ').map(function(x){return x[0];}).join('');
-    var un=document.getElementById('tb-uname');if(un)un.textContent=u.name;
-    var ur=document.getElementById('tb-role');if(ur)ur.textContent=(RL&&RL[u.role])||u.role;
-    var tbn=document.getElementById('tb-tenant-name');if(tbn)tbn.textContent=_tenantName;
-    var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=_tenantName;
-    var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=_tenantName;
-    audit('LOGIN',u.name+' signed in [org:'+_tenantId+']','');
-    _idleStart();
-    if(u.pin&&!String(u.pin).startsWith('[')&&_pinIsWeak&&_pinIsWeak(u.pin))
-      setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users','err');},3000);
-    buildSB();
-    _loadFeatureGates&&_loadFeatureGates();
-    _applyBranding&&_applyBranding();
-    var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':'dashboard';
-    nav(_startPage);
-    initApp().then(function(){
-      var sp=S.role==='client'?'client_portal':_startPage;
-      nav(sp);_checkMaintenanceAlerts&&_checkMaintenanceAlerts();
-    }).catch(function(){});
-    _initPWA&&_initPWA();startTemp&&startTemp();_fetchGPSSnapshot&&_fetchGPSSnapshot();
-    setTimeout(function(){
-      try{_exLoadRules&&_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck&&_runExceptionCheck();}catch(e){}
-      try{_loadInvoices&&_loadInvoices();}catch(e){}
-      try{_loadFuelLogs&&_loadFuelLogs();}catch(e){}
-      try{_loadWorkshopConfig&&_loadWorkshopConfig();}catch(e){}
-    },2500);
-  }finally{
-    if(btn){btn.disabled=false;btn.textContent='LOGIN';}
-  }
-};
+// (legacy doLogin override removed — primary doLogin at ~line 4601 handles server fallback + email/name lookup)
 
 // ── PATCH buildSB: icon style sidebar ──
 var _origBS=buildSB;
