@@ -2993,6 +2993,53 @@ var _IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
 var _IS_LOCAL        = !_IS_GITHUB_PAGES;
 var INSTAPORT_API    = ''; // always relative on local; unused on GH Pages (Supabase handles auth)
 
+// ══════════════════════════════════════════════════
+// LICENSE — delivered builds are domain-locked.
+// Dev build (_LICENSE empty): localhost + github.io demo only.
+// Licensed build: key injected by build.js, bound to customer domains + expiry.
+// ══════════════════════════════════════════════════
+var _LICENSE='';
+function _licHash(s){var h=5381;for(var i=0;i<s.length;i++){h=((h<<5)+h+s.charCodeAt(i))>>>0;}var h2=52711;for(var j=s.length-1;j>=0;j--){h2=((h2<<5)+h2+s.charCodeAt(j))>>>0;}return h.toString(16)+h2.toString(16);}
+function _licInfo(){
+  try{
+    if(!_LICENSE)return null;
+    var p=_LICENSE.split('.');
+    if(p.length!==2)return null;
+    if(_licHash(p[0]+'|IP-LIC-2026-K9')!==p[1])return null;
+    return JSON.parse(atob(p[0]));
+  }catch(e){return null;}
+}
+function _licCheck(){
+  var h=(window.location.hostname||'').toLowerCase();
+  if(!_LICENSE){ // dev/demo build
+    return h===''||h==='localhost'||h==='127.0.0.1'||h.endsWith('.github.io');
+  }
+  var inf=_licInfo();
+  if(!inf)return false;
+  if(inf.exp&&new Date(inf.exp+'T23:59:59')<new Date())return false;
+  var doms=inf.d||[];
+  // localhost always allowed alongside licensed domains (on-server access)
+  if(h==='localhost'||h==='127.0.0.1')return true;
+  for(var i=0;i<doms.length;i++){
+    var d=String(doms[i]).toLowerCase();
+    if(h===d||h.endsWith('.'+d))return true;
+  }
+  return false;
+}
+document.addEventListener('DOMContentLoaded',function(){
+  if(_licCheck())return;
+  var inf=_licInfo();
+  document.body.innerHTML='<div style="min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0D0B1F;font-family:Segoe UI,Arial,sans-serif">'+
+    '<div style="max-width:440px;text-align:center;padding:40px;background:#1E1453;border-radius:18px;border:1px solid rgba(255,255,255,.1)">'+
+    '<div style="font-size:44px;margin-bottom:14px">🔒</div>'+
+    '<div style="font-size:20px;font-weight:800;color:#fff;margin-bottom:8px">License Required</div>'+
+    '<div style="font-size:13px;color:rgba(255,255,255,.65);line-height:1.7">'+
+    (inf&&inf.exp&&new Date(inf.exp+'T23:59:59')<new Date()
+      ?'This InstaPort TMS license expired on <b style="color:#fff">'+inf.exp+'</b>.<br>Please contact your vendor to renew.'
+      :'This copy of InstaPort TMS is not licensed for this domain.<br>Please contact your vendor for a valid license key.')+
+    '</div></div></div>';
+});
+
 // ── JWT session helpers ───────────────────────────────────────────
 function _getToken(){ return sessionStorage.getItem('ip_token')||''; }
 function _authHeaders(extra){
@@ -16119,7 +16166,7 @@ function _pdfBrand(){
         +'<div style="color:rgba(255,255,255,.7);font-size:9px;text-align:right">'+meta+'</div>'
         +'</div>';
     },
-    // Returns branded CSS variables for injection into PDF <style>
+    // Returns branded CSS variables for injection into the PDF style block
     css: function(){
       var p=br.primaryColor||'#6C3FF5';
       var s=br.sidebarColor||'#1E1453';

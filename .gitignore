@@ -1,16 +1,10 @@
-# SECRETS — never commit these
-.env
-.env.local
-.env.production
-config.json
-
-# Build output
-dist/
-
-# Dependencies
 node_modules/
-
-# Misc
+_dev-archive/
+server.log
+.env
+dist/
 *.log
-.DS_Store
-Thumbs.db
+.claude/
+start-server.js
+*.docx
+server.log

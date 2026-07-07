@@ -12,20 +12,39 @@ async function build() {
   console.log('🔨 InstaPort TMS Build\n');
 
   // ── Read source ───────────────────────────────
-  const src = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+  let src = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+
+  // ── License injection (--license <key>) ───────
+  const licIdx = process.argv.indexOf('--license');
+  const licKey = licIdx > -1 ? (process.argv[licIdx + 1] || '') : '';
+  if (licKey) {
+    if (!src.includes("var _LICENSE='';")) {
+      console.error('❌ _LICENSE anchor not found in index.html');
+      process.exit(1);
+    }
+    src = src.replace("var _LICENSE='';", "var _LICENSE='" + licKey + "';");
+    console.log('🔑 License key embedded (domain-locked build)');
+  } else {
+    console.log('ℹ️  No --license flag → dev build (localhost/github.io only)');
+  }
 
   // ── Level 1a: Minify CSS blocks ───────────────
   console.log('🎨 Minifying CSS…');
   const CleanCSS = require('clean-css');
   const css = new CleanCSS({ level: 2 });
 
-  let out = src.replace(/<style>([\s\S]*?)<\/style>/gi, function(_, block) {
+  // Only minify the document-head styles: JS strings later in the file also
+  // contain <style>…</style> (print windows) and must not be touched.
+  const firstScript = src.search(/<script[\s>]/);
+  let head = src.slice(0, firstScript), tail = src.slice(firstScript);
+  head = head.replace(/<style>([\s\S]*?)<\/style>/gi, function(_, block) {
     const result = css.minify(block);
     if (result.errors && result.errors.length) {
       console.warn('  CSS warning:', result.errors);
     }
     return '<style>' + result.styles + '</style>';
   });
+  let out = head + tail;
   console.log('  ✅ CSS minified');
 
   // ── Level 1b: Obfuscate JS blocks ─────────────
@@ -71,7 +90,12 @@ async function build() {
       const minified = '<script' + attrs + '>' + result.code + '</script>';
       out = out.slice(0, index) + minified + out.slice(index + length);
     } catch (e) {
-      console.warn('  ⚠️  JS block skipped (parse error):', e.message.slice(0, 80));
+      console.error('  ❌ JS block FAILED to obfuscate:', e.message, '@line', e.line);
+      const _ls = code.split('\n');
+      for (let _li = (e.line || 1) - 2; _li <= (e.line || 1); _li++)
+        if (_ls[_li - 1] !== undefined) console.error('    ' + _li + ': ' + _ls[_li - 1].slice(0, 160));
+      console.error('  Aborting — never ship a readable build.');
+      process.exit(1);
     }
   }
   console.log('  ✅ JavaScript obfuscated');

@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>InstaPort TMS — Sales Presentation</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Segoe UI',Arial,sans-serif;background:#0a0a1a;color:#fff;overflow:hidden;height:100vh;}
+
+/* Slide container */
+.deck{width:100vw;height:100vh;position:relative;}
+.slide{position:absolute;width:100%;height:100%;display:none;flex-direction:column;justify-content:center;align-items:center;padding:60px;animation:fadeIn .4s ease;}
+.slide.active{display:flex;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+
+/* Navigation */
+.nav{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);display:flex;gap:12px;align-items:center;z-index:100;}
+.nav button{background:rgba(255,255,255,.15);border:1px solid rgba(255,255,255,.3);color:#fff;padding:10px 24px;border-radius:30px;cursor:pointer;font-size:14px;transition:.2s;}
+.nav button:hover{background:rgba(255,255,255,.3);}
+.nav .counter{color:rgba(255,255,255,.5);font-size:13px;min-width:60px;text-align:center;}
+.progress{position:fixed;top:0;left:0;height:3px;background:linear-gradient(90deg,#00d2ff,#7b2ff7);transition:width .3s ease;z-index:200;}
+.slide-num{position:fixed;top:20px;right:30px;color:rgba(255,255,255,.3);font-size:12px;}
+kbd-hint{position:fixed;bottom:80px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.2);font-size:11px;}
+
+/* ── SLIDE 1: COVER ── */
+.s1{background:linear-gradient(135deg,#0a0a2e 0%,#1a0a3e 50%,#0a1a2e 100%);}
+.s1::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 30% 50%,rgba(0,210,255,.12),transparent 60%),radial-gradient(ellipse at 70% 50%,rgba(123,47,247,.12),transparent 60%);}
+.logo-big{font-size:72px;font-weight:900;background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:-2px;position:relative;}
+.tagline{font-size:22px;color:rgba(255,255,255,.6);margin-top:16px;font-weight:300;letter-spacing:1px;}
+.sub-tag{margin-top:40px;font-size:14px;color:rgba(255,255,255,.35);letter-spacing:2px;text-transform:uppercase;}
+.badge-row{display:flex;gap:16px;margin-top:48px;flex-wrap:wrap;justify-content:center;}
+.badge{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:30px;padding:8px 20px;font-size:13px;color:rgba(255,255,255,.7);}
+
+/* ── SLIDE 2: PROBLEM ── */
+.s2{background:linear-gradient(135deg,#1a0a0a,#0a0a1a);}
+.section-label{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#ff6b6b;margin-bottom:20px;}
+.big-title{font-size:48px;font-weight:800;line-height:1.1;max-width:800px;text-align:center;}
+.big-title span{color:#ff6b6b;}
+.pain-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;margin-top:48px;max-width:800px;width:100%;}
+.pain-card{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.2);border-radius:16px;padding:24px;display:flex;gap:16px;align-items:flex-start;}
+.pain-icon{font-size:28px;flex-shrink:0;}
+.pain-card h4{font-size:16px;font-weight:700;margin-bottom:6px;}
+.pain-card p{font-size:13px;color:rgba(255,255,255,.55);line-height:1.5;}
+
+/* ── SLIDE 3: SOLUTION ── */
+.s3{background:linear-gradient(135deg,#0a1a0a,#0a0a1e);}
+.sol-label{font-size:11px;letter-spacing:3px;text-transform:uppercase;color:#00d2ff;margin-bottom:20px;}
+.sol-title{font-size:48px;font-weight:800;text-align:center;line-height:1.1;}
+.sol-title span{background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.sol-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:44px;max-width:900px;width:100%;}
+.sol-card{background:rgba(0,210,255,.07);border:1px solid rgba(0,210,255,.2);border-radius:16px;padding:24px;text-align:center;}
+.sol-card .ic{font-size:36px;margin-bottom:12px;}
+.sol-card h4{font-size:15px;font-weight:700;margin-bottom:8px;}
+.sol-card p{font-size:12px;color:rgba(255,255,255,.5);line-height:1.5;}
+
+/* ── SLIDE 4: FEATURES ── */
+.s4{background:linear-gradient(135deg,#0a0a1e,#1a0a2e);}
+.feat-title{font-size:44px;font-weight:800;text-align:center;margin-bottom:44px;}
+.feat-title span{background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.feat-list{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;max-width:900px;width:100%;}
+.feat-item{display:flex;gap:16px;align-items:center;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.08);border-radius:14px;padding:20px;}
+.feat-item .num{font-size:28px;font-weight:900;background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;flex-shrink:0;min-width:36px;}
+.feat-item h4{font-size:15px;font-weight:700;margin-bottom:4px;}
+.feat-item p{font-size:12px;color:rgba(255,255,255,.45);}
+
+/* ── SLIDE 5: WORKFLOW ── */
+.s5{background:linear-gradient(135deg,#0a1a1a,#0a0a1e);}
+.flow-title{font-size:44px;font-weight:800;text-align:center;margin-bottom:48px;}
+.flow-title span{color:#00d2ff;}
+.flow-steps{display:flex;align-items:center;gap:0;max-width:1000px;width:100%;overflow-x:auto;}
+.flow-step{display:flex;flex-direction:column;align-items:center;min-width:120px;flex:1;}
+.flow-circle{width:70px;height:70px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:14px;position:relative;}
+.flow-circle.c1{background:rgba(0,210,255,.2);border:2px solid #00d2ff;}
+.flow-circle.c2{background:rgba(123,47,247,.2);border:2px solid #7b2ff7;}
+.flow-circle.c3{background:rgba(255,200,0,.2);border:2px solid #ffc800;}
+.flow-circle.c4{background:rgba(255,107,107,.2);border:2px solid #ff6b6b;}
+.flow-circle.c5{background:rgba(0,255,136,.2);border:2px solid #00ff88;}
+.flow-circle.c6{background:rgba(0,210,255,.2);border:2px solid #00d2ff;}
+.flow-step h5{font-size:12px;font-weight:700;text-align:center;margin-bottom:4px;}
+.flow-step p{font-size:10px;color:rgba(255,255,255,.4);text-align:center;}
+.flow-arrow{color:rgba(255,255,255,.2);font-size:20px;margin:0 4px;margin-bottom:30px;flex-shrink:0;}
+
+/* ── SLIDE 6: ROLES ── */
+.s6{background:linear-gradient(135deg,#0a0a2e,#1a0a1a);}
+.roles-title{font-size:44px;font-weight:800;text-align:center;margin-bottom:44px;}
+.roles-title span{color:#7b2ff7;}
+.roles-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;max-width:900px;width:100%;}
+.role-card{border-radius:16px;padding:24px;text-align:center;}
+.role-card.r1{background:rgba(0,210,255,.08);border:1px solid rgba(0,210,255,.25);}
+.role-card.r2{background:rgba(123,47,247,.08);border:1px solid rgba(123,47,247,.25);}
+.role-card.r3{background:rgba(255,200,0,.08);border:1px solid rgba(255,200,0,.25);}
+.role-card.r4{background:rgba(255,107,107,.08);border:1px solid rgba(255,107,107,.25);}
+.role-card.r5{background:rgba(0,255,136,.08);border:1px solid rgba(0,255,136,.25);}
+.role-card.r6{background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.15);}
+.role-card .ric{font-size:32px;margin-bottom:10px;}
+.role-card h4{font-size:15px;font-weight:700;margin-bottom:6px;}
+.role-card p{font-size:11px;color:rgba(255,255,255,.45);line-height:1.5;}
+
+/* ── SLIDE 7: STATS ── */
+.s7{background:linear-gradient(135deg,#0a1a0a,#0a0a1e);}
+.stats-title{font-size:44px;font-weight:800;text-align:center;margin-bottom:52px;}
+.stats-title span{background:linear-gradient(90deg,#00d2ff,#00ff88);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:20px;max-width:960px;width:100%;}
+.stat-card{background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:32px 20px;text-align:center;}
+.stat-num{font-size:52px;font-weight:900;line-height:1;margin-bottom:8px;}
+.stat-num.blue{background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.stat-num.green{background:linear-gradient(90deg,#00ff88,#00d2ff);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.stat-num.yellow{color:#ffc800;}
+.stat-num.red{color:#ff6b6b;}
+.stat-label{font-size:13px;color:rgba(255,255,255,.45);line-height:1.4;}
+
+/* ── SLIDE 8: TECH ── */
+.s8{background:linear-gradient(135deg,#0a0a1e,#1a1a0a);}
+.tech-title{font-size:44px;font-weight:800;text-align:center;margin-bottom:44px;}
+.tech-title span{color:#ffc800;}
+.tech-cols{display:grid;grid-template-columns:repeat(2,1fr);gap:32px;max-width:880px;width:100%;}
+.tech-col h3{font-size:14px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.4);margin-bottom:20px;}
+.tech-pill-row{display:flex;flex-wrap:wrap;gap:10px;}
+.tech-pill{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.15);border-radius:30px;padding:8px 18px;font-size:13px;}
+.tech-pill.hl{background:rgba(0,210,255,.12);border-color:rgba(0,210,255,.3);color:#00d2ff;}
+.check-list{list-style:none;display:flex;flex-direction:column;gap:12px;}
+.check-list li{display:flex;gap:10px;align-items:flex-start;font-size:14px;color:rgba(255,255,255,.7);}
+.check-list li::before{content:'✓';color:#00ff88;font-weight:900;flex-shrink:0;}
+
+/* ── SLIDE 9: CTA ── */
+.s9{background:linear-gradient(135deg,#0a0a2e 0%,#1a0a3e 50%,#0a1a2e 100%);}
+.s9::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 40%,rgba(0,210,255,.15),transparent 60%);}
+.cta-title{font-size:56px;font-weight:900;text-align:center;line-height:1.1;position:relative;}
+.cta-title span{background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;}
+.cta-sub{font-size:20px;color:rgba(255,255,255,.5);text-align:center;margin-top:20px;max-width:600px;position:relative;}
+.cta-btn{margin-top:48px;background:linear-gradient(90deg,#00d2ff,#7b2ff7);border:none;color:#fff;font-size:18px;font-weight:700;padding:18px 48px;border-radius:40px;cursor:pointer;position:relative;letter-spacing:.5px;}
+.contact-row{display:flex;gap:40px;margin-top:40px;position:relative;}
+.contact-item{text-align:center;}
+.contact-item .ci-label{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:rgba(255,255,255,.3);margin-bottom:6px;}
+.contact-item .ci-val{font-size:15px;color:rgba(255,255,255,.8);}
+.logo-sm{font-size:28px;font-weight:900;background:linear-gradient(90deg,#00d2ff,#7b2ff7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;margin-bottom:8px;position:relative;}
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+<div class="slide-num" id="slideNum">1 / 9</div>
+
+<div class="deck">
+
+  <!-- SLIDE 1: COVER -->
+  <div class="slide s1 active" id="s1">
+    <div class="logo-big">InstaPort TMS</div>
+    <div class="tagline">The Cold Chain Transport Management System</div>
+    <div class="sub-tag">Built for Pharmaceutical & Food Logistics</div>
+    <div class="badge-row">
+      <div class="badge">🌡️ Cold Chain Ready</div>
+      <div class="badge">☁️ Cloud-Based</div>
+      <div class="badge">🔐 Multi-Tenant</div>
+      <div class="badge">📱 Mobile Friendly</div>
+      <div class="badge">🤖 AI-Powered Reports</div>
+    </div>
+  </div>
+
+  <!-- SLIDE 2: PROBLEM -->
+  <div class="slide s2" id="s2">
+    <div class="section-label">The Problem</div>
+    <div class="big-title">Cold chain logistics is <span>broken</span> by manual processes</div>
+    <div class="pain-grid">
+      <div class="pain-card">
+        <div class="pain-icon">📋</div>
+        <div>
+          <h4>Paper Checklists</h4>
+          <p>Pre-departure checks are done on paper, lost, or skipped entirely — no accountability.</p>
+        </div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">💬</div>
+        <div>
+          <h4>WhatsApp Approvals</h4>
+          <p>Quality and security approvals happen over chat — no audit trail, no compliance.</p>
+        </div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">👁️</div>
+        <div>
+          <h4>Zero Visibility</h4>
+          <p>Management has no real-time view of fleet status, trip progress, or costs.</p>
+        </div>
+      </div>
+      <div class="pain-card">
+        <div class="pain-icon">💸</div>
+        <div>
+          <h4>Revenue Leakage</h4>
+          <p>Manual cost calculation leads to billing errors, undercharging, and lost profit.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 3: SOLUTION -->
+  <div class="slide s3" id="s3">
+    <div class="sol-label">The Solution</div>
+    <div class="sol-title">Introducing <span>InstaPort TMS</span></div>
+    <div class="sol-grid">
+      <div class="sol-card">
+        <div class="ic">📡</div>
+        <h4>Real-Time Visibility</h4>
+        <p>See every truck, every trip, every status — live on your dashboard.</p>
+      </div>
+      <div class="sol-card">
+        <div class="ic">✅</div>
+        <h4>Digital Approvals</h4>
+        <p>Quality, security, and control approvals with PIN verification and full audit trail.</p>
+      </div>
+      <div class="sol-card">
+        <div class="ic">🧾</div>
+        <h4>Auto Cost Calculation</h4>
+        <p>Trip cost, CO₂ emissions, and revenue calculated automatically at trip completion.</p>
+      </div>
+      <div class="sol-card">
+        <div class="ic">🔧</div>
+        <h4>Fleet Maintenance</h4>
+        <p>Track calibrations, maintenance tickets, and spare parts inventory in one place.</p>
+      </div>
+      <div class="sol-card">
+        <div class="ic">🤖</div>
+        <h4>AI Trip Reports</h4>
+        <p>Automatic AI-generated quality and compliance reports for every completed trip.</p>
+      </div>
+      <div class="sol-card">
+        <div class="ic">🏢</div>
+        <h4>Multi-Company</h4>
+        <p>One platform for multiple clients — each with isolated data and custom users.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 4: FEATURES -->
+  <div class="slide s4" id="s4">
+    <div class="feat-title">Everything you need — <span>in one platform</span></div>
+    <div class="feat-list">
+      <div class="feat-item">
+        <div class="num">01</div>
+        <div>
+          <h4>Trip Management</h4>
+          <p>Create, assign, track, and close trips with a full digital workflow.</p>
+        </div>
+      </div>
+      <div class="feat-item">
+        <div class="num">02</div>
+        <div>
+          <h4>8-Point Digital Checklist</h4>
+          <p>Pre-departure checks logged with user name, timestamp, and photo attachments.</p>
+        </div>
+      </div>
+      <div class="feat-item">
+        <div class="num">03</div>
+        <div>
+          <h4>Quality Approval Workflow</h4>
+          <p>QA team approves outbound and inbound with PIN verification — no WhatsApp.</p>
+        </div>
+      </div>
+      <div class="feat-item">
+        <div class="num">04</div>
+        <div>
+          <h4>Fleet Management</h4>
+          <p>Full truck register with type, cooling unit, calibration date, and hold status.</p>
+        </div>
+      </div>
+      <div class="feat-item">
+        <div class="num">05</div>
+        <div>
+          <h4>Spare Parts Inventory</h4>
+          <p>Real-time stock tracking with minimum level alerts and supplier details.</p>
+        </div>
+      </div>
+      <div class="feat-item">
+        <div class="num">06</div>
+        <div>
+          <h4>Full Audit Log</h4>
+          <p>Every action recorded — who did it, when, and what changed. Compliance-ready.</p>
+        </div>
+      </div>
+      <div class="feat-item">
+        <div class="num">07</div>
+        <div>
+          <h4>CO₂ Tracking</h4>
+          <p>Automatic carbon emissions calculation per trip for sustainability reporting.</p>
+        </div>
+      </div>
+      <div class="feat-item">
+        <div class="num">08</div>
+        <div>
+          <h4>Driver Mobile View</h4>
+          <p>Drivers see only their trips — departure, arrival, notes, and photo uploads.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 5: WORKFLOW -->
+  <div class="slide s5" id="s5">
+    <div class="flow-title">Trip <span>Workflow</span> — Zero Paper</div>
+    <div class="flow-steps">
+      <div class="flow-step">
+        <div class="flow-circle c1">📝</div>
+        <h5>Trip Created</h5>
+        <p>Ops Manager creates trip</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-circle c2">🔬</div>
+        <h5>Quality Check</h5>
+        <p>QA approves checklist</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-circle c3">🛡️</div>
+        <h5>Control Room</h5>
+        <p>Controller reviews</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-circle c4">🔐</div>
+        <h5>Security Gate</h5>
+        <p>Gate pass issued</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-circle c5">🚛</div>
+        <h5>In Transit</h5>
+        <p>Driver on the road</p>
+      </div>
+      <div class="flow-arrow">→</div>
+      <div class="flow-step">
+        <div class="flow-circle c6">✅</div>
+        <h5>Completed</h5>
+        <p>Auto cost & CO₂ calculated</p>
+      </div>
+    </div>
+    <div style="margin-top:40px;display:flex;gap:32px;flex-wrap:wrap;justify-content:center;">
+      <div style="text-align:center;"><div style="font-size:28px;font-weight:900;color:#00d2ff;">100%</div><div style="font-size:12px;color:rgba(255,255,255,.4);">Digital Process</div></div>
+      <div style="text-align:center;"><div style="font-size:28px;font-weight:900;color:#00ff88;">0</div><div style="font-size:12px;color:rgba(255,255,255,.4);">Paper Forms</div></div>
+      <div style="text-align:center;"><div style="font-size:28px;font-weight:900;color:#ffc800;">Full</div><div style="font-size:12px;color:rgba(255,255,255,.4);">Audit Trail</div></div>
+    </div>
+  </div>
+
+  <!-- SLIDE 6: ROLES -->
+  <div class="slide s6" id="s6">
+    <div class="roles-title">Designed for <span>Every Role</span> in your team</div>
+    <div class="roles-grid">
+      <div class="role-card r1">
+        <div class="ric">👔</div>
+        <h4>Operations Manager</h4>
+        <p>Full dashboard, create trips, assign trucks & drivers, view all KPIs.</p>
+      </div>
+      <div class="role-card r2">
+        <div class="ric">🔬</div>
+        <h4>Quality Inspector</h4>
+        <p>Review checklists, approve or reject outbound & inbound trips with PIN.</p>
+      </div>
+      <div class="role-card r3">
+        <div class="ric">🛡️</div>
+        <h4>Control Room</h4>
+        <p>Second approval layer — reviews trip details before security gate clearance.</p>
+      </div>
+      <div class="role-card r4">
+        <div class="ric">🔐</div>
+        <h4>Security</h4>
+        <p>Issues gate passes for approved trucks — final step before departure.</p>
+      </div>
+      <div class="role-card r5">
+        <div class="ric">🚛</div>
+        <h4>Driver</h4>
+        <p>Sees assigned trips only — marks departure, arrival, and uploads delivery proof.</p>
+      </div>
+      <div class="role-card r6">
+        <div class="ric">📊</div>
+        <h4>Management</h4>
+        <p>Read-only view of all trips, costs, fleet status, and audit logs.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 7: NUMBERS -->
+  <div class="slide s7" id="s7">
+    <div class="stats-title">Built for <span>Scale</span></div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-num blue">29+</div>
+        <div class="stat-label">Trucks managed per tenant</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num green">6</div>
+        <div class="stat-label">User roles with granular access</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num yellow">8</div>
+        <div class="stat-label">Step digital pre-departure checklist</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num red">0</div>
+        <div class="stat-label">Paper forms required</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num blue">∞</div>
+        <div class="stat-label">Tenants on one platform</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num green">100%</div>
+        <div class="stat-label">Cloud-based — no installation</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num yellow">3</div>
+        <div class="stat-label">Temperature conditions supported</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-num red">24/7</div>
+        <div class="stat-label">Real-time visibility & monitoring</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 8: TECHNOLOGY -->
+  <div class="slide s8" id="s8">
+    <div class="tech-title">Enterprise-Grade <span>Technology</span></div>
+    <div class="tech-cols">
+      <div class="tech-col">
+        <h3>Platform</h3>
+        <div class="tech-pill-row">
+          <div class="tech-pill hl">☁️ Cloud-Based SaaS</div>
+          <div class="tech-pill hl">🔐 Supabase Database</div>
+          <div class="tech-pill">No Installation</div>
+          <div class="tech-pill">Any Browser</div>
+          <div class="tech-pill">Mobile Responsive</div>
+          <div class="tech-pill hl">Multi-Tenant Architecture</div>
+          <div class="tech-pill">Offline-Ready (PWA)</div>
+        </div>
+      </div>
+      <div class="tech-col">
+        <h3>What You Get</h3>
+        <ul class="check-list">
+          <li>Instant deployment — go live in hours, not months</li>
+          <li>Your data is always isolated and secure</li>
+          <li>Custom users, roles, and permissions per company</li>
+          <li>Full audit log for regulatory compliance (GDP/GSP)</li>
+          <li>AI-generated trip quality reports</li>
+          <li>Automatic CO₂ tracking for sustainability reporting</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+
+  <!-- SLIDE 9: CTA -->
+  <div class="slide s9" id="s9">
+    <div class="logo-sm">InstaPort TMS</div>
+    <div class="cta-title">Ready to take control of<br/><span>your cold chain?</span></div>
+    <div class="cta-sub">Join logistics companies already running smarter operations with InstaPort TMS.</div>
+    <button class="cta-btn" onclick="alert('Contact us to schedule your personalized live demo!')">📅 Schedule a Live Demo</button>
+    <div class="contact-row">
+      <div class="contact-item">
+        <div class="ci-label">Live Demo</div>
+        <div class="ci-val">dashing-cactus-626299.netlify.app</div>
+      </div>
+      <div class="contact-item">
+        <div class="ci-label">Login</div>
+        <div class="ci-val">instaport / Mohammed A. / ops</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- Navigation -->
+<div class="nav">
+  <button onclick="prevSlide()">← Prev</button>
+  <span class="counter" id="navCounter">1 / 9</span>
+  <button onclick="nextSlide()">Next →</button>
+</div>
+
+<script>
+var total=9,cur=1;
+function showSlide(n){
+  document.querySelectorAll('.slide').forEach(function(s){s.classList.remove('active');});
+  document.getElementById('s'+n).classList.add('active');
+  document.getElementById('slideNum').textContent=n+' / '+total;
+  document.getElementById('navCounter').textContent=n+' / '+total;
+  document.getElementById('progress').style.width=(n/total*100)+'%';
+  cur=n;
+}
+function nextSlide(){if(cur<total)showSlide(cur+1);}
+function prevSlide(){if(cur>1)showSlide(cur-1);}
+document.addEventListener('keydown',function(e){
+  if(e.key==='ArrowRight'||e.key===' ')nextSlide();
+  if(e.key==='ArrowLeft')prevSlide();
+  if(e.key==='f'||e.key==='F'){
+    if(!document.fullscreenElement)document.documentElement.requestFullscreen();
+    else document.exitFullscreen();
+  }
+});
+showSlide(1);
+</script>
+</body>
+</html>
