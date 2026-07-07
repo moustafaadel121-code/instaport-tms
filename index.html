@@ -3571,8 +3571,75 @@ async function _stateCloudLoad(){
   }catch(e){_stateLoading=false;}
 }
 
+// ══════════════════════════════════════════════════
+// REAL-TIME SYNC — instant updates between roles
+// Layer 1: BroadcastChannel (same machine, all tabs — works offline)
+// Layer 2: Supabase Realtime (across machines — active when cloud is live)
+// ══════════════════════════════════════════════════
+var _rtBC=null;
+try{_rtBC=new BroadcastChannel('instaport_rt');}catch(e){}
+function _rtBroadcast(kind,payload){
+  try{if(_rtBC)_rtBC.postMessage({kind:kind,data:JSON.parse(JSON.stringify(payload)),from:S.user?S.user.name:'',ts:Date.now()});}catch(e){}
+}
+function _rtRowToTrip(r){
+  return {id:r.id,customer:r.customer,type:r.type,dir:r.dir,condition:r.condition,from:r.origin,dests:r.dests,destsArr:r.dests_arr||[],km:r.km,cost:r.cost,co2:r.co2,costBreakdown:r.cost_breakdown,truck:r.truck,driver:r.driver,driverNote:r.driver_note||'',actualKm:r.actual_km,status:r.status,checklist:r.checklist||[],qualityPin:r.quality_pin||false,aiReport:r.ai_report,attachments:r.attachments||[],tl:r.timeline||[],ts:r.ts,createdBy:r.created_by,pricePlan:r.price_plan||'',notes:r.notes||''};
+}
+function _rtNotifyRole(t){
+  if(!S.user)return;
+  var r=S.role;
+  var m={
+    awaiting_quality:{roles:['quality'],msg:'🧪 Trip '+t.id+' is awaiting quality check (OUT-1)'},
+    awaiting_ctrl:{roles:['control_room'],msg:'🎛️ Trip '+t.id+' is awaiting control room approval (OUT-2)'},
+    awaiting_security:{roles:['security'],msg:'🔒 Trip '+t.id+' is awaiting gate pass (OUT-3)'},
+    in_transit:{roles:['control_room'],msg:'🚚 Trip '+t.id+' departed — now in transit'},
+    inbound_ctrl:{roles:['driver'],msg:'🏭 Trip '+t.id+' — return confirmed, head back to warehouse',driverOnly:t.driver},
+    inbound_security:{roles:['security'],msg:'🔒 Truck '+(t.truck||'')+' arriving — confirm at gate (IN-2)'},
+    inbound_quality:{roles:['quality'],msg:'🧪 Trip '+t.id+' — final inspection needed (IN-4)'},
+    completed:{roles:['admin','supervisor','finance','account_manager'],msg:'✅ Trip '+t.id+' completed'}
+  }[t.status];
+  if(!m)return;
+  var hit=(m.roles.indexOf(r)>-1)||r==='admin'||r==='supervisor';
+  if(m.driverOnly&&r==='driver'&&S.user.name!==m.driverOnly)hit=false;
+  if(hit){
+    toast(m.msg,'info');
+    if(typeof notif==='function')try{notif(m.msg,'info');}catch(e){}
+  }
+}
+var _RT_LIVE_PAGES={dashboard:1,quality:1,controlroom:1,security:1,trips:1,my_trips:1,dispatch:1,client_portal:1};
+function _rtRefresh(){
+  if(!S.user||!_RT_LIVE_PAGES[S.page])return;
+  try{nav(S.page);}catch(e){}
+}
+function _rtApplyTrip(t){
+  if(!t||!t.id)return;
+  var i=S.trips.findIndex(function(x){return x.id===t.id;});
+  var oldStatus=i>-1?S.trips[i].status:null;
+  if(i>-1)S.trips[i]=t;else S.trips.unshift(t);
+  _lcSave();
+  if(oldStatus!==t.status)_rtNotifyRole(t);
+  _rtRefresh();
+}
+if(_rtBC)_rtBC.onmessage=function(e){
+  var m=e.data;if(!m||!m.kind)return;
+  if(m.kind==='trip')_rtApplyTrip(m.data);
+};
+var _rtChannel=null;
+function _rtCloudSubscribe(){
+  if(!_sb||!_tenantId||_rtChannel)return;
+  try{
+    _rtChannel=_sb.channel('rt-trips-'+_tenantId)
+      .on('postgres_changes',{event:'*',schema:'public',table:'trips',filter:'tenant_id=eq.'+_tenantId},function(p){
+        var row=p.new;
+        if(!row||!row.id)return;
+        _rtApplyTrip(_rtRowToTrip(row));
+      })
+      .subscribe(function(status){if(status==='SUBSCRIBED')console.log('✅ Realtime connected');});
+  }catch(e){console.warn('Realtime unavailable',e);_rtChannel=null;}
+}
+
 async function syncTrip(trip){
   _lcSave();
+  _rtBroadcast('trip',trip);
   if(!_sb||_supabaseLoading||!trip||!trip.id||!_tenantId)return;
   if(!navigator.onLine){toast('Offline — trip not synced to cloud','err');return;}
   try{
@@ -4714,6 +4781,7 @@ async function doLogin(){
       try{_initPWA();}catch(e){}
       try{startTemp();}catch(e){}
       try{_fetchGPSSnapshot();}catch(e){}
+      try{_rtCloudSubscribe();}catch(e){}
       setTimeout(function(){
         try{_exLoadRules();setInterval(_runExceptionCheck,60000);_runExceptionCheck();}catch(e){}
         try{_loadInvoices();}catch(e){}
