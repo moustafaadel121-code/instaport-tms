@@ -2658,6 +2658,16 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   font-weight: 500; letter-spacing: .4px;
   min-height: 16px;
 }
+.apl-powered {
+  display: flex; align-items: center; justify-content: center; gap: 9px;
+  margin-top: 26px;
+}
+.apl-powered-logo { height: 26px; width: auto; opacity: .9; }
+.apl-powered span {
+  font-size: 14px; color: rgba(196,181,253,.7);
+  letter-spacing: .3px;
+}
+.apl-powered b { color: #fff; font-weight: 800; }
 /* Decorative corner frames */
 .apl-corner-tl, .apl-corner-br {
   position: absolute; width: 48px; height: 48px;
@@ -2873,6 +2883,10 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
     <div class="apl-sub">Transportation Management System</div>
     <div class="apl-bar-track"><div class="apl-bar-fill" id="apl-bar"></div></div>
     <div class="apl-status" id="apl-status">Initializing…</div>
+    <div class="apl-powered">
+      <img src="logo.png" alt="" class="apl-powered-logo"/>
+      <span>Powered by <b>InstaPort</b></span>
+    </div>
   </div>
   <div class="apl-corner-tl"></div>
   <div class="apl-corner-br"></div>
@@ -3352,26 +3366,27 @@ async function _loadTenant(orgCode){
     _tenantUsers=[]; // populated after server confirms auth
     return true;
   }
-  // instaport/demo: use hardcoded demo users only — no Supabase call (avoids freeze)
+  // instaport/demo: use hardcoded demo users immediately — never block login.
   if(orgCode==='instaport'||orgCode==='demo'){
     _tenantId='instaport';_tenantName='InstaPort Logistics';_tenantPlan='enterprise';
     _tenantUsers=_DEMO_USERS.slice();
-    // Merge Supabase users with short timeout so login never freezes
+    // Merge any cloud-defined users in the BACKGROUND (fire-and-forget) —
+    // login proceeds instantly on the demo set.
     if(_sb){
-      try{
-        var _sbTimeout=new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},3000);});
-        var _ur=await Promise.race([_sb.from('users').select('id,employee_id,name,role,pin,active,email').eq('tenant_id','instaport'),_sbTimeout]);
-        if(!_ur.error&&_ur.data&&_ur.data.length){
+      Promise.race([
+        _sb.from('users').select('id,employee_id,name,role,pin,active,email').eq('tenant_id','instaport'),
+        new Promise(function(_,rej){setTimeout(function(){rej(new Error('timeout'));},2500);})
+      ]).then(function(_ur){
+        if(_ur&&!_ur.error&&_ur.data&&_ur.data.length){
           _ur.data.forEach(function(u){
             if(u.active===false||u.active===0||u.active===null)return;
             var loginId=u.employee_id?String(u.employee_id):String(u.id);
-            // Don't overwrite existing demo users
             if(!_tenantUsers.find(function(x){return x.id===loginId;})){
               _tenantUsers.push({id:loginId,pin:String(u.pin||''),name:u.name,role:u.role,email:u.email||null,active:true});
             }
           });
         }
-      }catch(e){console.warn('instaport Supabase user merge failed',e);}
+      }).catch(function(){/* offline — demo users are enough */});
     }
     return true;
   }
@@ -3469,15 +3484,25 @@ function _hideAppLoader(){
     setTimeout(function(){el.style.display='none';el.style.opacity='';el.style.transition='';},460);
   },280);
 }
-async function initApp(){
+// Reject a promise if it doesn't settle within ms — keeps loader from hanging on a dead/slow cloud
+function _withTimeout(p,ms,label){
+  return Promise.race([p,new Promise(function(_,rej){setTimeout(function(){rej(new Error((label||'request')+' timeout'));},ms);})]);
+}
+async function initApp(silent){
   if(!_sb||!_tenantId)return;
   _supabaseLoading=true;
-  _showAppLoader('Connecting to '+_tenantName+'…');
+  // If local data is already on screen, sync from cloud quietly in the
+  // background — never cover a ready UI with a full-screen loader.
+  var _hasLocal=(S.trips&&S.trips.length)||!!localStorage.getItem('ip_core');
+  var _quiet=silent||_hasLocal;
+  if(!_quiet)_showAppLoader('Connecting to '+_tenantName+'…');
   try{
-    _setLoaderProgress(22,'Loading shipment records…');
-    try{await _stateCloudLoad();}catch(e){}
-    // Run all queries in parallel — much faster than sequential
-    var results=await Promise.all([
+    if(!_quiet)_setLoaderProgress(22,'Loading shipment records…');
+    try{await _withTimeout(_stateCloudLoad(),2000,'state');}catch(e){}
+    // Run all queries in parallel — much faster than sequential.
+    // Hard 5s cap: local cache is already loaded, so if the cloud is slow/down
+    // we proceed offline instead of freezing the loader.
+    var results=await _withTimeout(Promise.all([
       _sb.from('trips').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}),
       _sb.from('maintenance').select('*').eq('tenant_id',_tenantId).order('created_at',{ascending:false}),
       _sb.from('spare_parts').select('*').eq('tenant_id',_tenantId),
@@ -3486,8 +3511,8 @@ async function initApp(){
       _sb.from('am_assignments').select('*').eq('tenant_id',_tenantId),
       _sb.from('customers').select('name').eq('tenant_id',_tenantId).order('name'),
       _sb.from('users').select('id,employee_id,name,role,email,active').eq('tenant_id',_tenantId).order('name')
-    ]);
-    _setLoaderProgress(68,'Processing fleet data…');
+    ]),3500,'cloud sync');
+    if(!_quiet)_setLoaderProgress(68,'Processing fleet data…');
     var r1=results[0],r2=results[1],r3=results[2],r4=results[3],r5=results[4],r6=results[5],r7=results[6],r8=results[7];
     // Trips
     if(!r1.error&&r1.data&&r1.data.length){
@@ -3559,12 +3584,13 @@ async function initApp(){
       // instaport/demo with no Supabase users → keeps hardcoded array as-is
     }
   }catch(e){
-    console.error('initApp error',e);
-    if(!navigator.onLine)toast('You are offline — using local data','err');
+    console.warn('initApp: cloud unavailable, using local data —',e.message);
+    if(/timeout/.test(e.message||'')){toast('Working offline — cloud sync unavailable','info');}
+    else if(!navigator.onLine){toast('You are offline — using local data','err');}
   }finally{
     _supabaseLoading=false;
-    _setLoaderProgress(100,'Ready');
-    _hideAppLoader();
+    if(!_quiet){_setLoaderProgress(100,'Ready');_hideAppLoader();}
+    else{_hideAppLoader();} // safe no-op if already hidden
   }
 }
 
@@ -13228,7 +13254,10 @@ buildSB = function() {
   }).join('') +
   '<div class="sb-divider"></div>' +
   '<div class="sbi" onclick="openLangMenu(event)"><div class="sbi-icon">&#127760;</div><span class="sbi-label">'+((_L_I18N[_lang]||_L_I18N.en).langWord)+'</span></div>' +
-  '<div style="padding:10px 14px 4px;font-size:9px;color:rgba(255,255,255,.4);letter-spacing:.5px;text-align:center">&#9889; Powered by <b style="color:rgba(255,255,255,.6)">InstaPort</b> TMS</div>';
+  '<div style="padding:12px 14px 6px;display:flex;align-items:center;justify-content:center;gap:7px">'+
+    '<img src="logo.png" alt="" style="height:20px;width:auto;opacity:.85"/>'+
+    '<span style="font-size:11.5px;color:rgba(255,255,255,.6);letter-spacing:.3px;line-height:1.2">Powered by <b style="color:rgba(255,255,255,.9);font-weight:800">InstaPort</b></span>'+
+  '</div>';
 };
 
 // ════ ENHANCED rDash ════
