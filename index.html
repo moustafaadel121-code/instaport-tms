@@ -3241,8 +3241,22 @@ function _secResetLockout(){
 
 // ── Idle session timeout ───────────────────────
 var _idleTimer=null,_idleWarnTimer=null;
-var _IDLE_TIMEOUT=30*60*1000;  // 30 min auto-logout
-var _IDLE_WARN=28*60*1000;     // warn at 28 min
+var _IDLE_TIMEOUT=30*60*1000;  // 30 min auto-logout (configurable in Admin → Settings)
+var _IDLE_WARN=28*60*1000;     // warn 2 min before logout
+// ── Security policy (Admin → Settings → Security Policy) — actually applied ──
+var _SEC_POLICY={idleMins:30,maxAttempts:10,minPinLen:4};
+function _loadSecPolicy(){
+  try{
+    var p=JSON.parse(localStorage.getItem('ip_secpolicy')||'{}');
+    if(p.idleMins>=5)_SEC_POLICY.idleMins=+p.idleMins;
+    if(p.maxAttempts>=3)_SEC_POLICY.maxAttempts=+p.maxAttempts;
+    if(p.minPinLen>=4)_SEC_POLICY.minPinLen=+p.minPinLen;
+  }catch(e){}
+  _IDLE_TIMEOUT=_SEC_POLICY.idleMins*60*1000;
+  _IDLE_WARN=Math.max(60000,_IDLE_TIMEOUT-2*60*1000);
+  if(typeof _SEC!=='undefined')_SEC.MAX_ATTEMPTS=_SEC_POLICY.maxAttempts;
+}
+_loadSecPolicy();
 function _idleReset(){
   clearTimeout(_idleTimer);clearTimeout(_idleWarnTimer);
   if(!S.user)return;
@@ -3254,7 +3268,7 @@ function _idleWarnFn(){
   openM('<div class="m-title">⏰ Session About to Expire</div>'+
     '<div style="text-align:center;padding:10px 0 16px">'+
     '<div style="font-size:48px;margin-bottom:12px">⚠️</div>'+
-    '<div style="font-size:14px;font-weight:600;margin-bottom:6px">You\'ve been idle for 28 minutes</div>'+
+    '<div style="font-size:14px;font-weight:600;margin-bottom:6px">You\'ve been idle for '+Math.round(_IDLE_WARN/60000)+' minutes</div>'+
     '<div style="font-size:13px;color:var(--t2);margin-bottom:16px">You will be automatically logged out in <strong id="idle-cntd" style="color:var(--c5)">2:00</strong> to protect your account.</div>'+
     '<button class="btn btn-primary" onclick="_idleReset();closeM()">I\'m still here — Stay Logged In</button>'+
     '</div>');
@@ -3264,7 +3278,7 @@ function _idleWarnFn(){
 function _idleLogoutFn(){
   if(!S.user)return;
   closeM();
-  audit('AUTO_LOGOUT','Session timed out after 30 min idle','');
+  audit('AUTO_LOGOUT','Session timed out after '+_SEC_POLICY.idleMins+' min idle','');
   _secRecordLogout(S.user.id,S.user.name);
   toast('Session expired — please log in again','err');
   secureLogout();
@@ -4883,9 +4897,11 @@ function _checkMaintenanceAlerts(){
   TRUCKS.forEach(function(t){
     var odo=t.odometerKm||0,last=t.lastMaintKm||0,iv=t.maintIntervalKm||10000;
     var pct=iv>0?(odo-last)/iv:0;
-    if(pct>=1.0)alerts.push({plate:t.plate,sev:'err',msg:'&#x1F527; '+t.plate+' maintenance OVERDUE ('+Math.round(pct*100)+'% of '+iv+' km)'});
-    else if(pct>=0.85)alerts.push({plate:t.plate,sev:'warn',msg:'&#x26A0;&#xFE0F; '+t.plate+' maintenance due soon ('+Math.round(pct*100)+'%)'});
-    if(t.calExpiry){
+    if(_notifPref('maint')){
+      if(pct>=1.0)alerts.push({plate:t.plate,sev:'err',msg:'&#x1F527; '+t.plate+' maintenance OVERDUE ('+Math.round(pct*100)+'% of '+iv+' km)'});
+      else if(pct>=0.85)alerts.push({plate:t.plate,sev:'warn',msg:'&#x26A0;&#xFE0F; '+t.plate+' maintenance due soon ('+Math.round(pct*100)+'%)'});
+    }
+    if(t.calExpiry&&_notifPref('calib')){
       var exp=new Date(t.calExpiry),days=Math.ceil((exp-today)/864e5);
       if(days<0)alerts.push({plate:t.plate,sev:'err',msg:'&#x1F6A8; '+t.plate+' calibration EXPIRED ('+Math.abs(days)+'d ago)'});
       else if(days<=30)alerts.push({plate:t.plate,sev:'warn',msg:'&#x1F4C5; '+t.plate+' calibration expires in '+days+' days'});
@@ -5003,7 +5019,8 @@ function rFleetMap(){
   '<div id="fleet-map" style="height:520px;border-radius:14px;border:1px solid var(--bd);overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.15)"></div>'+
   '<div id="fm-legend" style="margin-top:10px;display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--t2)">'+
     '<span>🟢 Active</span><span>🔵 Awaiting</span><span>⚪ Completed</span><span>🔴 Overdue</span>'+
-  '</div>';
+  '</div>'+
+  '<div id="fmap-unplotted"></div>';
   setTimeout(function(){_fmInit('all');}, 100);
 }
 window._fmFilter = function(filter){
@@ -5041,20 +5058,20 @@ function _fmInit(filter){
     if(!loc)return null;
     var l=loc.toLowerCase().replace(/[\s_\-.]/g,'');
     for(var k in CITY_COORDS){if(l.includes(k.replace(/s/g,'')))return CITY_COORDS[k];}
-    // fallback: random near Cairo with jitter so pins don't stack
-    return[30.0444+(Math.random()-.5)*.5,31.2357+(Math.random()-.5)*.5];
+    // Unknown city → no marker (never invent coordinates)
+    return null;
   }
   var trips=(S.trips||[]).filter(function(t){
     if(filter==='all')return true;
     return t.status===filter;
   });
-  var markers=[];
+  var markers=[];var unplotted=[];
   trips.forEach(function(t){
-    var from=t.from||t.origin||'Cairo';
-    var to=t.dests||t.to||t.customer||'Cairo';
+    var from=t.from||t.origin||'';
+    var to=t.dests||t.to||'';
     var fromC=getCoords(from);
     var toC=getCoords(to.split(',')[0].trim());
-    if(!fromC||!toC)return;
+    if(!fromC||!toC){unplotted.push(t.id+' ('+(!fromC?from:to.split(',')[0])+')');return;}
     var col=t.status==='active'?'#10B981':t.status==='completed'?'#6B7280':t.status==='awaiting_truck'?'#3B82F6':'#EF4444';
     var makeMk=function(coord,label,isTo){
       var icon=L.divIcon({className:'',html:
@@ -5080,9 +5097,12 @@ function _fmInit(filter){
       _fleetMapInstance.fitBounds(group.getBounds().pad(0.15));
     }catch(e){}
   }
-  var activeCnt=(S.trips||[]).filter(function(t){return t.status==='active';}).length;
-  var awaitCnt=(S.trips||[]).filter(function(t){return t.status==='awaiting_truck';}).length;
-  toast('🗺️ Map: '+trips.length+' trips shown ('+activeCnt+' active, '+awaitCnt+' awaiting)','ok');
+  var plottedCnt=trips.length-unplotted.length;
+  toast('🗺️ Map: '+plottedCnt+' trips plotted'+(unplotted.length?' — '+unplotted.length+' skipped (unknown city)':''),'ok');
+  var unEl=document.getElementById('fmap-unplotted');
+  if(unEl)unEl.innerHTML=unplotted.length
+    ?'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;font-size:11px;color:#92400E;margin-top:8px">&#128205; Not on map (city not recognized): '+unplotted.join(', ')+'</div>'
+    :'';
 }
 
 // ══ CLIENT PORTAL ══════════════════════════════════════════
@@ -6835,7 +6855,8 @@ function rCtrl(){
   '</div>'+
   // RIGHT PANEL: temp monitor unchanged
   '<div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">&#127777;&#65039; Live Fleet Temperature</div><span class="live"><span class="live-dot"></span>Live</span></div>'+
+  '<div class="card"><div class="card-hd"><div class="card-title">&#127777;&#65039; Live Fleet Temperature'+_tempSimBadge(10)+'</div>'+(_tempIsReal()?'<span class="live"><span class="live-dot"></span>Live</span>':'<span style="font-size:11px;color:#B45309;font-weight:700">Demo mode</span>')+'</div>'+
+  (_tempIsReal()?'':'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;font-size:11.5px;color:#92400E;margin-bottom:10px">&#9888;&#65039; No live sensors connected — temperatures below are <b>simulated for demonstration</b>. Connect sensors in Admin &#8594; Integrations to see real data. Excursion alerts are disabled while in demo mode.</div>')+
   '<div style="margin-bottom:10px"><input placeholder="Search truck/trip/driver..." id="ctrl-s" oninput="rCtrlTrucks()" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;outline:none"/></div>'+
   '<div id="ctrl-trucks"></div></div>'+
   '<div class="card"><div class="card-hd"><div class="card-title">&#128202; Temperature Graph</div>'+
@@ -10199,6 +10220,7 @@ async function addUser(){
   var pin=(document.getElementById('nu-pin')||{}).value.trim();
   var role=(document.getElementById('nu-role')||{}).value;
   if(!id||!name||!pin||!role){toast('Fill all required fields','err');return;}
+  if(pin.length<_SEC_POLICY.minPinLen){toast('PIN must be at least '+_SEC_POLICY.minPinLen+' digits (Security Policy)','err');return;}
   if(USERS.find(function(u){return u.id===id;})){toast('User ID already exists','err');return;}
   var email=(document.getElementById('nu-email')||{}).value.trim();
   // Client role requires a Customer Account — show step-2 popup
@@ -10603,10 +10625,11 @@ function rAdminSettings(){
   '<div class="fg f1"><label>Date Format</label><select id="set-date"><option value="en-GB">DD/MM/YYYY</option><option value="en-US">MM/DD/YYYY</option></select></div>'+
   '<button class="btn btn-primary btn-sm" style="margin-top:4px" onclick="saveSettings()">Save Language Settings</button></div>'+
   '<div class="card"><div class="card-hd"><div class="card-title">🔒 Security Policy</div></div>'+
-  [['Auto-logout (minutes)','set-logout','30'],['Max login attempts','set-attempts','5'],['Min PIN length','set-pinlen','4'],['Session timeout (hours)','set-session','8']].map(function(r){return '<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">'+r[0]+'</label><input type="number" id="'+r[1]+'" value="'+r[2]+'" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px"/></div>';}).join('')+
+  [['Auto-logout (minutes)','set-logout',_SEC_POLICY.idleMins,'User is logged out after this many idle minutes'],['Max login attempts','set-attempts',_SEC_POLICY.maxAttempts,'Account locks for 5 minutes after this many wrong PINs'],['Min PIN length','set-pinlen',_SEC_POLICY.minPinLen,'Enforced when admins create or edit user PINs']].map(function(r){return '<div style="margin-bottom:10px"><label style="font-size:12px;font-weight:600;display:block;margin-bottom:4px">'+r[0]+'</label><input type="number" id="'+r[1]+'" value="'+r[2]+'" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px"/><div style="font-size:10px;color:var(--t3);margin-top:3px">'+r[3]+'</div></div>';}).join('')+
+  '<div style="font-size:10px;color:var(--t3);margin-bottom:8px">Session token expiry (JWT) is configured server-side in <code>.env</code> → JWT_EXPIRY</div>'+
   '<button class="btn btn-primary btn-sm" onclick="saveSecuritySettings()">Save Security</button></div>'+
   '<div class="card"><div class="card-hd"><div class="card-title">📱 Notifications</div></div>'+
-  [['Temperature excursion alerts',true],['Workflow pending alerts',true],['Maintenance auto-ticket alerts',true],['Low stock alerts',true],['Calibration expiry alerts',true]].map(function(r){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--tb)"><span style="font-size:13px">'+r[0]+'</span><input type="checkbox" '+(r[1]?'checked':'')+' style="width:16px;height:16px;cursor:pointer"/></div>';}).join('')+'</div>'+
+  [['Temperature excursion alerts','temp'],['Workflow pending alerts','workflow'],['Maintenance auto-ticket alerts','maint'],['Low stock alerts','stock'],['Calibration expiry alerts','calib']].map(function(r){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--tb)"><span style="font-size:13px">'+r[0]+'</span><input type="checkbox" '+(_notifPref(r[1])?'checked':'')+' onchange="_notifPrefSet(\''+r[1]+'\',this.checked)" style="width:16px;height:16px;cursor:pointer"/></div>';}).join('')+'</div>'+
   '<div class="card"><div class="card-hd"><div class="card-title">🎨 Theme</div></div>'+
   '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
   '<button class="btn btn-primary" onclick="document.body.dataset.dark=\'0\';applyTheme()">☀️ Light</button>'+
@@ -10660,13 +10683,34 @@ function backupImport(file){
   };
   rd.readAsText(file);
 }
+// ── Notification preferences — actually consulted by alert generators ──
+function _notifPref(k){
+  try{var p=JSON.parse(localStorage.getItem('ip_notifprefs')||'{}');return p[k]!==false;}catch(e){return true;}
+}
+function _notifPrefSet(k,v){
+  try{var p=JSON.parse(localStorage.getItem('ip_notifprefs')||'{}');p[k]=v;localStorage.setItem('ip_notifprefs',JSON.stringify(p));}catch(e){}
+  toast(v?'&#128276; Alerts enabled':'&#128277; Alerts muted','info');
+  audit('NOTIF_PREF',k+' alerts '+(v?'ON':'OFF'),'');
+}
 function saveSettings(){
   if(!S.settings)S.settings={};
   S.settings.language=(document.getElementById('set-lang')||{}).value||'en';
   S.settings.timezone=(document.getElementById('set-tz')||{}).value||'Africa/Cairo';
   applyLanguage();audit('SETTINGS','Language/TZ updated','');toast('Settings saved!','ok');
 }
-function saveSecuritySettings(){audit('SEC_SETTINGS','Security policy updated','');toast('Security settings saved!','ok');}
+function saveSecuritySettings(){
+  var idle=+((document.getElementById('set-logout')||{}).value||30);
+  var att=+((document.getElementById('set-attempts')||{}).value||10);
+  var pinLen=+((document.getElementById('set-pinlen')||{}).value||4);
+  if(idle<5){toast('Auto-logout must be at least 5 minutes','err');return;}
+  if(att<3){toast('Max attempts must be at least 3','err');return;}
+  if(pinLen<4){toast('Min PIN length must be at least 4','err');return;}
+  try{localStorage.setItem('ip_secpolicy',JSON.stringify({idleMins:idle,maxAttempts:att,minPinLen:pinLen}));}catch(e){}
+  _loadSecPolicy();
+  _idleReset(); // apply new idle window immediately
+  audit('SEC_SETTINGS','Policy applied: logout '+idle+'min, '+att+' attempts, PIN≥'+pinLen,'');
+  toast('✅ Security policy applied — logout '+idle+'min · '+att+' attempts · PIN ≥ '+pinLen,'ok');
+}
 // applyTheme merged into toggleDark
 function toggleDark(){document.body.dataset.dark=document.body.dataset.dark==='1'?'0':'1';applyTheme();toast(document.body.dataset.dark==='1'?'Dark mode':'Light mode','info');}
 
@@ -10804,6 +10848,16 @@ var _tb=3.5;   // live temperature (°C)
 var _hb=62;    // live humidity (%)
 var _sensorLive=false;        // true when real SSE data is flowing
 var _sensorSource='sim';      // 'live' | 'sim'
+// Honest labelling: whenever displayed temperature is simulated, say so.
+// Server dev-mode streams use sensor IDs prefixed 'SIM-' — those are NOT real either.
+function _tempIsReal(){
+  if(typeof _sensorId!=='undefined'&&_sensorId&&String(_sensorId).toUpperCase().indexOf('SIM')===0)return false;
+  return _sensorSource==='live'||_sensorLive;
+}
+function _tempSimBadge(sz){
+  if(_tempIsReal())return '';
+  return '<span style="background:#FEF3C7;color:#B45309;border:1px solid #F59E0B;border-radius:6px;padding:1px 6px;font-size:'+(sz||9)+'px;font-weight:800;letter-spacing:.5px;vertical-align:middle;margin-inline-start:6px" title="No live sensor connected — values are simulated for demo">SIM</span>';
+}
 var _sensorLastTs=null;       // ISO timestamp of last real reading
 var _sensorId=null;           // sensor ID of last reading
 var _sensorTruckPlate=null;   // truck plate of last reading
@@ -12466,19 +12520,15 @@ rDash=function(){
   '<div style="font-size:58px;font-weight:900;color:#fff;line-height:1;margin:4px 0">'+perf7+'<span style="font-size:26px">%</span></div>'+
   '<div style="font-size:11px;color:rgba(255,255,255,.5)">'+comp.length+'/'+S.trips.length+' trips completed</div>'+
   '<div style="display:flex;align-items:flex-end;gap:3px;height:36px;margin:10px 0">'+bh.map(function(v){var p=Math.round(v/bhMax*100)||4;return '<div style="flex:1;background:rgba(255,255,255,'+(p>70?'.7':'.2')+');border-radius:2px 2px 0 0;height:'+p+'%"></div>';}).join('')+'</div>'+
-  '<div style="font-size:10px;color:rgba(255,255,255,.4)">Send the best route to the driver\'s email &#8594;</div>'+
   '</div>'+
   '<div></div>'+
-  // Driver Chat
+  // Recent Activity — real audit trail
   '<div class="card" style="display:flex;flex-direction:column;min-height:200px">'+
-  '<div class="card-hd"><div class="card-title">Driver Chat</div><span style="cursor:pointer;color:var(--c1);font-size:16px">&#8599;</span></div>'+
-  '<div style="flex:1;overflow:auto;margin-bottom:10px">'+
-  '<div style="display:flex;gap:8px;margin-bottom:10px"><div class="chat-av">K</div><div class="chat-other">Hi! What is your question?</div></div>'+
-  '<div style="display:flex;gap:8px;margin-bottom:10px;flex-direction:row-reverse"><div class="chat-mine">Alex is typing...</div></div>'+
-  '</div>'+
-  '<div style="display:flex;align-items:center;gap:8px;border:1.5px solid var(--border);border-radius:50px;padding:8px 14px">'+
-  '<input placeholder="Message..." style="flex:1;border:none;outline:none;background:transparent;font-size:12px;color:var(--t);font-family:inherit"/>'+
-  '<span style="cursor:pointer">&#128522;</span><span style="cursor:pointer">&#128228;</span>'+
+  '<div class="card-hd"><div class="card-title">&#128220; Recent Activity</div><button class="btn btn-outline btn-sm" onclick="nav(\'audit\')">All &#8594;</button></div>'+
+  '<div style="flex:1;overflow:auto">'+
+  ((S.auditTrail||[]).slice(0,5).map(function(a){
+    return '<div style="padding:7px 0;border-bottom:1px solid var(--bd);font-size:12px"><b>'+a.action+'</b> — <span style="color:var(--t2)">'+(a.detail||'').slice(0,50)+'</span><div style="font-size:10px;color:var(--t3)">'+a.user+' &bull; '+a.ts+'</div></div>';
+  }).join('')||'<div style="color:var(--t3);font-size:12px;padding:16px;text-align:center">No activity yet</div>')+
   '</div></div></div>'+
 
   (S.trips.length>0?
@@ -12637,20 +12687,24 @@ function openKpiSP(type){
     var tmp=(_tb||3.5);var ok=tmp>=2&&tmp<=8;
     var tmpCol=ok?'#10B981':'#EF4444';
     var tmpStatus=ok?'✅ Normal Range':'⚠️ Out of Range';
-    var fakeHours=[];for(var _h=11;_h>=0;_h--){var _hv=3.5+(Math.sin(_h*.8)*.9)+((Math.random()-.5)*.4);fakeHours.push(Math.max(-2,Math.min(12,+_hv.toFixed(1))));}
-    var hMax=Math.max.apply(null,fakeHours)||1;
-    var hBars=fakeHours.map(function(v,i){var pct=Math.round(v/hMax*100);var col=v>=2&&v<=8?'#10B981':'#EF4444';return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">'+
-      '<div style="flex:1;width:100%;display:flex;align-items:flex-end">'+
-        '<div style="width:100%;height:'+pct+'%;background:'+col+';border-radius:3px 3px 0 0;min-height:4px;transition:.3s"></div></div>'+
-      '<div style="font-size:9px;color:var(--t3)">'+(11-i)+'h</div></div>';}).join('');
+    // Real readings collected this session only — no invented history
+    var histSrc=(_tempData||[]).slice(-12);
+    var hBars='';
+    if(histSrc.length>1){
+      var hMax=Math.max.apply(null,histSrc)||1;
+      hBars=histSrc.map(function(v){var pct=Math.max(4,Math.round(v/hMax*100));var col=v>=2&&v<=8?'#10B981':'#EF4444';return '<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:3px">'+
+        '<div style="flex:1;width:100%;display:flex;align-items:flex-end">'+
+          '<div style="width:100%;height:'+pct+'%;background:'+col+';border-radius:3px 3px 0 0;min-height:4px;transition:.3s"></div></div></div>';}).join('');
+    }
     openSP('🌡️ Temperature Monitor',
       '<div style="background:linear-gradient(135deg,'+tmpCol+','+tmpCol+'dd);padding:20px;border-radius:14px;color:#fff;text-align:center;margin-bottom:14px">'+
         '<div style="font-size:48px;font-weight:900;letter-spacing:-2px;font-family:Space Grotesk,sans-serif">'+tmp.toFixed(1)+'°C</div>'+
-        '<div style="font-size:13px;opacity:.9;font-weight:600;margin-top:4px">'+tmpStatus+'</div>'+
+        '<div style="font-size:13px;opacity:.9;font-weight:600;margin-top:4px">'+tmpStatus+(_tempIsReal()?'':' — SIMULATED')+'</div>'+
         '<div style="font-size:11px;opacity:.7;margin-top:2px">Optimal range: 2°C – 8°C</div></div>'+
-      '<div style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Last 12 Hours</div>'+
-      '<div style="display:flex;align-items:flex-end;gap:3px;height:80px;margin-bottom:14px;padding:0 4px">'+hBars+'</div>'+
-      secH('🌡️','Sensor Location','Truck 1 (Cab)','rgba(16,185,129,.12)')+
+      (_tempIsReal()?'':'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:7px 11px;font-size:11px;color:#92400E;margin-bottom:12px">&#9888;&#65039; No live sensor connected — this is demo data. Alerts are disabled.</div>')+
+      '<div style="font-size:11px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px">Recent Readings (this session)</div>'+
+      (hBars?'<div style="display:flex;align-items:flex-end;gap:3px;height:80px;margin-bottom:14px;padding:0 4px">'+hBars+'</div>':'<div style="font-size:12px;color:var(--t3);padding:14px;text-align:center;background:var(--bg);border-radius:8px;margin-bottom:14px">Not enough readings yet</div>')+
+      secH('🌡️','Sensor Source',_tempIsReal()?('Live — '+(_sensorId||'connected')):'None connected (demo mode)','rgba(16,185,129,.12)')+
       secH('⚠️','Alert Threshold','Below 2°C or above 8°C','rgba(239,68,68,.1)')+
       '<div style="display:flex;gap:8px;margin-top:6px">'+
         spBtn('View Alerts',"closeSP();nav('alerts')")+
@@ -13014,7 +13068,41 @@ function spTab(el, id) {
   if(t) t.style.display = 'block';
 }
 
-function openProfile() { toast('Profile settings coming soon', 'info'); }
+function openProfile(){
+  if(!S.user)return;
+  var u=S.user;
+  var canChangePin=u.pin&&!String(u.pin).startsWith('[');
+  openM('<div class="m-title">&#128100; My Profile</div>'+
+    '<div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">'+
+    '<div style="width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800">'+u.name.split(' ').map(function(x){return x[0];}).join('')+'</div>'+
+    '<div><div style="font-size:16px;font-weight:800">'+u.name+'</div>'+
+    '<div style="font-size:12px;color:var(--t2)">'+(RL[u.role]||u.role)+' &bull; ID: '+u.id+(u.email?' &bull; '+u.email:'')+'</div></div></div>'+
+    (canChangePin?
+      '<div style="border-top:1px solid var(--bd);padding-top:14px"><div style="font-size:13px;font-weight:700;margin-bottom:8px">&#128273; Change My PIN</div>'+
+      '<div class="fg"><label>Current PIN</label><input id="pf-old" type="password" autocomplete="off"/></div>'+
+      '<div class="fg"><label>New PIN (min '+_SEC_POLICY.minPinLen+' digits)</label><input id="pf-new" type="password" autocomplete="off"/></div>'+
+      '<div class="fg"><label>Confirm New PIN</label><input id="pf-new2" type="password" autocomplete="off"/></div>'+
+      '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Close</button><button class="btn btn-primary" onclick="profileChangePin()">Update PIN</button></div></div>'
+      :'<div style="font-size:12px;color:var(--t2);background:var(--bg);padding:10px 12px;border-radius:8px">Your PIN is managed by your organization\'s server. Contact your admin to change it.</div>'+
+       '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Close</button></div>'));
+}
+function profileChangePin(){
+  var oldP=(document.getElementById('pf-old')||{}).value||'';
+  var n1=(document.getElementById('pf-new')||{}).value||'';
+  var n2=(document.getElementById('pf-new2')||{}).value||'';
+  if(String(S.user.pin)!==oldP){toast('Current PIN is incorrect','err');return;}
+  if(n1.length<_SEC_POLICY.minPinLen){toast('New PIN must be at least '+_SEC_POLICY.minPinLen+' digits','err');return;}
+  if(n1!==n2){toast('New PINs do not match','err');return;}
+  if(n1===oldP){toast('New PIN must be different','err');return;}
+  S.user.pin=n1;
+  var uu=USERS.find(function(x){return String(x.id)===String(S.user.id);});
+  if(uu)uu.pin=n1;
+  var tu=(_tenantUsers||[]).find(function(x){return String(x.id)===String(S.user.id);});
+  if(tu)tu.pin=n1;
+  _lcSaveNow();
+  audit('PIN_CHANGE',S.user.name+' changed own PIN','');
+  closeM();toast('&#9989; PIN updated','ok');
+}
 function openSettings() {
   if(can('all')||S.role==='admin'){nav('admin_mgmt');}
   else{toast('Admin access required for Settings','err');}
@@ -13181,9 +13269,9 @@ rDash = function() {
     '<div class="kpi-sub">' + comp.length + ' trips &#8250;</div></div></div>' : '') +
 
     '<div class="kpi-card" onclick="openKpiSP(\'temp\')" title="Click for details"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">&#127777;</div>' +
-    '<div class="kpi-body"><div class="kpi-label">Live Temp</div>' +
-    '<div class="kpi-val" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + temp.toFixed(1) + '°C</div>' +
-    '<div class="kpi-sub" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + (temp>=2&&temp<=8?'Normal &#8250;':'Check! &#8250;') + '</div></div></div>' +
+    '<div class="kpi-body"><div class="kpi-label">Live Temp'+_tempSimBadge()+'</div>' +
+    '<div class="kpi-val" style="color:' + (temp>=2&&temp<=8?'#10B981':'#EF4444') + '">' + (_tempIsReal()?temp.toFixed(1)+'°C':temp.toFixed(1)+'°C') + '</div>' +
+    '<div class="kpi-sub" style="color:' + (_tempIsReal()?(temp>=2&&temp<=8?'#10B981':'#EF4444'):'#B45309') + '">' + (_tempIsReal()?(temp>=2&&temp<=8?'Normal &#8250;':'Check! &#8250;'):'No sensor — demo &#8250;') + '</div></div></div>' +
 
     '<div class="kpi-card" onclick="openKpiSP(\'co2\')" title="Click for details"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.08);color:#10B981">&#127807;</div>' +
     '<div class="kpi-body"><div class="kpi-label">CO2</div><div class="kpi-val">' + co2.toFixed(0) + ' kg</div>' +
@@ -13450,6 +13538,37 @@ rSec = function() {
       }).join('') + '</div>' : '');
 };
 
+// ══ TRIP ROUTE MINI-MAP — real geometry from city coordinates ══
+function _tripRouteSVG(t){
+  var a=_egCoords(t.from),bs=(t.destsArr&&t.destsArr.length?t.destsArr:[t.dests]).map(function(d){return _egCoords(String(d||'').split(',')[0].trim());}).filter(Boolean);
+  if(!a||!bs.length){
+    return '<div style="background:var(--bg);border:1.5px dashed var(--bd);border-radius:var(--r-lg);height:110px;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:6px;margin-bottom:14px"><div style="font-size:22px">&#128506;&#65039;</div><div style="font-size:11.5px;color:var(--t2)">Route preview unavailable — city not in map presets</div></div>';
+  }
+  var pts=[a].concat(bs);
+  var lats=pts.map(function(p){return p[0];}),lngs=pts.map(function(p){return p[1];});
+  var mnLa=Math.min.apply(null,lats),mxLa=Math.max.apply(null,lats);
+  var mnLo=Math.min.apply(null,lngs),mxLo=Math.max.apply(null,lngs);
+  var pad=0.15,W=460,H=150;
+  var px=function(p){
+    var x=(mxLo===mnLo)?0.5:(p[1]-mnLo)/(mxLo-mnLo);
+    var y=(mxLa===mnLa)?0.5:1-((p[0]-mnLa)/(mxLa-mnLa));
+    return [Math.round((pad+x*(1-2*pad))*W),Math.round((pad+y*(1-2*pad))*H)];
+  };
+  var xy=pts.map(px);
+  var path='M '+xy[0][0]+' '+xy[0][1];
+  for(var i=1;i<xy.length;i++){
+    var mx=(xy[i-1][0]+xy[i][0])/2,my=Math.min(xy[i-1][1],xy[i][1])-18;
+    path+=' Q '+Math.round(mx)+' '+Math.round(my)+' '+xy[i][0]+' '+xy[i][1];
+  }
+  var dots=xy.map(function(p,i){
+    return '<circle cx="'+p[0]+'" cy="'+p[1]+'" r="'+(i===0?7:6)+'" fill="'+(i===0?'#10B981':'#6C3FF5')+'"/>';
+  }).join('');
+  return '<div style="background:linear-gradient(135deg,#0F0E2E,#1A1736);border-radius:var(--r-lg);height:150px;position:relative;overflow:hidden;margin-bottom:14px">'+
+    '<svg viewBox="0 0 '+W+' '+H+'" style="position:absolute;inset:0;width:100%;height:100%">'+
+    '<path d="'+path+'" stroke="rgba(108,63,245,.8)" stroke-width="2" fill="none" stroke-dasharray="6,4"/>'+dots+'</svg>'+
+    '<div style="position:absolute;bottom:6px;left:10px;font-size:9.5px;color:rgba(255,255,255,.45)">Schematic — based on city coordinates</div></div>';
+}
+
 // ══ TRIP PDF REPORT — Proof of Delivery ══════════════════════
 function tripPDF(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t){toast('Trip not found','err');return;}
@@ -13556,8 +13675,13 @@ function _openTripSPv2(id) {
     (isCompleted&&canAttach ? '<button class="btn btn-outline btn-sm" onclick="openTripAttach(\''+t.id+'\')">&#128206; Attach Docs/Graphs</button>' : '') +
     '<button class="btn btn-outline btn-sm" onclick="tripPDF(\''+t.id+'\')">&#128196; '+(isCompleted?'Proof of Delivery (PDF)':'Trip Report (PDF)')+'</button>' +
     '</div></div>' +
-    '<div id="tp1" class="sp-pane" style="display:none"><div style="background:linear-gradient(135deg,#0F0E2E,#1A1736);border-radius:var(--r-lg);height:150px;position:relative;overflow:hidden;margin-bottom:14px"><svg style="position:absolute;inset:0;width:100%;height:100%"><path d="M 40 110 Q 140 50 260 80 Q 320 95 420 40" stroke="rgba(108,63,245,.8)" stroke-width="2" fill="none" stroke-dasharray="6,4"/><circle cx="40" cy="110" r="7" fill="#10B981"/><circle cx="420" cy="40" r="7" fill="#6C3FF5"/></svg></div><div class="ig">' + [['From', t.from || '&#8212;'], ['To', t.dests || '&#8212;'], ['KM', t.km || '&#8212;'], ['Stops', (t.destsArr || []).length || 1]].map(function(x) { return '<div class="ib"><div class="ib-l">' + x[0] + '</div><div class="ib-v">' + x[1] + '</div></div>'; }).join('') + '</div></div>' +
-    '<div id="tp2" class="sp-pane" style="display:none"><div style="text-align:center;padding:20px;background:rgba(16,185,129,.06);border-radius:var(--r-lg);margin-bottom:14px"><div style="font-size:42px;font-weight:900;color:#10B981;font-family:Space Grotesk,sans-serif">' + (_tb || 3.5).toFixed(1) + '&deg;C</div><div style="font-size:12px;color:var(--t2)">Live &bull; Range: 2&ndash;8&deg;C</div></div><div class="gauge-bar"><div class="gauge-fill" style="width:55%;background:#10B981"></div></div></div>' +
+    '<div id="tp1" class="sp-pane" style="display:none">' + _tripRouteSVG(t) + '<div class="ig">' + [['From', t.from || '&#8212;'], ['To', t.dests || '&#8212;'], ['KM', t.km || '&#8212;'], ['Stops', (t.destsArr || []).length || 1]].map(function(x) { return '<div class="ib"><div class="ib-l">' + x[0] + '</div><div class="ib-v">' + x[1] + '</div></div>'; }).join('') + '</div></div>' +
+    '<div id="tp2" class="sp-pane" style="display:none">' +
+    (_tempIsReal()
+      ? (function(){var tv=_tb||0;var tok=tv>=2&&tv<=8;var tpc=Math.max(3,Math.min(97,Math.round((tv+5)/20*100)));
+          return '<div style="text-align:center;padding:20px;background:rgba(16,185,129,.06);border-radius:var(--r-lg);margin-bottom:14px"><div style="font-size:42px;font-weight:900;color:'+(tok?'#10B981':'#EF4444')+';font-family:Space Grotesk,sans-serif">'+tv.toFixed(1)+'&deg;C</div><div style="font-size:12px;color:var(--t2)">Live sensor &bull; Range: 2&ndash;8&deg;C</div></div><div class="gauge-bar"><div class="gauge-fill" style="width:'+tpc+'%;background:'+(tok?'#10B981':'#EF4444')+'"></div></div>';})()
+      : '<div style="text-align:center;padding:26px 18px;background:var(--bg);border:1.5px dashed var(--bd);border-radius:var(--r-lg)"><div style="font-size:34px;margin-bottom:8px">&#127777;&#65039;</div><div style="font-size:15px;font-weight:700;color:var(--t)">No sensor connected to this truck</div><div style="font-size:12px;color:var(--t2);margin-top:6px;line-height:1.6">Real-time temperature will appear here once a GPS/temp sensor is linked.<br>Configure in Admin &#8594; Integrations.</div></div>') +
+    '</div>' +
     '<div id="tp3" class="sp-pane" style="display:none">' + (t.tl || []).map(function(l) { return '<div style="font-size:12px;padding:8px 12px;border-left:3px solid var(--c1);margin-bottom:5px;color:var(--t2);background:var(--bg);border-radius:0 8px 8px 0"><span style="color:var(--t3)">' + l.ts + '</span> &bull; <strong>' + l.user + '</strong> &bull; ' + l.action + (l.detail ? ' &mdash; ' + l.detail : '') + '</div>'; }).join('') + '</div>' +
     '<div id="tp4" class="sp-pane" style="display:none">' + (t.costBreakdown ? Object.keys(t.costBreakdown).filter(function(k) { return +t.costBreakdown[k] !== 0; }).map(function(k) { return '<div style="display:flex;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--bd);font-size:13px"><span style="color:var(--t2)">' + k + '</span><span style="font-weight:700">EGP ' + t.costBreakdown[k] + '</span></div>'; }).join('') + '<div style="display:flex;justify-content:space-between;padding:12px 0;font-size:16px;font-weight:800"><span>Total</span><span style="color:var(--c1)">EGP ' + t.cost + '</span></div>' : '<div style="color:var(--t2);padding:20px;text-align:center">Cost calculated after completion</div>') + '</div>' +
     // TAB 5: Docs/Graphs Attachments
@@ -13733,22 +13857,17 @@ function openCapSP() {
     '</div>' +
     '</div>' +
 
-    // Cargo Photos header + grid — matches reference
-    '<div style="font-size:13px;font-weight:800;color:var(--t);margin-bottom:10px;font-family:Space Grotesk,sans-serif">Cargo Photo Reports</div>' +
-    '<div style="display:grid;grid-template-columns:repeat(3,1fr) auto;gap:8px;align-items:start">' +
-    ['#1 Cargo Photo','#2 Cargo Photo','#3 Cargo Photo'].map(function(p,i) {
-      var colors = ['#DBEAFE','#D1FAE5','#FEF3C7'];
-      var icons = ['&#128230;','&#128723;','&#128717;'];
-      return '<div style="cursor:pointer" onclick="toast(\'Opening '+p+'...\',\'info\')">' +
-        '<div style="background:'+colors[i]+';border-radius:10px;height:70px;display:flex;align-items:center;justify-content:center;font-size:24px;margin-bottom:5px;border:1px solid rgba(0,0,0,.06)">'+icons[i]+'</div>' +
-        '<div style="font-size:10px;color:var(--t2);font-weight:600;display:flex;align-items:center;gap:3px"><span style="color:var(--c1)">&#9679;</span> Point '+p+'</div>' +
-        '</div>';
-    }).join('') +
-    // Add Photo button
-    '<div style="display:flex;flex-direction:column;gap:4px">' +
-    '<div style="background:var(--bg);border:2px dashed var(--bd);border-radius:10px;height:70px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:22px;color:var(--t3)" onclick="toast(\'Upload photo coming soon\',\'info\')">+</div>' +
-    '<div style="font-size:10px;color:var(--t3);text-align:center;font-weight:600">Add Photo</div>' +
-    '</div></div>' +
+    // Trip documents summary — real attachment data
+    '<div style="font-size:13px;font-weight:800;color:var(--t);margin-bottom:10px;font-family:Space Grotesk,sans-serif">Trip Documents</div>' +
+    (function(){
+      var withDocs=S.trips.filter(function(t){return (t.tripAttachments||[]).length>0;});
+      if(!withDocs.length)return '<div style="background:var(--bg);border:1.5px dashed var(--bd);border-radius:10px;padding:16px;text-align:center;font-size:11.5px;color:var(--t3)">No documents attached yet — attach photos &amp; graphs from any completed trip\'s Docs tab</div>';
+      return '<div style="display:flex;flex-direction:column;gap:6px">'+withDocs.slice(0,4).map(function(t){
+        return '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--bg);border-radius:8px;padding:8px 12px;cursor:pointer" onclick="closeSP();_openTripSPv2(\''+t.id+'\')">'+
+          '<span style="font-size:12px;font-weight:700">'+t.id+'</span>'+
+          '<span style="font-size:11px;color:var(--t2)">&#128206; '+(t.tripAttachments||[]).length+' file(s)</span></div>';
+      }).join('')+'</div>';
+    })() +
     '</div>' + // end cp0
 
     // TAB 1: Vehicle Info
@@ -14035,7 +14154,8 @@ function _exRaiseAlert(rule, trip, value, msg){
   _exSaveExceptions();
 
   var icon = rule.severity === 'critical' ? '&#128308;' : '&#128993;';
-  notif(icon + ' Exception: ' + rule.name + ' — ' + trip.id + (value ? ' (' + value + ')' : ''), 'alert');
+  var prefKey = rule.type==='temperature'?'temp':rule.type==='transit_time'?'workflow':'workflow';
+  if(_notifPref(prefKey))notif(icon + ' Exception: ' + rule.name + ' — ' + trip.id + (value ? ' (' + value + ')' : ''), 'alert');
   _exUpdateBadge();
   audit('EXCEPTION_RAISED', rule.name + ' on ' + trip.id + (value ? ' val:' + value : ''), '');
 }
@@ -14069,9 +14189,11 @@ function _runExceptionCheck(){
 
     // ── Temperature breach ──
     if(rule.type === 'temperature'){
+      // NEVER raise temperature exceptions from simulated data — real sensors only
+      if(!_tempIsReal()) return;
       inTr.forEach(function(trip){
         if(!_exCondMatch(rule.condition, trip.condition)) return;
-        var temp = _tb; // global simulated sensor
+        var temp = _tb;
         if(temp === null || temp === undefined) return;
         var range = _exGetTempRange(rule, trip.customer, trip.condition);
         var inBreach = (temp < range.min || temp > range.max);
