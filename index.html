@@ -4533,13 +4533,14 @@ let USERS=[
   {id:'2568',pin:'9874',name:'Assaad S.',role:'validation',email:'as@epx.com',active:true},
   {id:'9001',pin:'1111',name:'Karim Ahmed',role:'driver',email:'karim@epx.com',active:true},
   {id:'9002',pin:'2222',name:'Hassan Ali',role:'driver',email:'hassan@epx.com',active:true},
+  {id:'3030',pin:'3131',name:'Tarek O.',role:'operation',email:'ops@epx.com',active:true},
   {id:'1212',pin:'2121',name:'Client Portal Demo',role:'client',email:'client@demo.com',active:true}
 ];
 // Frozen snapshot used for login fallback — never mutated by initApp/Supabase
 const _DEMO_USERS=USERS.map(function(u){return Object.assign({},u);});
 const RL={admin:'Admin',supervisor:'Supervisor',quality:'Quality',account_manager:'Acct Manager',
   control_room:'Control Room',security:'Security',finance:'Finance',
-  maintenance:'Maintenance',validation:'Validation',driver:'Driver',client:'Client Portal'};
+  maintenance:'Maintenance',validation:'Validation',driver:'Driver',operation:'Operation',client:'Client Portal'};
 let CUSTOMERS=[];
 // ══════════════════════════════════════════════════
 // TRUCKS DATA
@@ -4733,6 +4734,7 @@ const PAGES={
   maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'},{id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'}],
   validation:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'validation',icon:'✅',l:'Validation'}],
   driver:       [{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}],
+  operation:    [{id:'operation',icon:'📷',l:'Operations'},{id:'trips',icon:'📋',l:'Trips'}],
   client:       [{id:'client_portal',icon:'📦',l:'My Shipments'},{id:'billing',icon:'📄',l:'My Invoices'}]
 };
 // ══════════════════════════════════════════════════
@@ -4862,7 +4864,7 @@ async function doLogin(){
       try{_loadFeatureGates();}catch(e){}
       try{_applyBranding();}catch(e){}
       try{_wfLoad();}catch(e){}
-      var _startPage=u.role==='driver'?'my_trips':u.role==='superadmin'?'sa_overview':u.role==='client'?'client_portal':'dashboard';
+      var _startPage=u.role==='driver'?'my_trips':u.role==='operation'?'operation':u.role==='superadmin'?'sa_overview':u.role==='client'?'client_portal':'dashboard';
       try{nav(_startPage);}catch(e){console.error('nav',e);document.getElementById('content').innerHTML='<div class="card" style="padding:40px;text-align:center"><h3>Page load error</h3><p style="color:var(--t2)">'+e.message+'</p></div>';}
       initApp().then(function(){try{nav(_startPage);_checkMaintenanceAlerts();}catch(e){}}).catch(function(){});
       try{_initPWA();}catch(e){}
@@ -5850,7 +5852,7 @@ function nav(page){
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,fleet_map:rFleetMap,client_portal:rClientPortal,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
-    nr_trip:rNR,my_trips:rDriverTrips,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
+    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
@@ -13001,8 +13003,8 @@ function toggleDark(){
 
 // Language
 var _lang = 'en';
-var AR_NAV = {dashboard:'الرئيسية',shipments:'الشحنات',fleet:'الأسطول',drivers:'السائقون',customers:'العملاء',routes:'المسارات',tracking:'التتبع',reports:'التقارير',maintenance:'الصيانة',alerts:'التنبيهات',settings:'الإعدادات',quality:'الجودة',controlroom:'غرفة التحكم',security:'الأمن',finance:'المالية',spare_parts:'قطع الغيار',validation:'التحقق',ai:'الذكاء الاصطناعي',admin_mgmt:'الإدارة',analytics:'التحليلات',audit:'المراجعة',nr_trip:'رحلة غير إيرادية',my_trips:'رحلاتي',exceptions:'الاستثناءات',billing:'الفواتير',fuel:'الوقود',esg:'الاستدامة',trips:'الشحنات',forecast:'شحنة جديدة',client_portal:'شحناتي'};
-var FR_NAV = {dashboard:'Tableau de bord',shipments:'Expéditions',fleet:'Flotte',drivers:'Chauffeurs',customers:'Clients',routes:'Itinéraires',tracking:'Suivi',reports:'Rapports',maintenance:'Maintenance',alerts:'Alertes',settings:'Paramètres',quality:'Qualité',controlroom:'Salle de contrôle',security:'Sécurité',finance:'Finance',spare_parts:'Pièces détachées',validation:'Validation',ai:'IA',admin_mgmt:'Administration',analytics:'Rapports',audit:'Audit',nr_trip:'Non facturable',my_trips:'Mes trajets',exceptions:'Exceptions',billing:'Factures',fuel:'Carburant',esg:'Rapport ESG',trips:'Expéditions',forecast:'Nouvelle expédition',client_portal:'Mes expéditions'};
+var AR_NAV = {dashboard:'الرئيسية',shipments:'الشحنات',fleet:'الأسطول',drivers:'السائقون',customers:'العملاء',routes:'المسارات',tracking:'التتبع',reports:'التقارير',maintenance:'الصيانة',alerts:'التنبيهات',settings:'الإعدادات',quality:'الجودة',controlroom:'غرفة التحكم',security:'الأمن',finance:'المالية',spare_parts:'قطع الغيار',validation:'التحقق',ai:'الذكاء الاصطناعي',admin_mgmt:'الإدارة',analytics:'التحليلات',audit:'المراجعة',nr_trip:'رحلة غير إيرادية',my_trips:'رحلاتي',operation:'العمليات',exceptions:'الاستثناءات',billing:'الفواتير',fuel:'الوقود',esg:'الاستدامة',trips:'الشحنات',forecast:'شحنة جديدة',client_portal:'شحناتي'};
+var FR_NAV = {dashboard:'Tableau de bord',shipments:'Expéditions',fleet:'Flotte',drivers:'Chauffeurs',customers:'Clients',routes:'Itinéraires',tracking:'Suivi',reports:'Rapports',maintenance:'Maintenance',alerts:'Alertes',settings:'Paramètres',quality:'Qualité',controlroom:'Salle de contrôle',security:'Sécurité',finance:'Finance',spare_parts:'Pièces détachées',validation:'Validation',ai:'IA',admin_mgmt:'Administration',analytics:'Rapports',audit:'Audit',nr_trip:'Non facturable',my_trips:'Mes trajets',operation:'Opérations',exceptions:'Exceptions',billing:'Factures',fuel:'Carburant',esg:'Rapport ESG',trips:'Expéditions',forecast:'Nouvelle expédition',client_portal:'Mes expéditions'};
 var _L_I18N={
   en:{title:'Welcome back',sub:'Sign in to your organization',org:'Organization Code',emp:'Employee ID',pw:'Password',btn:'LOGIN',headline:'Smart Logistics,<br><span>Seamless Control</span>',langWord:'Language'},
   ar:{title:'مرحبًا بعودتك',sub:'سجّل الدخول إلى مؤسستك',org:'كود المؤسسة',emp:'رقم الموظف',pw:'كلمة المرور',btn:'دخول',headline:'لوجستيات ذكية،<br><span>تحكم سلس</span>',langWord:'اللغة'},
@@ -13233,8 +13235,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -13571,6 +13573,239 @@ rSec = function() {
           '<button class="btn btn-sm btn-danger" data-id="' + tr.id + '" onclick="secCompleteWorkflow(this.dataset.id)">&#9889; Force Complete</button></div>';
       }).join('') + '</div>' : '');
 };
+
+// ══════════════════════════════════════════════════════════════
+// OPERATION MODULE — field processing: scan, photograph, checklist
+// Everything here is admin-configurable via S.opsConfig (Admin → Operations)
+// ══════════════════════════════════════════════════════════════
+var OPS_CHK_DEFAULT=[
+  {id:'cooling',label:'Cooling unit running & verified',on:true,req:true},
+  {id:'precool',label:'Pre-cooling at target temperature',on:true,req:true},
+  {id:'seal',label:'Load secured & sealed',on:true,req:true},
+  {id:'logger',label:'Temp logger placed & calibrated',on:true,req:true},
+  {id:'doors',label:'Door seals intact',on:true,req:false},
+  {id:'clean',label:'Interior clean & hygienic',on:true,req:false},
+  {id:'gps',label:'GPS active',on:true,req:false},
+  {id:'brief',label:'Driver briefed',on:true,req:false}
+];
+function _opsCfg(){
+  if(!S.opsConfig){
+    try{S.opsConfig=JSON.parse(localStorage.getItem('ip_opsconfig')||'null');}catch(e){}
+  }
+  if(!S.opsConfig){
+    S.opsConfig={
+      checklist:OPS_CHK_DEFAULT.map(function(x){return Object.assign({},x);}),
+      requirePlateScan:true,
+      requireCartonScan:false,
+      minPhotos:2,
+      requireQualityApproval:true,
+      photoStages:['Loading','Sealed Door','Barcode/Label']
+    };
+  }
+  return S.opsConfig;
+}
+function _opsSaveCfg(){try{localStorage.setItem('ip_opsconfig',JSON.stringify(S.opsConfig));}catch(e){}}
+
+// Trips this operator should process: assigned & pre-departure
+function _opsTrips(){
+  return (S.trips||[]).filter(function(t){
+    return ['awaiting_truck','awaiting_quality'].indexOf(t.status)>-1 && t.type!=='Non-Revenue';
+  });
+}
+
+function rOperation(){
+  var c=document.getElementById('content');if(!c)return;
+  var cfg=_opsCfg();
+  var trips=_opsTrips();
+  c.innerHTML=
+    '<div class="page-head"><div><h2>📷 Operations</h2>'+
+    '<div class="page-head-sub">Scan, photograph &amp; verify shipments before departure</div></div>'+
+    '<button class="btn btn-outline btn-sm" onclick="rOperation()">↻ Refresh</button></div>'+
+    (trips.length===0
+      ? _emptyState('✅','Nothing to process','All shipments have been verified. New shipments assigned to a truck will appear here.','')
+      : '<div style="display:flex;flex-direction:column;gap:14px">'+trips.map(_opsCard).join('')+'</div>');
+}
+
+function _opsCard(t){
+  var cfg=_opsCfg();
+  var op=t.ops||{};
+  var scans=op.scans||[];
+  var photos=op.photos||[];
+  var chk=op.checklist||{};
+  var plateScanned=scans.some(function(s){return s.kind==='plate';});
+  var cartonScanned=scans.some(function(s){return s.kind==='carton';});
+  var chkItems=cfg.checklist.filter(function(x){return x.on;});
+  var chkDone=chkItems.filter(function(x){return chk[x.id];}).length;
+  var reqChkDone=chkItems.filter(function(x){return x.req;}).every(function(x){return chk[x.id];});
+  var photosOk=photos.length>=cfg.minPhotos;
+  var plateOk=!cfg.requirePlateScan||plateScanned;
+  var cartonOk=!cfg.requireCartonScan||cartonScanned;
+  var ready=reqChkDone&&photosOk&&plateOk&&cartonOk;
+  var badge=function(ok,txt){return '<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:'+(ok?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+(ok?'✓ ':'')+txt+'</span>';};
+  return '<div class="card" style="border-left:4px solid '+(ready?'#059669':'var(--c1)')+'">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
+      '<div><div style="font-size:16px;font-weight:800">'+t.id+'</div>'+
+      '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' &bull; '+t.condition+' &bull; '+(t.truck||'<span style="color:#B45309">no truck yet</span>')+'</div></div>'+
+      stB(t.status)+
+    '</div>'+
+    // Status chips
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+
+      (cfg.requirePlateScan?badge(plateScanned,'Plate'):'')+
+      (cfg.requireCartonScan?badge(cartonScanned,'Carton'):'')+
+      badge(photosOk,photos.length+'/'+cfg.minPhotos+' photos')+
+      badge(reqChkDone,'Checklist '+chkDone+'/'+chkItems.length)+
+    '</div>'+
+    // Scan buttons
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
+      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'plate\')">🔖 Scan Plate</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'carton\')">📦 Scan Carton</button>'+
+      '<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 Add Photo'+
+        '<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+t.id+'\',this)"/></label>'+
+    '</div>'+
+    // Scans list
+    (scans.length?'<div style="font-size:11px;color:var(--t2);margin-bottom:10px">'+scans.map(function(s){return '<div style="padding:3px 0">'+(s.kind==='plate'?'🔖':'📦')+' <b>'+s.code+'</b> <span style="color:var(--t3)">· '+s.ts+'</span></div>';}).join('')+'</div>':'')+
+    // Photos thumbnails
+    (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+photos.map(function(p,i){return '<div style="position:relative"><img src="'+p.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/><span onclick="opsDelPhoto(\''+t.id+'\','+i+')" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span></div>';}).join('')+'</div>':'')+
+    // Checklist
+    '<div style="border-top:1px solid var(--bd);padding-top:10px;margin-bottom:12px">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Truck Checklist</div>'+
+      chkItems.map(function(x){
+        var on=!!chk[x.id];
+        return '<div onclick="opsToggleChk(\''+t.id+'\',\''+x.id+'\')" style="display:flex;align-items:center;gap:9px;padding:7px 0;cursor:pointer">'+
+          '<div style="width:20px;height:20px;border-radius:6px;border:2px solid '+(on?'#059669':'var(--bd)')+';background:'+(on?'#059669':'transparent')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">'+(on?'✓':'')+'</div>'+
+          '<span style="font-size:13px;color:var(--t)">'+x.label+(x.req?' <span style="color:#EF4444">*</span>':'')+'</span></div>';
+      }).join('')+
+    '</div>'+
+    // Submit
+    '<button class="btn '+(ready?'btn-success':'btn-outline')+'" style="width:100%" '+(ready?'':'disabled')+' onclick="opsSubmit(\''+t.id+'\')">'+
+      (ready?(cfg.requireQualityApproval?'✅ Submit for Quality Review':'✅ Verified — Ready to Dispatch'):'Complete required items (*) to submit')+
+    '</button>'+
+  '</div>';
+}
+
+function _opsGet(id){var t=S.trips.find(function(x){return x.id===id;});if(t&&!t.ops)t.ops={scans:[],photos:[],checklist:{}};return t;}
+
+function opsToggleChk(id,key){
+  var t=_opsGet(id);if(!t)return;
+  t.ops.checklist[key]=!t.ops.checklist[key];
+  _lcSave();rOperation();
+}
+function opsDelPhoto(id,idx){
+  var t=_opsGet(id);if(!t)return;
+  t.ops.photos.splice(idx,1);_lcSave();rOperation();
+}
+function opsAddPhoto(id,input){
+  var t=_opsGet(id);if(!t)return;
+  var files=Array.prototype.slice.call(input.files||[]);
+  if(!files.length)return;
+  var pending=files.length;
+  files.forEach(function(f){
+    var rd=new FileReader();
+    rd.onload=function(){
+      // downscale to keep storage light
+      var img=new Image();
+      img.onload=function(){
+        var max=900,scale=Math.min(1,max/Math.max(img.width,img.height));
+        var cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
+        cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+        t.ops.photos.push({data:cv.toDataURL('image/jpeg',0.7),ts:new Date().toLocaleString('en-GB'),by:S.user.name});
+        if(--pending===0){_lcSave();toast('📷 Photo added','ok');rOperation();}
+      };
+      img.onerror=function(){if(--pending===0)rOperation();};
+      img.src=rd.result;
+    };
+    rd.readAsDataURL(f);
+  });
+}
+
+// ── Barcode scanning: BarcodeDetector API + manual fallback ──
+function opsScan(id,kind){
+  var t=_opsGet(id);if(!t)return;
+  if('BarcodeDetector' in window){
+    _opsCameraScan(id,kind);
+  }else{
+    _opsManualScan(id,kind);
+  }
+}
+function _opsRecordScan(id,kind,code){
+  var t=_opsGet(id);if(!t)return;
+  var entry={kind:kind,code:code,ts:new Date().toLocaleString('en-GB'),by:S.user.name};
+  t.ops.scans.push(entry);
+  // Chain of custody → trip timeline
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:entry.ts,user:S.user.name,action:(kind==='plate'?'🔖 Plate scanned':'📦 Carton scanned'),detail:code});
+  audit('OPS_SCAN',kind+' '+code,id);
+  _lcSave();syncTrip&&syncTrip(t);
+  toast('✓ '+(kind==='plate'?'Plate':'Carton')+' scanned: '+code,'ok');
+  rOperation();
+}
+function _opsManualScan(id,kind){
+  openM('<div class="m-title">'+(kind==='plate'?'🔖 Enter Plate Number':'📦 Enter Carton Barcode')+'</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Camera scanning isn\'t available on this device — enter the code manually.</div>'+
+    '<div class="fg"><input id="ops-code" placeholder="'+(kind==='plate'?'e.g. 4789 أ ج ي':'e.g. 8901234567890')+'" style="font-size:16px" autofocus/></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="var v=(document.getElementById(\'ops-code\')||{}).value.trim();if(v){closeM();_opsRecordScan(\''+id+'\',\''+kind+'\',v);}else{toast(\'Enter a code\',\'err\');}">Save</button></div>');
+}
+var _opsScanStream=null;
+function _opsCameraScan(id,kind){
+  openM('<div class="m-title">'+(kind==='plate'?'🔖 Scan Plate':'📦 Scan Carton Barcode')+'</div>'+
+    '<div style="position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3">'+
+      '<video id="ops-video" playsinline style="width:100%;height:100%;object-fit:cover"></video>'+
+      '<div style="position:absolute;inset:18% 12%;border:2px solid rgba(16,185,129,.9);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.35)"></div>'+
+    '</div>'+
+    '<div id="ops-scan-status" style="font-size:12px;color:var(--t2);text-align:center;margin-top:8px">Point the camera at the barcode…</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="_opsStopScan();closeM()">Cancel</button>'+
+    '<button class="btn btn-outline" onclick="_opsStopScan();closeM();_opsManualScan(\''+id+'\',\''+kind+'\')">Enter manually</button></div>');
+  var formats=kind==='plate'?['code_39','code_128','qr_code']:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'];
+  var detector;try{detector=new BarcodeDetector({formats:formats});}catch(e){detector=new BarcodeDetector();}
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(stream){
+    _opsScanStream=stream;
+    var v=document.getElementById('ops-video');if(!v){_opsStopScan();return;}
+    v.srcObject=stream;v.play();
+    var scanning=true;
+    var tick=function(){
+      if(!scanning||!document.getElementById('ops-video'))return;
+      detector.detect(v).then(function(codes){
+        if(codes&&codes.length){
+          scanning=false;_opsStopScan();closeM();
+          _opsRecordScan(id,kind,codes[0].rawValue);
+        }else{requestAnimationFrame(tick);}
+      }).catch(function(){requestAnimationFrame(tick);});
+    };
+    requestAnimationFrame(tick);
+  }).catch(function(err){
+    _opsStopScan();closeM();
+    toast('Camera unavailable — enter code manually','info');
+    _opsManualScan(id,kind);
+  });
+}
+function _opsStopScan(){
+  if(_opsScanStream){_opsScanStream.getTracks().forEach(function(tr){tr.stop();});_opsScanStream=null;}
+}
+
+function opsSubmit(id){
+  var t=_opsGet(id);if(!t)return;
+  var cfg=_opsCfg();
+  t.ops.verifiedBy=S.user.name;
+  t.ops.verifiedAt=new Date().toLocaleString('en-GB');
+  // mirror checklist into trip.checklist array for the quality/PDF views
+  var chkItems=cfg.checklist.filter(function(x){return x.on;});
+  t.checklist={};chkItems.forEach(function(x){t.checklist[x.label]=!!t.ops.checklist[x.id];});
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:t.ops.verifiedAt,user:S.user.name,action:'📷 Operations verified',detail:t.ops.photos.length+' photos, '+t.ops.scans.length+' scans'});
+  if(cfg.requireQualityApproval){
+    if(t.status==='awaiting_truck')t.status='awaiting_quality';
+    t.ops.awaitingQuality=true;
+    notif('🧪 '+t.id+' verified by operations — awaiting quality review','info');
+    toast('✅ Submitted for quality review','ok');
+  }else{
+    t.ops.qualityApproved=true;
+    toast('✅ Shipment verified & ready to dispatch','ok');
+  }
+  audit('OPS_SUBMIT',t.ops.photos.length+' photos, checklist done',id);
+  _lcSave();syncTrip&&syncTrip(t);
+  rOperation();
+}
 
 // ══ TRIP ROUTE MINI-MAP — real geometry from city coordinates ══
 function _tripRouteSVG(t){
