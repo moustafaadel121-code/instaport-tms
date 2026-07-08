@@ -13958,6 +13958,77 @@ function _tripRouteSVG(t){
     '<div style="position:absolute;bottom:6px;left:10px;font-size:9.5px;color:rgba(255,255,255,.45)">Schematic — based on city coordinates</div></div>';
 }
 
+// ══ E-SIGNATURE CAPTURE (finger / mouse) ═════════════════════
+var _SIG_ROLES=[['driver','Driver'],['quality','Quality Inspector'],['security','Security Gate'],['customer','Received By (Customer)']];
+var _sigCtx=null,_sigDrawing=false,_sigDirty=false;
+function openSignCapture(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(!t.signatures)t.signatures={};
+  var chips=_SIG_ROLES.map(function(r){
+    var has=t.signatures[r[0]];
+    return '<button class="btn '+(has?'btn-success':'btn-outline')+' btn-sm" onclick="_sigPick(\''+id+'\',\''+r[0]+'\')">'+(has?'✓ ':'')+r[1]+'</button>';
+  }).join('');
+  openM('<div class="m-title">✍️ Capture Signature</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Choose the signing party, then sign in the box below with your finger or mouse.</div>'+
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px" id="sig-roles">'+chips+'</div>'+
+    '<div class="fg"><label>Signer name</label><input id="sig-name" placeholder="Full name"/></div>'+
+    '<div style="border:1.5px dashed var(--bd);border-radius:12px;background:#fff;touch-action:none">'+
+      '<canvas id="sig-pad" width="440" height="180" style="width:100%;height:180px;display:block;border-radius:12px;cursor:crosshair"></canvas></div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-top:8px">'+
+      '<button class="btn btn-outline btn-sm" onclick="_sigClear()">Clear</button>'+
+      '<span id="sig-hint" style="font-size:11px;color:var(--t3)">Sign above</span></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="_sigStop();closeM()">Close</button>'+
+    '<button class="btn btn-primary" onclick="_sigSave(\''+id+'\')">Save Signature</button></div>');
+  window._sigCurrentRole='customer';
+  setTimeout(function(){_sigInit(id);_sigPick(id,'customer');},60);
+}
+function _sigInit(id){
+  var cv=document.getElementById('sig-pad');if(!cv)return;
+  // scale canvas backing store to element size for crisp lines
+  var rect=cv.getBoundingClientRect();
+  cv.width=rect.width*2;cv.height=rect.height*2;
+  _sigCtx=cv.getContext('2d');_sigCtx.scale(2,2);
+  _sigCtx.lineWidth=2.2;_sigCtx.lineCap='round';_sigCtx.lineJoin='round';_sigCtx.strokeStyle='#12103a';
+  _sigDirty=false;
+  var pos=function(e){var r=cv.getBoundingClientRect();var p=e.touches?e.touches[0]:e;return {x:p.clientX-r.left,y:p.clientY-r.top};};
+  var start=function(e){e.preventDefault();_sigDrawing=true;var p=pos(e);_sigCtx.beginPath();_sigCtx.moveTo(p.x,p.y);};
+  var move=function(e){if(!_sigDrawing)return;e.preventDefault();var p=pos(e);_sigCtx.lineTo(p.x,p.y);_sigCtx.stroke();_sigDirty=true;var h=document.getElementById('sig-hint');if(h)h.textContent='';};
+  var end=function(){_sigDrawing=false;};
+  cv.onmousedown=start;cv.onmousemove=move;window.addEventListener('mouseup',end);
+  cv.ontouchstart=start;cv.ontouchmove=move;cv.ontouchend=end;
+  cv._end=end;
+}
+function _sigPick(id,role){
+  window._sigCurrentRole=role;
+  var t=S.trips.find(function(x){return x.id===id;});
+  document.querySelectorAll('#sig-roles button').forEach(function(b){b.classList.remove('btn-primary');});
+  // highlight active
+  var lbl=(_SIG_ROLES.find(function(r){return r[0]===role;})||[])[1];
+  document.querySelectorAll('#sig-roles button').forEach(function(b){if(b.textContent.replace(/^✓ /,'')===lbl)b.classList.add('btn-primary');});
+  var nm=document.getElementById('sig-name');
+  var existing=t&&t.signatures&&t.signatures[role];
+  if(nm)nm.value=existing?existing.name||'':'';
+  _sigClear();
+}
+function _sigClear(){if(_sigCtx){var cv=document.getElementById('sig-pad');_sigCtx.clearRect(0,0,cv.width,cv.height);_sigDirty=false;var h=document.getElementById('sig-hint');if(h)h.textContent='Sign above';}}
+function _sigStop(){var cv=document.getElementById('sig-pad');if(cv&&cv._end)cv._end();_sigCtx=null;}
+function _sigSave(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(!_sigDirty){toast('Please sign first','err');return;}
+  var name=(document.getElementById('sig-name')||{}).value.trim();
+  if(!name){toast('Enter the signer name','err');return;}
+  var role=window._sigCurrentRole||'customer';
+  var cv=document.getElementById('sig-pad');
+  if(!t.signatures)t.signatures={};
+  t.signatures[role]={img:cv.toDataURL('image/png'),name:name,ts:new Date().toLocaleString('en-GB'),by:S.user.name};
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:t.signatures[role].ts,user:S.user.name,action:'✍️ Signature captured',detail:(_SIG_ROLES.find(function(r){return r[0]===role;})||['',''])[1]+' — '+name});
+  audit('SIGNATURE',role+' signed by '+name,id);
+  _lcSave();syncTrip&&syncTrip(t);
+  toast('✅ Signature saved','ok');
+  openSignCapture(id); // refresh chips
+}
+
 // ══ TRIP PDF REPORT — Proof of Delivery ══════════════════════
 function tripPDF(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t){toast('Trip not found','err');return;}
@@ -14018,8 +14089,12 @@ function tripPDF(id){
     (costRows&&(can('all')||S.role==='finance')?'<div class="sec">Charges</div><table class="tb">'+costRows+'</table>':'')+
     '<div class="sec">Signatures</div>'+
     '<div class="sigs">'+
-    ['Driver','Quality Inspector','Security Gate','Received By (Customer)'].map(function(w){
-      return '<div class="sig"><div class="who">'+w+'</div><div class="ln">Name / Signature / Date</div></div>';}).join('')+
+    [['Driver','driver'],['Quality Inspector','quality'],['Security Gate','security'],['Received By (Customer)','customer']].map(function(w){
+      var sg=(t.signatures||{})[w[1]];
+      var inner=sg&&sg.img
+        ? '<img src="'+sg.img+'" style="max-height:44px;max-width:100%;object-fit:contain;margin-bottom:2px"/><div class="ln">'+esc(sg.name||'')+(sg.ts?' · '+esc(sg.ts):'')+'</div>'
+        : '<div class="ln">Name / Signature / Date</div>';
+      return '<div class="sig"><div class="who">'+w[0]+'</div>'+inner+'</div>';}).join('')+
     '</div>'+
     '<div class="ft"><span>Generated by InstaPort TMS — '+esc(S.user?S.user.name:'')+'</span><span>'+docNo+' • Page 1 of 1</span></div>'+
     '<div class="noprint" style="position:fixed;top:12px;right:14px"><button onclick="window.print()" style="padding:10px 22px;background:#4F1FD4;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button></div>'+
@@ -14063,6 +14138,7 @@ function _openTripSPv2(id) {
     (can('complete_workflow')&&t.status!=='completed' ? '<button class="btn btn-outline btn-sm" data-id="' + t.id + '" onclick="secCompleteWorkflow(this.dataset.id);closeSP()">&#9889; Force Complete</button>' : '') +
     (isCompleted&&canAttach ? '<button class="btn btn-outline btn-sm" onclick="openTripAttach(\''+t.id+'\')">&#128206; Attach Docs/Graphs</button>' : '') +
     '<button class="btn btn-outline btn-sm" onclick="tripPDF(\''+t.id+'\')">&#128196; '+(isCompleted?'Proof of Delivery (PDF)':'Trip Report (PDF)')+'</button>' +
+    '<button class="btn btn-outline btn-sm" onclick="openSignCapture(\''+t.id+'\')">&#9997;&#65039; Signatures'+((t.signatures&&Object.keys(t.signatures).length)?' ('+Object.keys(t.signatures).length+')':'')+'</button>' +
     '</div></div>' +
     '<div id="tp1" class="sp-pane" style="display:none">' + _tripRouteSVG(t) + '<div class="ig">' + [['From', t.from || '&#8212;'], ['To', t.dests || '&#8212;'], ['KM', t.km || '&#8212;'], ['Stops', (t.destsArr || []).length || 1]].map(function(x) { return '<div class="ib"><div class="ib-l">' + x[0] + '</div><div class="ib-v">' + x[1] + '</div></div>'; }).join('') + '</div></div>' +
     '<div id="tp2" class="sp-pane" style="display:none">' +
