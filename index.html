@@ -6801,6 +6801,7 @@ function rQuality(){
       '<div style="font-size:12px;color:var(--t2);margin-top:2px">Agreement: '+qa.minTemp+'–'+qa.maxTemp+'°C · Min '+qa.checkReq+'/8</div></div>'+stB(t.status)+'</div>'+
       '<div style="font-size:12px;font-weight:600;color:var(--t2);margin-bottom:10px">CHECKLIST — '+done+'/8</div>'+
       CHK.map(function(item,i){return '<div class="chk'+(t.checklist[i]?' chk-on':'')+'" onclick="togC(\''+t.id+'\','+i+')"><div class="chk-box">'+(t.checklist[i]?'✓':'')+'</div><div style="flex:1;font-size:13px">'+item+'</div><span style="font-size:11px;color:var(--t3)">'+(i+1)+'/8</span></div>';}).join('')+
+      _opsQualityBlock(t)+
       '<div style="margin-top:14px;padding:14px;background:var(--bg);border-radius:var(--r)"><div style="font-size:12px;font-weight:600;margin-bottom:6px">🌡️ Live Temperature</div>'+
       '<div class="gauge" style="padding:6px 0"><div class="gauge-val g-ok" id="qt'+t.id+'">--</div><div class="gauge-bar"><div class="gauge-fill" id="qb'+t.id+'" style="width:50%;background:var(--c4)"></div></div>'+
       '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3)"><span>'+qa.minTemp+'°C</span><span>'+qa.maxTemp+'°C</span></div></div></div>'+
@@ -6811,6 +6812,18 @@ function rQuality(){
   });
   if(intrans.length>0)html+='<div class="card"><div class="card-hd"><div class="card-title">🌡️ In-Transit Monitor</div><span class="live"><span class="live-dot"></span>Live</span></div>'+intrans.map(function(t){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px"><div><div style="font-weight:600">'+t.id+'</div><div style="font-size:12px;color:var(--t2)">'+t.truck+' · '+t.customer+'</div></div><div id="lt'+t.id+'" style="font-size:22px;font-weight:700;color:var(--c4)">--</div></div>';}).join('')+'</div>';
   c.innerHTML=html;
+}
+// Operations verification evidence shown to quality before approval
+function _opsQualityBlock(t){
+  var op=t.ops;
+  if(!op||(!op.verifiedBy&&!(op.photos||[]).length&&!(op.scans||[]).length))return '';
+  var photos=op.photos||[],scans=op.scans||[];
+  return '<div style="margin-top:14px;padding:14px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:var(--r)">'+
+    '<div style="font-size:12px;font-weight:700;color:#6C3FF5;margin-bottom:8px">📷 Operations Verification'+
+      (op.verifiedBy?' <span style="font-weight:500;color:var(--t2)">— by '+op.verifiedBy+' · '+(op.verifiedAt||'')+'</span>':'')+'</div>'+
+    (scans.length?'<div style="font-size:11px;color:var(--t2);margin-bottom:8px">'+scans.map(function(s){return (s.kind==='plate'?'🔖 ':'📦 ')+'<b>'+s.code+'</b>';}).join(' &nbsp; ')+'</div>':'')+
+    (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap">'+photos.map(function(p){return '<img src="'+p.data+'" onclick="window.open().document.write(\'<img src=\\\''+p.data+'\\\' style=max-width:100%>\')" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid #DDD6FE;cursor:pointer"/>';}).join('')+'</div>':'<div style="font-size:11px;color:var(--t3)">No photos attached</div>')+
+  '</div>';
 }
 function togC(id,i){var t=S.trips.find(function(x){return x.id===id;});if(!t)return;t.checklist[i]=!t.checklist[i];rQuality();}
 function apQConfirm(id,isInbound){
@@ -9362,9 +9375,10 @@ function rAdmin(){
   '<div class="tab'+(tab==='apikeys'?' on':'')+'" onclick="S.adminTab=\'apikeys\';rAdmin()">🔑 API Keys</div>'+
   '<div class="tab'+(tab==='branding'?' on':'')+'" onclick="S.adminTab=\'branding\';rAdmin()">🎨 Branding</div>'+
   '<div class="tab'+(tab==='workflow'?' on':'')+'" onclick="S.adminTab=\'workflow\';rAdmin()">&#9881; Workflow</div>'+
+  '<div class="tab'+(tab==='operations'?' on':'')+'" onclick="S.adminTab=\'operations\';rAdmin()">📷 Operations</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity,workflow:rAdminWorkflow};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity,workflow:rAdminWorkflow,operations:rAdminOperations};
   (fn[tab]||rAdminUsers)();
 }
 
@@ -13684,6 +13698,56 @@ function _opsCard(t){
 }
 
 function _opsGet(id){var t=S.trips.find(function(x){return x.id===id;});if(t&&!t.ops)t.ops={scans:[],photos:[],checklist:{}};return t;}
+
+// ── Admin → Operations configuration ──
+function rAdminOperations(){
+  var el=document.getElementById('admin-content');if(!el)return;
+  var cfg=_opsCfg();
+  var tog=function(key,label,desc,val){
+    return '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bd)">'+
+      '<div style="flex:1;padding-right:14px"><div style="font-size:13px;font-weight:600;color:var(--t)">'+label+'</div>'+
+      (desc?'<div style="font-size:11px;color:var(--t2);margin-top:3px">'+desc+'</div>':'')+'</div>'+
+      '<label class="fg-toggle" style="flex-shrink:0"><input type="checkbox" '+(val?'checked':'')+' onchange="'+key+'"/><span class="fg-slider"></span></label></div>';
+  };
+  el.innerHTML='<div style="max-width:720px">'+
+    '<div class="card">'+
+    '<div style="font-size:15px;font-weight:800;margin-bottom:4px">📷 Operations Workflow</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Control what field operators must scan, photograph and verify before a shipment can depart.</div>'+
+    tog('_opsSetFlag(\'requirePlateScan\',this.checked)','Require plate scan','Operator must scan the truck plate barcode.',cfg.requirePlateScan)+
+    tog('_opsSetFlag(\'requireCartonScan\',this.checked)','Require carton scan','Operator must scan at least one carton/product barcode.',cfg.requireCartonScan)+
+    tog('_opsSetFlag(\'requireQualityApproval\',this.checked)','Require quality approval','After operator verifies, quality must review before dispatch. If off, verified shipments go straight to dispatch.',cfg.requireQualityApproval)+
+    '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bd)">'+
+      '<div><div style="font-size:13px;font-weight:600">Minimum photos required</div><div style="font-size:11px;color:var(--t2)">Shipment can\'t be submitted with fewer photos.</div></div>'+
+      '<input type="number" min="0" max="10" value="'+cfg.minPhotos+'" onchange="_opsSetNum(\'minPhotos\',this.value)" style="width:64px;padding:7px;border:1.5px solid var(--bd);border-radius:8px;text-align:center"/></div>'+
+    '</div>'+
+    '<div class="card">'+
+    '<div style="font-size:14px;font-weight:800;margin-bottom:4px">Truck Checklist Items</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Toggle which items appear. Mark items as <b>required</b> — required items must be checked before submission.</div>'+
+    '<div id="ops-chk-list">'+cfg.checklist.map(_opsChkRow).join('')+'</div>'+
+    '<div style="display:flex;gap:8px;margin-top:12px">'+
+      '<input id="ops-new-chk" placeholder="Add a new checklist item…" style="flex:1;padding:8px 12px;border:1.5px solid var(--bd);border-radius:8px"/>'+
+      '<button class="btn btn-primary btn-sm" onclick="_opsAddChk()">+ Add</button></div>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--t3);text-align:center">Changes apply immediately to the Operations screen. Existing shipments keep their recorded data.</div>'+
+    '</div>';
+}
+function _opsChkRow(x,i){
+  return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bd)" data-oi="'+i+'">'+
+    '<label class="fg-toggle" style="flex-shrink:0" title="Show this item"><input type="checkbox" '+(x.on?'checked':'')+' onchange="_opsChkFlag('+i+',\'on\',this.checked)"/><span class="fg-slider"></span></label>'+
+    '<span style="flex:1;font-size:13px;color:var(--t)'+(x.on?'':';opacity:.45;text-decoration:line-through')+'">'+x.label+'</span>'+
+    '<label style="display:flex;align-items:center;gap:5px;font-size:11px;color:var(--t2);cursor:pointer"><input type="checkbox" '+(x.req?'checked':'')+' onchange="_opsChkFlag('+i+',\'req\',this.checked)"/> required</label>'+
+    '<span onclick="_opsDelChk('+i+')" style="cursor:pointer;color:#EF4444;font-size:16px;padding:0 4px" title="Remove">×</span></div>';
+}
+function _opsSetFlag(k,v){_opsCfg()[k]=v;_opsSaveCfg();toast('Saved','ok');}
+function _opsSetNum(k,v){_opsCfg()[k]=Math.max(0,+v||0);_opsSaveCfg();toast('Saved','ok');}
+function _opsChkFlag(i,k,v){var cfg=_opsCfg();if(cfg.checklist[i]){cfg.checklist[i][k]=v;_opsSaveCfg();rAdminOperations();}}
+function _opsDelChk(i){var cfg=_opsCfg();cfg.checklist.splice(i,1);_opsSaveCfg();rAdminOperations();}
+function _opsAddChk(){
+  var inp=document.getElementById('ops-new-chk');var v=(inp&&inp.value||'').trim();
+  if(!v){toast('Enter an item','err');return;}
+  var cfg=_opsCfg();cfg.checklist.push({id:'c'+Date.now(),label:v,on:true,req:false});
+  _opsSaveCfg();rAdminOperations();
+}
 
 function opsToggleChk(id,key){
   var t=_opsGet(id);if(!t)return;
