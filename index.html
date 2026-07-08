@@ -9407,7 +9407,7 @@ function rAdmin(){
   var c=document.getElementById('content');
   var tab=S.adminTab||'users';
   c.innerHTML='<div class="page-head"><div><h2>⚙️ Admin Panel</h2></div></div>'+
-  '<div class="tabs"><div class="tab'+(tab==='users'?' on':'')+'" onclick="S.adminTab=\'users\';rAdmin()">👥 Users</div>'+
+  '<div class="tabs" style="flex-wrap:wrap;gap:4px"><div class="tab'+(tab==='users'?' on':'')+'" onclick="S.adminTab=\'users\';rAdmin()">👥 Users</div>'+
   '<div class="tab'+(tab==='customers'?' on':'')+'" onclick="S.adminTab=\'customers\';rAdmin()">🏢 Customers</div>'+
   '<div class="tab'+(tab==='trucks'?' on':'')+'" onclick="S.adminTab=\'trucks\';rAdmin()">🚛 Trucks</div>'+
   '<div class="tab'+(tab==='pricing'?' on':'')+'" onclick="S.adminTab=\'pricing\';rAdmin()">💰 Pricing</div>'+
