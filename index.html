@@ -6827,13 +6827,14 @@ function rQuality(){
   if(pend.length===0&&inbQ.length===0&&intrans.length===0)html+=_emptyState('🧪','All Quality Checks Passed','No trips are currently awaiting quality inspection. Everything is cleared and on track.','');
   pend.concat(inbQ).forEach(function(t){
     var qa=S.qaAgr[t.customer]||{minTemp:2,maxTemp:8,checkReq:7};
-    var done=t.checklist.filter(Boolean).length;var isInb=t.status==='inbound_quality';
+    var items=_chkItems();var res=_chkGet(t);
+    var done=items.filter(function(x){return res[x.id];}).length;var isInb=t.status==='inbound_quality';
     html+='<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:14px"><div>'+
       '<div style="font-size:17px;font-weight:700">'+t.id+(isInb?' <span class="tag tag-blue" style="font-size:11px">Inbound QA</span>':'')+'</div>'+
       '<div style="color:var(--t2);font-size:13px;margin-top:3px">'+t.customer+' · '+t.truck+' · <span class="tag tag-blue">'+t.condition+'</span></div>'+
-      '<div style="font-size:12px;color:var(--t2);margin-top:2px">Agreement: '+qa.minTemp+'–'+qa.maxTemp+'°C · Min '+qa.checkReq+'/8</div></div>'+stB(t.status)+'</div>'+
-      '<div style="font-size:12px;font-weight:600;color:var(--t2);margin-bottom:10px">CHECKLIST — '+done+'/8</div>'+
-      CHK.map(function(item,i){return '<div class="chk'+(t.checklist[i]?' chk-on':'')+'" onclick="togC(\''+t.id+'\','+i+')"><div class="chk-box">'+(t.checklist[i]?'✓':'')+'</div><div style="flex:1;font-size:13px">'+item+'</div><span style="font-size:11px;color:var(--t3)">'+(i+1)+'/8</span></div>';}).join('')+
+      '<div style="font-size:12px;color:var(--t2);margin-top:2px">Agreement: '+qa.minTemp+'–'+qa.maxTemp+'°C</div></div>'+stB(t.status)+'</div>'+
+      '<div style="font-size:12px;font-weight:600;color:var(--t2);margin-bottom:10px">CHECKLIST — '+done+'/'+items.length+'</div>'+
+      items.map(function(item){var on=!!res[item.id];return '<div class="chk'+(on?' chk-on':'')+'" onclick="togC(\''+t.id+'\',\''+item.id+'\')"><div class="chk-box">'+(on?'✓':'')+'</div><div style="flex:1;font-size:13px">'+item.label+(item.req?' <span style="color:#EF4444">*</span>':'')+'</div></div>';}).join('')+
       _opsQualityBlock(t)+
       '<div style="margin-top:14px;padding:14px;background:var(--bg);border-radius:var(--r)"><div style="font-size:12px;font-weight:600;margin-bottom:6px">🌡️ Live Temperature</div>'+
       '<div class="gauge" style="padding:6px 0"><div class="gauge-val g-ok" id="qt'+t.id+'">--</div><div class="gauge-bar"><div class="gauge-fill" id="qb'+t.id+'" style="width:50%;background:var(--c4)"></div></div>'+
@@ -6854,19 +6855,32 @@ function _opsQualityBlock(t){
   return '<div style="margin-top:14px;padding:14px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:var(--r)">'+
     '<div style="font-size:12px;font-weight:700;color:#6C3FF5;margin-bottom:8px">📷 Operations Verification'+
       (op.verifiedBy?' <span style="font-weight:500;color:var(--t2)">— by '+op.verifiedBy+' · '+(op.verifiedAt||'')+'</span>':'')+'</div>'+
-    (scans.length?'<div style="font-size:11px;color:var(--t2);margin-bottom:8px">'+scans.map(function(s){return (s.kind==='plate'?'🔖 ':'📦 ')+'<b>'+s.code+'</b>';}).join(' &nbsp; ')+'</div>':'')+
+    (function(){
+      var plate=scans.find(function(s){return s.kind==='plate';});
+      var units=scans.filter(function(s){return s.kind==='unit'||s.kind==='carton';});
+      var exp=op.expectedUnits||0;
+      if(!plate&&!units.length)return '';
+      return '<div style="font-size:11px;color:var(--t2);margin-bottom:8px">'+
+        (plate?'🔖 Plate <b>'+plate.code+'</b> &nbsp; ':'')+
+        (units.length?'📦 <b>'+units.length+(exp?'/'+exp:'')+'</b> units'+(exp&&units.length<exp?' <span style="color:#B45309">('+(exp-units.length)+' short)</span>':''):'')+
+        '</div>';
+    })()+
     (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap">'+photos.map(function(p){return '<img src="'+p.data+'" onclick="window.open().document.write(\'<img src=\\\''+p.data+'\\\' style=max-width:100%>\')" style="width:52px;height:52px;object-fit:cover;border-radius:6px;border:1px solid #DDD6FE;cursor:pointer"/>';}).join('')+'</div>':'<div style="font-size:11px;color:var(--t3)">No photos attached</div>')+
   '</div>';
 }
-function togC(id,i){var t=S.trips.find(function(x){return x.id===id;});if(!t)return;t.checklist[i]=!t.checklist[i];rQuality();}
+function togC(id,itemId){var t=S.trips.find(function(x){return x.id===id;});if(!t)return;var res=_chkGet(t);res[itemId]=!res[itemId];_syncTripChecklist(t);_lcSave&&_lcSave();rQuality();}
 function apQConfirm(id,isInbound){
   var t=S.trips.find(function(x){return x.id===id;});
-  var qa=S.qaAgr[t.customer]||{checkReq:7};var done=t.checklist.filter(Boolean).length;
-  if(done<qa.checkReq){toast('Need '+qa.checkReq+'/8 ('+done+' done)','err');return;}
+  var items=_chkItems();var res=_chkGet(t);
+  var done=items.filter(function(x){return res[x.id];}).length;
+  if(!_chkRequiredDone(t)){
+    var missing=items.filter(function(x){return x.req&&!res[x.id];}).map(function(x){return x.label;});
+    toast('Complete required items: '+missing.join(', '),'err');return;
+  }
   requirePwd('Approve Quality — '+id,function(){
     var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
-    t.qualityPin=true;
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound Return)':'(Outbound)'),detail:done+'/8'});
+    t.qualityPin=true;t.ops&&(t.ops.qualityApproved=true);_syncTripChecklist(t);
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound Return)':'(Outbound)'),detail:done+'/'+items.length});
     audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
     if(isInbound){
       // INBOUND quality final step → COMPLETED with inboundApproved flag
@@ -13703,14 +13717,18 @@ function _opsCard(t){
   var photos=op.photos||[];
   var chk=op.checklist||{};
   var plateScanned=scans.some(function(s){return s.kind==='plate';});
-  var cartonScanned=scans.some(function(s){return s.kind==='carton';});
+  var unitScans=scans.filter(function(s){return s.kind==='unit'||s.kind==='carton';});
+  var unitCount=unitScans.length;
+  var expected=op.expectedUnits||0;
+  var cartonScanned=unitCount>0;
   var chkItems=cfg.checklist.filter(function(x){return x.on;});
   var chkDone=chkItems.filter(function(x){return chk[x.id];}).length;
   var reqChkDone=chkItems.filter(function(x){return x.req;}).every(function(x){return chk[x.id];});
   var photosOk=photos.length>=cfg.minPhotos;
   var plateOk=!cfg.requirePlateScan||plateScanned;
   var cartonOk=!cfg.requireCartonScan||cartonScanned;
-  var ready=reqChkDone&&photosOk&&plateOk&&cartonOk;
+  var expectedOk=!expected||unitCount>=expected;
+  var ready=reqChkDone&&photosOk&&plateOk&&cartonOk&&expectedOk;
   var badge=function(ok,txt){return '<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:'+(ok?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+(ok?'✓ ':'')+txt+'</span>';};
   return '<div class="card" style="border-left:4px solid '+(ready?'#059669':'var(--c1)')+'">'+
     '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
@@ -13721,19 +13739,21 @@ function _opsCard(t){
     // Status chips
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+
       (cfg.requirePlateScan?badge(plateScanned,'Plate'):'')+
-      (cfg.requireCartonScan?badge(cartonScanned,'Carton'):'')+
+      badge(expected?unitCount>=expected:unitCount>0,'📦 '+unitCount+(expected?' / '+expected:'')+' units')+
       badge(photosOk,photos.length+'/'+cfg.minPhotos+' photos')+
       badge(reqChkDone,'Checklist '+chkDone+'/'+chkItems.length)+
     '</div>'+
     // Scan buttons
     '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
       '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'plate\')">🔖 Scan Plate</button>'+
-      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'carton\')">📦 Scan Carton</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'unit\')">📦 Scan Pallets/Cartons</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="opsSetExpected(\''+t.id+'\')">🔢 Expected'+(expected?': '+expected:'')+'</button>'+
       '<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 Add Photo'+
         '<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+t.id+'\',this)"/></label>'+
     '</div>'+
-    // Scans list
-    (scans.length?'<div style="font-size:11px;color:var(--t2);margin-bottom:10px">'+scans.map(function(s){return '<div style="padding:3px 0">'+(s.kind==='plate'?'🔖':'📦')+' <b>'+s.code+'</b> <span style="color:var(--t3)">· '+s.ts+'</span></div>';}).join('')+'</div>':'')+
+    // Scans summary
+    (plateScanned?'<div style="font-size:11px;color:var(--t2);margin-bottom:4px">🔖 Plate: <b>'+(scans.find(function(s){return s.kind==='plate';})||{}).code+'</b></div>':'')+
+    (unitCount?'<div style="font-size:11px;color:var(--t2);margin-bottom:10px">📦 '+unitCount+' unit'+(unitCount>1?'s':'')+' scanned'+(expected&&unitCount<expected?' <span style="color:#B45309">('+(expected-unitCount)+' remaining)</span>':expected?' <span style="color:#059669">✓ all scanned</span>':'')+' — '+unitScans.slice(-4).map(function(s){return s.code;}).join(', ')+(unitCount>4?' …':'')+'</div>':'')+
     // Photos thumbnails
     (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+photos.map(function(p,i){return '<div style="position:relative"><img src="'+p.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/><span onclick="opsDelPhoto(\''+t.id+'\','+i+')" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span></div>';}).join('')+'</div>':'')+
     // Checklist
@@ -13755,6 +13775,30 @@ function _opsCard(t){
 
 function _opsGet(id){var t=S.trips.find(function(x){return x.id===id;});if(t&&!t.ops)t.ops={scans:[],photos:[],checklist:{}};return t;}
 
+// ── Unified configurable truck checklist (used by BOTH operation & quality) ──
+function _chkItems(){return _opsCfg().checklist.filter(function(x){return x.on;});}
+function _chkGet(t){
+  if(!t.ops)t.ops={scans:[],photos:[],checklist:{}};
+  if(!t.ops.checklist)t.ops.checklist={};
+  // migrate legacy array checklist (index-based) → id-based object once
+  if(Array.isArray(t.checklist)&&!t._chkMigrated){
+    var def=OPS_CHK_DEFAULT;
+    t.checklist.forEach(function(v,i){if(def[i]&&v)t.ops.checklist[def[i].id]=true;});
+    t._chkMigrated=true;
+  }
+  return t.ops.checklist;
+}
+// Keep t.checklist as a {label:bool} object so PDF & other readers stay correct
+function _syncTripChecklist(t){
+  var res=_chkGet(t);var obj={};
+  _chkItems().forEach(function(x){obj[x.label]=!!res[x.id];});
+  t.checklist=obj;
+}
+function _chkRequiredDone(t){
+  var res=_chkGet(t);
+  return _chkItems().filter(function(x){return x.req;}).every(function(x){return res[x.id];});
+}
+
 // ── Admin → Operations configuration ──
 function rAdminOperations(){
   var el=document.getElementById('admin-content');if(!el)return;
@@ -13770,7 +13814,7 @@ function rAdminOperations(){
     '<div style="font-size:15px;font-weight:800;margin-bottom:4px">📷 Operations Workflow</div>'+
     '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Control what field operators must scan, photograph and verify before a shipment can depart.</div>'+
     tog('_opsSetFlag(\'requirePlateScan\',this.checked)','Require plate scan','Operator must scan the truck plate barcode.',cfg.requirePlateScan)+
-    tog('_opsSetFlag(\'requireCartonScan\',this.checked)','Require carton scan','Operator must scan at least one carton/product barcode.',cfg.requireCartonScan)+
+    tog('_opsSetFlag(\'requireCartonScan\',this.checked)','Require pallet/carton scan','Operator must scan at least one pallet or carton barcode. Supports batch scanning many units (e.g. 33 pallets per trailer).',cfg.requireCartonScan)+
     tog('_opsSetFlag(\'requireQualityApproval\',this.checked)','Require quality approval','After operator verifies, quality must review before dispatch. If off, verified shipments go straight to dispatch.',cfg.requireQualityApproval)+
     '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bd)">'+
       '<div><div style="font-size:13px;font-weight:600">Minimum photos required</div><div style="font-size:11px;color:var(--t2)">Shipment can\'t be submitted with fewer photos.</div></div>'+
@@ -13808,6 +13852,7 @@ function _opsAddChk(){
 function opsToggleChk(id,key){
   var t=_opsGet(id);if(!t)return;
   t.ops.checklist[key]=!t.ops.checklist[key];
+  _syncTripChecklist(t);
   _lcSave();rOperation();
 }
 function opsDelPhoto(id,idx){
@@ -13839,45 +13884,104 @@ function opsAddPhoto(id,input){
 }
 
 // ── Barcode scanning: BarcodeDetector API + manual fallback ──
+// kind: 'plate' (single) | 'unit' (pallet/carton — batch/continuous)
 function opsScan(id,kind){
   var t=_opsGet(id);if(!t)return;
+  var multi=(kind==='unit'||kind==='carton');
   if('BarcodeDetector' in window){
-    _opsCameraScan(id,kind);
+    _opsCameraScan(id,kind,multi);
   }else{
-    _opsManualScan(id,kind);
+    _opsManualScan(id,kind,multi);
   }
 }
-function _opsRecordScan(id,kind,code){
-  var t=_opsGet(id);if(!t)return;
-  var entry={kind:kind,code:code,ts:new Date().toLocaleString('en-GB'),by:S.user.name};
+function _opsUnitCount(t){return (t.ops&&t.ops.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';}).length;}
+function _opsRecordScan(id,kind,code,silent){
+  var t=_opsGet(id);if(!t)return false;
+  var isUnit=(kind==='unit'||kind==='carton');
+  // Dedupe units by code (same pallet scanned twice)
+  if(isUnit&&t.ops.scans.some(function(s){return (s.kind==='unit'||s.kind==='carton')&&s.code===code;})){
+    if(!silent)toast('Already scanned: '+code,'info');
+    return false;
+  }
+  if(kind==='plate'){ // one plate only — replace
+    t.ops.scans=t.ops.scans.filter(function(s){return s.kind!=='plate';});
+  }
+  var entry={kind:isUnit?'unit':kind,code:code,ts:new Date().toLocaleString('en-GB'),by:S.user.name};
   t.ops.scans.push(entry);
-  // Chain of custody → trip timeline
   if(!t.tl)t.tl=[];
-  t.tl.push({ts:entry.ts,user:S.user.name,action:(kind==='plate'?'🔖 Plate scanned':'📦 Carton scanned'),detail:code});
+  t.tl.push({ts:entry.ts,user:S.user.name,action:(kind==='plate'?'🔖 Plate scanned':'📦 Unit scanned'),detail:code});
   audit('OPS_SCAN',kind+' '+code,id);
-  _lcSave();syncTrip&&syncTrip(t);
-  toast('✓ '+(kind==='plate'?'Plate':'Carton')+' scanned: '+code,'ok');
-  rOperation();
+  _lcSave();
+  if(!silent){syncTrip&&syncTrip(t);toast('✓ '+(kind==='plate'?'Plate':'Unit')+': '+code,'ok');rOperation();}
+  return true;
 }
-function _opsManualScan(id,kind){
-  openM('<div class="m-title">'+(kind==='plate'?'🔖 Enter Plate Number':'📦 Enter Carton Barcode')+'</div>'+
-    '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Camera scanning isn\'t available on this device — enter the code manually.</div>'+
-    '<div class="fg"><input id="ops-code" placeholder="'+(kind==='plate'?'e.g. 4789 أ ج ي':'e.g. 8901234567890')+'" style="font-size:16px" autofocus/></div>'+
+// Set expected pallet/carton count for a trip
+function opsSetExpected(id){
+  var t=_opsGet(id);if(!t)return;
+  var cur=(t.ops.expectedUnits||'');
+  openM('<div class="m-title">📦 Expected Units</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">How many pallets / cartons should this shipment contain? (e.g. a trailer may hold 33 pallets). The counter turns green when all are scanned.</div>'+
+    '<div class="fg"><label>Expected count</label><input id="ops-exp" type="number" min="0" value="'+cur+'" placeholder="e.g. 33" autofocus/></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="var v=+(document.getElementById(\'ops-exp\')||{}).value||0;var tt=_opsGet(\''+id+'\');tt.ops.expectedUnits=v;_lcSave();closeM();rOperation();">Save</button></div>');
+}
+function _opsManualScan(id,kind,multi){
+  if(multi){
+    _opsManualBatch(id,kind);return;
+  }
+  openM('<div class="m-title">🔖 Enter Plate Number</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Camera scanning isn\'t available — enter the code manually.</div>'+
+    '<div class="fg"><input id="ops-code" placeholder="e.g. 4789 أ ج ي" style="font-size:16px" autofocus/></div>'+
     '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
     '<button class="btn btn-primary" onclick="var v=(document.getElementById(\'ops-code\')||{}).value.trim();if(v){closeM();_opsRecordScan(\''+id+'\',\''+kind+'\',v);}else{toast(\'Enter a code\',\'err\');}">Save</button></div>');
 }
+// Manual batch entry for pallets/cartons (scanner guns type + Enter)
+function _opsManualBatch(id,kind){
+  var t=_opsGet(id);
+  var render=function(){
+    var cnt=_opsUnitCount(t);var exp=t.ops.expectedUnits||0;
+    openM('<div class="m-title">📦 Add Pallets / Cartons</div>'+
+      '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Type or scan each code and press <b>Enter</b>. Keep going for all units'+(exp?' — '+cnt+' / '+exp+' added':'')+'. A handheld scanner gun works here too.</div>'+
+      '<div class="fg"><input id="ops-bcode" placeholder="Scan or type a code, then Enter" style="font-size:16px" autofocus '+
+        'onkeydown="if(event.key===\'Enter\'){var v=this.value.trim();if(v&&_opsRecordScan(\''+id+'\',\'unit\',v,true)){this.value=\'\';_opsBatchRefresh(\''+id+'\');}else{this.value=\'\';}}"/></div>'+
+      '<div id="ops-batch-list" style="max-height:160px;overflow:auto;margin-bottom:8px"></div>'+
+      '<div class="m-foot"><button class="btn btn-primary" onclick="closeM();rOperation()">Done ('+cnt+')</button></div>');
+    _opsBatchRefresh(id);
+  };
+  render();
+}
+function _opsBatchRefresh(id){
+  var t=_opsGet(id);var el=document.getElementById('ops-batch-list');if(!el)return;
+  var units=(t.ops.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';});
+  var cnt=units.length,exp=t.ops.expectedUnits||0;
+  el.innerHTML='<div style="font-size:12px;font-weight:700;margin:6px 0;color:'+(exp&&cnt>=exp?'#059669':'var(--t)')+'">'+cnt+(exp?' / '+exp:'')+' units'+(exp&&cnt>=exp?' ✓ complete':'')+'</div>'+
+    units.slice().reverse().map(function(s){return '<div style="display:flex;justify-content:space-between;font-size:12px;padding:4px 0;border-bottom:1px solid var(--bd)"><span>📦 '+s.code+'</span><span onclick="_opsDelScan(\''+id+'\',\''+s.code+'\')" style="color:#EF4444;cursor:pointer">×</span></div>';}).join('');
+  // update the Done button count
+  var done=document.querySelector('.m-foot .btn-primary');if(done)done.textContent='Done ('+cnt+')';
+}
+function _opsDelScan(id,code){
+  var t=_opsGet(id);
+  t.ops.scans=t.ops.scans.filter(function(s){return !((s.kind==='unit'||s.kind==='carton')&&s.code===code);});
+  _lcSave();_opsBatchRefresh(id);
+}
 var _opsScanStream=null;
-function _opsCameraScan(id,kind){
-  openM('<div class="m-title">'+(kind==='plate'?'🔖 Scan Plate':'📦 Scan Carton Barcode')+'</div>'+
+function _opsCameraScan(id,kind,multi){
+  var t=_opsGet(id);
+  openM('<div class="m-title">'+(kind==='plate'?'🔖 Scan Plate':'📦 Scan Pallets / Cartons')+'</div>'+
     '<div style="position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3">'+
       '<video id="ops-video" playsinline style="width:100%;height:100%;object-fit:cover"></video>'+
       '<div style="position:absolute;inset:18% 12%;border:2px solid rgba(16,185,129,.9);border-radius:10px;box-shadow:0 0 0 999px rgba(0,0,0,.35)"></div>'+
+      (multi?'<div id="ops-scan-count" style="position:absolute;top:8px;left:50%;transform:translateX(-50%);background:rgba(5,150,105,.92);color:#fff;font-size:13px;font-weight:800;padding:4px 14px;border-radius:20px"></div>':'')+
     '</div>'+
     '<div id="ops-scan-status" style="font-size:12px;color:var(--t2);text-align:center;margin-top:8px">Point the camera at the barcode…</div>'+
-    '<div class="m-foot"><button class="btn btn-outline" onclick="_opsStopScan();closeM()">Cancel</button>'+
-    '<button class="btn btn-outline" onclick="_opsStopScan();closeM();_opsManualScan(\''+id+'\',\''+kind+'\')">Enter manually</button></div>');
-  var formats=kind==='plate'?['code_39','code_128','qr_code']:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code'];
+    '<div class="m-foot"><button class="btn btn-outline" onclick="_opsStopScan();closeM();_opsManualScan(\''+id+'\',\''+kind+'\','+(multi?'true':'false')+')">⌨ Manual</button>'+
+    (multi
+      ?'<button class="btn btn-primary" onclick="_opsStopScan();closeM();rOperation()">Done</button>'
+      :'<button class="btn btn-outline" onclick="_opsStopScan();closeM()">Cancel</button>')+'</div>');
+  if(multi){var cc=document.getElementById('ops-scan-count');if(cc)cc.textContent=_opsUnitCount(t)+(t.ops.expectedUnits?' / '+t.ops.expectedUnits:'')+' scanned';}
+  var formats=kind==='plate'?['code_39','code_128','qr_code']:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code','data_matrix'];
   var detector;try{detector=new BarcodeDetector({formats:formats});}catch(e){detector=new BarcodeDetector();}
+  var lastCode='',lastAt=0;
   navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(stream){
     _opsScanStream=stream;
     var v=document.getElementById('ops-video');if(!v){_opsStopScan();return;}
@@ -13887,8 +13991,22 @@ function _opsCameraScan(id,kind){
       if(!scanning||!document.getElementById('ops-video'))return;
       detector.detect(v).then(function(codes){
         if(codes&&codes.length){
-          scanning=false;_opsStopScan();closeM();
-          _opsRecordScan(id,kind,codes[0].rawValue);
+          var code=codes[0].rawValue;
+          if(!multi){
+            scanning=false;_opsStopScan();closeM();_opsRecordScan(id,kind,code);return;
+          }
+          // batch: dedupe rapid repeats of the same code, keep scanning
+          var now=Date.now();
+          if(!(code===lastCode&&now-lastAt<1500)){
+            lastCode=code;lastAt=now;
+            var added=_opsRecordScan(id,'unit',code,true);
+            var st=document.getElementById('ops-scan-status');
+            var cc=document.getElementById('ops-scan-count');
+            if(cc)cc.textContent=_opsUnitCount(t)+(t.ops.expectedUnits?' / '+t.ops.expectedUnits:'')+' scanned';
+            if(st)st.innerHTML=added?'✅ Added: <b>'+code+'</b>':'Already scanned: '+code;
+            if(added&&navigator.vibrate)navigator.vibrate(60);
+          }
+          requestAnimationFrame(tick);
         }else{requestAnimationFrame(tick);}
       }).catch(function(){requestAnimationFrame(tick);});
     };
@@ -13896,7 +14014,7 @@ function _opsCameraScan(id,kind){
   }).catch(function(err){
     _opsStopScan();closeM();
     toast('Camera unavailable — enter code manually','info');
-    _opsManualScan(id,kind);
+    _opsManualScan(id,kind,multi);
   });
 }
 function _opsStopScan(){
@@ -13908,9 +14026,7 @@ function opsSubmit(id){
   var cfg=_opsCfg();
   t.ops.verifiedBy=S.user.name;
   t.ops.verifiedAt=new Date().toLocaleString('en-GB');
-  // mirror checklist into trip.checklist array for the quality/PDF views
-  var chkItems=cfg.checklist.filter(function(x){return x.on;});
-  t.checklist={};chkItems.forEach(function(x){t.checklist[x.label]=!!t.ops.checklist[x.id];});
+  _syncTripChecklist(t); // keep {label:bool} in sync for quality/PDF
   if(!t.tl)t.tl=[];
   t.tl.push({ts:t.ops.verifiedAt,user:S.user.name,action:'📷 Operations verified',detail:t.ops.photos.length+' photos, '+t.ops.scans.length+' scans'});
   if(cfg.requireQualityApproval){
