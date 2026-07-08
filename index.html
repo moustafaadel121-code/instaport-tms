@@ -6855,8 +6855,12 @@ function _opsQualityBlock(t){
   if(!op||(!op.verifiedBy&&!(op.photos||[]).length&&!(op.scans||[]).length))return '';
   var photos=op.photos||[],scans=op.scans||[];
   return '<div style="margin-top:14px;padding:14px;background:#F5F3FF;border:1px solid #DDD6FE;border-radius:var(--r)">'+
-    '<div style="font-size:12px;font-weight:700;color:#6C3FF5;margin-bottom:8px">📷 Operations Verification'+
-      (op.verifiedBy?' <span style="font-weight:500;color:var(--t2)">— by '+op.verifiedBy+' · '+(op.verifiedAt||'')+'</span>':'')+'</div>'+
+    '<div style="font-size:12px;font-weight:700;color:#6C3FF5;margin-bottom:8px">📷 Operations Verification</div>'+
+    // Dual password sign-off status
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">'+
+      '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:'+(op.signoff?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+(op.signoff?'✓ ':'')+'🔑 Operation'+(op.signoff?' — '+op.signoff.by:' pending')+'</span>'+
+      '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:'+(op.qualityVerify?'#ECFDF5;color:#059669':'#EEF2FF;color:#6C3FF5')+'">'+(op.qualityVerify?'✓ ':'')+'🔑 Quality Verify'+(op.qualityVerify?' — '+op.qualityVerify.by:' (your approval)')+'</span>'+
+    '</div>'+
     (function(){
       var plate=scans.find(function(s){return s.kind==='plate';});
       var units=scans.filter(function(s){return s.kind==='unit'||s.kind==='carton';});
@@ -6881,7 +6885,11 @@ function apQConfirm(id,isInbound){
   }
   requirePwd('Approve Quality — '+id,function(){
     var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
-    t.qualityPin=true;t.ops&&(t.ops.qualityApproved=true);_syncTripChecklist(t);
+    t.qualityPin=true;
+    if(!t.ops)t.ops={scans:[],photos:[],checklist:{}};
+    t.ops.qualityApproved=true;
+    t.ops.qualityVerify={by:S.user.name,role:S.role,ts:new Date().toLocaleString('en-GB')}; // password-verified quality sign-off
+    _syncTripChecklist(t);
     t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'QA Approved'+(isInbound?' (Inbound Return)':'(Outbound)'),detail:done+'/'+items.length});
     audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
     if(isInbound){
@@ -8615,8 +8623,10 @@ function showBD(id){var t=S.trips.find(function(x){return x.id===id;});if(!t)ret
 // ══════════════════════════════════════════════════
 function aiAss(trip){
   var qa=S.qaAgr[trip.customer]||{minTemp:2,maxTemp:8,checkReq:7};
-  var done=trip.checklist.filter(Boolean).length;
-  var score=Math.min(100,Math.round((done/8)*60+(trip.qualityPin?20:0)+(trip.km<300?20:10)));
+  var _cl=trip.checklist;
+  var done=Array.isArray(_cl)?_cl.filter(Boolean).length:(_cl&&typeof _cl==='object'?Object.keys(_cl).filter(function(k){return _cl[k];}).length:0);
+  var _total=Array.isArray(_cl)?8:(_cl?Object.keys(_cl).length||8:8);
+  var score=Math.min(100,Math.round((done/_total)*60+(trip.qualityPin?20:0)+(trip.km<300?20:10)));
   var excData=_tempData.filter(function(v){return v<qa.minTemp||v>qa.maxTemp;});
   var excPct=_tempData.length>0?((excData.length/_tempData.length)*100).toFixed(1):0;
   trip.aiReport='Score: '+score+'/100 · Checklist: '+done+'/8 · Actual KM: '+(trip.actualKm||trip.km)+' · Excursion: '+excPct+'% · CO₂: '+trip.co2+'kg · '+(score>=80?'✅ Meets standards':'⚠️ Review needed')+' · '+(excPct>10?'🚨 HIGH EXCURSION RISK':'✅ Temp within limits');
@@ -11292,16 +11302,24 @@ ctOkConfirm=function(id){
   });
 };
 
-// Override quality approve to stamp time
+// Override quality approve to stamp time + configurable checklist gate
 var _origApQ=apQConfirm;
 apQConfirm=function(id,isInbound){
-  var t=S.trips.find(function(x){return x.id===id;});
-  var qa=S.qaAgr[t.customer]||{checkReq:7};var done=t.checklist.filter(Boolean).length;
-  if(done<qa.checkReq){toast('Need '+qa.checkReq+'/8 ('+done+' done)','err');return;}
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var items=_chkItems();var res=_chkGet(t);
+  var done=items.filter(function(x){return res[x.id];}).length;
+  if(!_chkRequiredDone(t)){
+    var miss=items.filter(function(x){return x.req&&!res[x.id];}).map(function(x){return x.label;});
+    toast('Complete required items: '+miss.join(', '),'err');return;
+  }
   requirePwd('&#9989; Approve Quality — '+id,function(){
     var att=getFile('qa-file-'+id);if(att)t.attachments.push({name:att,by:S.user.name,ts:new Date().toLocaleString()});
     t.qualityPin=true;
-    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#129514; QA Approved'+(isInbound?' (Inbound IN-3)':'(Outbound OUT-1)'),detail:done+'/8'});
+    if(!t.ops)t.ops={scans:[],photos:[],checklist:{}};
+    t.ops.qualityApproved=true;
+    t.ops.qualityVerify={by:S.user.name,role:S.role,ts:new Date().toLocaleString('en-GB')};
+    _syncTripChecklist(t);
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'&#129514; QA verified (password)'+(isInbound?' (Inbound IN-3)':' (Outbound OUT-1)'),detail:done+'/'+items.length});
     audit('QA_APPROVE',isInbound?'Inbound':'Outbound',id);
     if(isInbound){
       // INBOUND final step: Quality → Completed ✅
@@ -13679,15 +13697,12 @@ function _opsCfg(){
     try{S.opsConfig=JSON.parse(localStorage.getItem('ip_opsconfig')||'null');}catch(e){}
   }
   if(!S.opsConfig){
-    S.opsConfig={
-      checklist:OPS_CHK_DEFAULT.map(function(x){return Object.assign({},x);}),
-      requirePlateScan:true,
-      requireCartonScan:false,
-      minPhotos:2,
-      requireQualityApproval:true,
-      photoStages:['Loading','Sealed Door','Barcode/Label']
-    };
+    S.opsConfig={checklist:OPS_CHK_DEFAULT.map(function(x){return Object.assign({},x);})};
   }
+  // Backfill any missing settings (keeps older saved configs working)
+  var defs={requirePlateScan:true,requireCartonScan:false,minPhotos:2,requireOpsSignoff:true,requireQualityApproval:true,photoStages:['Loading','Sealed Door','Barcode/Label']};
+  Object.keys(defs).forEach(function(k){if(S.opsConfig[k]===undefined)S.opsConfig[k]=defs[k];});
+  if(!S.opsConfig.checklist||!S.opsConfig.checklist.length)S.opsConfig.checklist=OPS_CHK_DEFAULT.map(function(x){return Object.assign({},x);});
   return S.opsConfig;
 }
 function _opsSaveCfg(){try{localStorage.setItem('ip_opsconfig',JSON.stringify(S.opsConfig));}catch(e){}}
@@ -13817,7 +13832,8 @@ function rAdminOperations(){
     '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Control what field operators must scan, photograph and verify before a shipment can depart.</div>'+
     tog('_opsSetFlag(\'requirePlateScan\',this.checked)','Require plate scan','Operator must scan the truck plate barcode.',cfg.requirePlateScan)+
     tog('_opsSetFlag(\'requireCartonScan\',this.checked)','Require pallet/carton scan','Operator must scan at least one pallet or carton barcode. Supports batch scanning many units (e.g. 33 pallets per trailer).',cfg.requireCartonScan)+
-    tog('_opsSetFlag(\'requireQualityApproval\',this.checked)','Require quality approval','After operator verifies, quality must review before dispatch. If off, verified shipments go straight to dispatch.',cfg.requireQualityApproval)+
+    tog('_opsSetFlag(\'requireOpsSignoff\',this.checked)','Require operator password sign-off','Operator must confirm the checklist with their own password before submitting.',cfg.requireOpsSignoff)+
+    tog('_opsSetFlag(\'requireQualityApproval\',this.checked)','Require quality password verify','After the operator signs off, quality must verify the same checklist with their password before dispatch. If off, signed-off shipments go straight to dispatch.',cfg.requireQualityApproval)+
     '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--bd)">'+
       '<div><div style="font-size:13px;font-weight:600">Minimum photos required</div><div style="font-size:11px;color:var(--t2)">Shipment can\'t be submitted with fewer photos.</div></div>'+
       '<input type="number" min="0" max="10" value="'+cfg.minPhotos+'" onchange="_opsSetNum(\'minPhotos\',this.value)" style="width:64px;padding:7px;border:1.5px solid var(--bd);border-radius:8px;text-align:center"/></div>'+
@@ -14026,23 +14042,29 @@ function _opsStopScan(){
 function opsSubmit(id){
   var t=_opsGet(id);if(!t)return;
   var cfg=_opsCfg();
-  t.ops.verifiedBy=S.user.name;
-  t.ops.verifiedAt=new Date().toLocaleString('en-GB');
-  _syncTripChecklist(t); // keep {label:bool} in sync for quality/PDF
-  if(!t.tl)t.tl=[];
-  t.tl.push({ts:t.ops.verifiedAt,user:S.user.name,action:'📷 Operations verified',detail:t.ops.photos.length+' photos, '+t.ops.scans.length+' scans'});
-  if(cfg.requireQualityApproval){
-    if(t.status==='awaiting_truck')t.status='awaiting_quality';
-    t.ops.awaitingQuality=true;
-    notif('🧪 '+t.id+' verified by operations — awaiting quality review','info');
-    toast('✅ Submitted for quality review','ok');
-  }else{
-    t.ops.qualityApproved=true;
-    toast('✅ Shipment verified & ready to dispatch','ok');
-  }
-  audit('OPS_SUBMIT',t.ops.photos.length+' photos, checklist done',id);
-  _lcSave();syncTrip&&syncTrip(t);
-  rOperation();
+  var doSubmit=function(){
+    t.ops.verifiedBy=S.user.name;
+    t.ops.verifiedAt=new Date().toLocaleString('en-GB');
+    t.ops.signoff={by:S.user.name,role:S.role,ts:t.ops.verifiedAt}; // password-verified operator sign-off
+    _syncTripChecklist(t); // keep {label:bool} in sync for quality/PDF
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:t.ops.verifiedAt,user:S.user.name,action:'📷 Operation sign-off (password)',detail:t.ops.photos.length+' photos, '+_opsUnitCount(t)+' units'});
+    if(cfg.requireQualityApproval){
+      if(t.status==='awaiting_truck')t.status='awaiting_quality';
+      t.ops.awaitingQuality=true;
+      notif('🧪 '+t.id+' signed off by operations — awaiting quality verification','info');
+      toast('✅ Signed off — awaiting quality verification','ok');
+    }else{
+      t.ops.qualityApproved=true;
+      toast('✅ Shipment verified & ready to dispatch','ok');
+    }
+    audit('OPS_SIGNOFF',t.ops.photos.length+' photos, checklist done',id);
+    _lcSave();syncTrip&&syncTrip(t);
+    rOperation();
+  };
+  // Operator confirms with their own password (configurable)
+  if(cfg.requireOpsSignoff){requirePwd('Operation Sign-off — '+id,doSubmit);}
+  else{doSubmit();}
 }
 
 // ══ TRIP ROUTE MINI-MAP — real geometry from city coordinates ══

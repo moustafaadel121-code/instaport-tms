@@ -1,7 +1,7 @@
-/* InstaPort TMS — Service Worker v2.0
+/* InstaPort TMS — Service Worker v2.2
    Strategy: Network-first for HTML, cache-first for static assets
 */
-const CACHE = 'instaport-v2.0';
+const CACHE = 'instaport-v2.2';
 const STATIC = ['./logo.png', './manifest.json'];
 
 self.addEventListener('install', function(e) {
