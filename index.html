@@ -2796,7 +2796,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
         <label class="l-remember-me">
           <input type="checkbox" id="l-rem"/> Remember me
         </label>
-        <a class="l-forgot-link" href="#">Forgot Password?</a>
+        <a class="l-forgot-link" href="#" onclick="openForgotPw();return false;">Forgot Password?</a>
       </div>
       <!-- Login button -->
       <button class="l-login-btn" onclick="doLogin()">LOGIN</button>
@@ -3629,7 +3629,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -4753,6 +4753,39 @@ function _loginAutoFill(uid){
     if(hint)hint.style.display='none';
   }
 }
+
+// ══ FORGOT PASSWORD — admin-approved reset request ══════════════
+function openForgotPw(){
+  var org=(document.getElementById('uorg')||{}).value||'';
+  var uid=(document.getElementById('uid')||{}).value||'';
+  openM('<div class="m-title">🔑 Reset Your Password</div>'+
+    '<div style="font-size:12.5px;color:var(--t2);line-height:1.6;margin-bottom:14px">Enter your organization code and Employee ID. Your administrator will be notified to verify your identity and set a new PIN — for security, PINs are never sent automatically.</div>'+
+    '<div class="fg"><label>Organization Code</label><input id="fp-org" value="'+org.replace(/"/g,'&quot;')+'" placeholder="e.g. instaport"/></div>'+
+    '<div class="fg"><label>Employee ID</label><input id="fp-uid" value="'+uid.replace(/"/g,'&quot;')+'" placeholder="Your ID"/></div>'+
+    '<div class="fg"><label>Note to admin (optional)</label><input id="fp-note" placeholder="e.g. forgot my PIN after vacation"/></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="submitForgotPw()">Send Reset Request</button></div>');
+}
+function _pwResets(){try{return JSON.parse(localStorage.getItem('ip_pwresets')||'[]');}catch(e){return [];}}
+function _savePwResets(a){try{localStorage.setItem('ip_pwresets',JSON.stringify(a));}catch(e){}}
+function submitForgotPw(){
+  var org=(document.getElementById('fp-org')||{}).value.trim().toLowerCase();
+  var uid=(document.getElementById('fp-uid')||{}).value.trim();
+  var note=(document.getElementById('fp-note')||{}).value.trim();
+  if(!org||!uid){toast('Enter your org code and Employee ID','err');return;}
+  var reqs=_pwResets();
+  if(reqs.some(function(r){return r.org===org&&r.uid===uid&&r.status==='pending';})){
+    closeM();toast('✅ A reset request is already pending for this ID','ok');return;
+  }
+  reqs.unshift({id:'PR-'+Date.now(),org:org,uid:uid,note:note,status:'pending',ts:new Date().toLocaleString('en-GB')});
+  _savePwResets(reqs);
+  // let it sync via app_state so the admin (any device) sees it
+  try{localStorage.setItem('ip_pwresets',JSON.stringify(reqs));}catch(e){}
+  closeM();
+  toast('✅ Reset request sent — your administrator will contact you','ok');
+}
+// Count for admin badge
+function _pendingPwResets(){return _pwResets().filter(function(r){return r.status==='pending'&&(r.org===_tenantId||r.org==='instaport');});}
 
 async function doLogin(){
   _secLoad(); // ensure lockout state is fresh
@@ -10252,7 +10285,20 @@ function _oauthPopup(provider){
 // ── USERS ──
 function rAdminUsers(){
   var el=document.getElementById('admin-content');if(!el)return;
-  el.innerHTML='<div class="card"><div class="card-hd"><div class="card-title">User Management</div><button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button></div>'+
+  var resets=_pendingPwResets();
+  var resetBanner=resets.length?'<div class="card" style="border:1.5px solid #F59E0B;background:#FFFBEB">'+
+    '<div style="font-size:14px;font-weight:800;color:#B45309;margin-bottom:10px">🔑 '+resets.length+' Pending Password Reset Request'+(resets.length>1?'s':'')+'</div>'+
+    resets.map(function(r){
+      var u=USERS.find(function(x){return String(x.id)===String(r.uid);});
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-top:1px solid #FDE68A">'+
+        '<div style="font-size:13px"><b>'+r.uid+'</b>'+(u?' — '+u.name+' ('+RL[u.role]+')':' <span style="color:#EF4444">— unknown user</span>')+
+        (r.note?'<div style="font-size:11px;color:var(--t2)">"'+r.note+'"</div>':'')+
+        '<div style="font-size:10px;color:var(--t3)">'+r.ts+'</div></div>'+
+        '<div style="display:flex;gap:6px;flex-shrink:0">'+
+        (u?'<button class="btn btn-primary btn-sm" onclick="_resolvePwReset(\''+r.id+'\',\''+r.uid+'\',true)">Set New PIN</button>':'')+
+        '<button class="btn btn-outline btn-sm" onclick="_resolvePwReset(\''+r.id+'\',\''+r.uid+'\',false)">Dismiss</button></div></div>';
+    }).join('')+'</div>':'';
+  el.innerHTML=resetBanner+'<div class="card"><div class="card-hd"><div class="card-title">User Management</div><button class="btn btn-primary btn-sm" onclick="openAddUser()">+ Add User</button></div>'+
   '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>ID</th><th>Name</th><th>Role</th><th>Customer Account</th><th>Status</th><th>Actions</th></tr></thead><tbody>'+
   USERS.map(function(u){return '<tr><td style="font-weight:700">'+u.id+'</td><td>'+u.name+'</td><td><span class="tag tag-info">'+RL[u.role]+'</span></td>'+
   '<td style="font-size:11px;color:var(--t2)">'+(u.customerAccount?'<span style="background:var(--bg);border:1px solid var(--bd);border-radius:6px;padding:2px 7px;font-weight:600;color:var(--t)">'+u.customerAccount+'</span>':'<span style="color:var(--t3)">—</span>')+'</td>'+
@@ -10439,6 +10485,16 @@ async function toggleUser(uid){
   rAdminUsers();
 }
 function resetPw(uid){openM('<div class="m-title">🔑 Reset PIN — '+uid+'</div><div class="fg f1"><label>New PIN</label><input type="password" id="np" placeholder="New PIN..."/></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="savePw(\''+uid+'\')">Reset</button></div>');}
+// Resolve a forgot-password request: optionally open the Set-New-PIN dialog, then mark done
+function _resolvePwReset(reqId,uid,doReset){
+  var reqs=_pwResets();
+  var r=reqs.find(function(x){return x.id===reqId;});
+  if(r){r.status='resolved';r.resolvedBy=S.user?S.user.name:'';r.resolvedAt=new Date().toLocaleString('en-GB');}
+  _savePwResets(reqs);
+  audit('PW_RESET_REQ',(doReset?'Resolved+reset ':'Dismissed ')+uid,'');
+  rAdminUsers();
+  if(doReset)resetPw(uid);
+}
 function savePw(uid){var u=USERS.find(function(x){return x.id===uid;});var np=(document.getElementById('np')||{}).value;if(!u||!np){toast('Enter new PIN','err');return;}requirePwd('Reset PIN for '+uid,async function(){u.pin=np;audit('RESET_PW',uid,'');closeM();toast('PIN reset!','ok');if(_sb&&_tenantId){try{await _sb.from('users').update({pin:np}).eq('employee_id',uid).eq('tenant_id',_tenantId);}catch(e){console.error('savePw sync',e);}}});}
 
 // ── CUSTOMERS ──
