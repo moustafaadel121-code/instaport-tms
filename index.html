@@ -4734,7 +4734,7 @@ const PAGES={
   finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
   maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'},{id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'}],
   validation:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'validation',icon:'✅',l:'Validation'}],
-  driver:       [{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}],
+  driver:       [{id:'my_route',icon:'🚚',l:'My Assigned Trips'},{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}],
   operation:    [{id:'operation',icon:'📷',l:'Operations'},{id:'trips',icon:'📋',l:'Trips'}],
   client:       [{id:'client_portal',icon:'📦',l:'My Shipments'},{id:'billing',icon:'📄',l:'My Invoices'}]
 };
@@ -4900,7 +4900,9 @@ async function doLogin(){
       try{_wfLoad();}catch(e){}
       var _startPage=u.role==='driver'?'my_trips':u.role==='operation'?'operation':u.role==='superadmin'?'sa_overview':u.role==='client'?'client_portal':'dashboard';
       try{nav(_startPage);}catch(e){console.error('nav',e);document.getElementById('content').innerHTML='<div class="card" style="padding:40px;text-align:center"><h3>Page load error</h3><p style="color:var(--t2)">'+e.message+'</p></div>';}
-      initApp().then(function(){try{nav(_startPage);_checkMaintenanceAlerts();}catch(e){}}).catch(function(){});
+      // Re-render after the cloud sync, but never yank the user off a page
+      // they navigated to while it was loading.
+      initApp().then(function(){try{nav(S.page||_startPage);_checkMaintenanceAlerts();}catch(e){}}).catch(function(){});
       try{_initPWA();}catch(e){}
       try{startTemp();}catch(e){}
       try{_fetchGPSSnapshot();}catch(e){}
@@ -5799,6 +5801,7 @@ const ALL_PAGES_MASTER=[
   {id:'my_trips',    icon:'🚛',l:'My Trips (Driver)'},
   {id:'operation',   icon:'📷',l:'Operations'},
   {id:'contract',    icon:'📋',l:'Contract Shipments'},
+  {id:'my_route',    icon:'🚚',l:'My Assigned Trips (Driver)'},
   {id:'nr_trip',     icon:'🔄',l:'Non-Revenue Trip'},
   {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'},
   {id:'pm_schedule', icon:'📅', l:'PM Scheduler'},
@@ -5888,7 +5891,7 @@ function nav(page){
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,fleet_map:rFleetMap,client_portal:rClientPortal,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
-    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rContract,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
+    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rContract,my_route:rDriverContract,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
@@ -13357,8 +13360,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',contract:'Contract',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',contract:'&#128203;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',contract:'Contract',my_route:'My Assigned Trips',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',contract:'&#128203;',my_route:'&#128666;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -20597,6 +20600,186 @@ function _ctSetStatus(id,st){
   _lcSave&&_lcSave();syncTrip&&syncTrip(t);
   closeM();rContract();
   toast('Status updated'+(res?' — EGP '+res.total.toLocaleString():''),'ok');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// DRIVER — contract trip execution: complete each destination with
+// timestamp, GPS location, KM, arrival/departure times and POD photo
+// ══════════════════════════════════════════════════════════════════
+function _drvContractTrips(){
+  var me=S.user?S.user.name:'';
+  return (S.trips||[]).filter(function(t){
+    return t.contract && t.driver===me && t.status!=='completed'
+      && t.status!=='cancelled_customer' && t.status!=='cancelled_org';
+  });
+}
+function rDriverContract(){
+  var c=document.getElementById('content');if(!c)return;
+  var trips=_drvContractTrips();
+  c.innerHTML='<div class="page-head"><div><h2>🚚 My Assigned Trips</h2>'+
+    '<div class="page-head-sub">Complete each stop — time, KM, location and proof of delivery</div></div>'+
+    '<button class="btn btn-outline btn-sm" onclick="rDriverContract()">↻ Refresh</button></div>'+
+    (trips.length?trips.map(_drvTripCard).join(''):
+      _emptyState('✅','No assigned trips','Trips assigned to you will appear here.',''));
+}
+function _drvTripCard(t){
+  var ct=_shipNormalize(t);
+  var ds=ct.destinations||[];
+  var done=ds.filter(function(d){return d.completed;}).length;
+  var pct=ds.length?Math.round(done/ds.length*100):0;
+  var started=!!ct.actualStartTime;
+  return '<div class="card" style="border-left:4px solid '+(done===ds.length&&ds.length?'#059669':'var(--c1)')+'">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">'+
+      '<div><div style="font-size:16px;font-weight:800">'+t.id+'</div>'+
+      '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' · '+(ct.transactionType||'')+' · '+(t.truck||'—')+'</div></div>'+
+      '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5">'+done+'/'+ds.length+' stops</span>'+
+    '</div>'+
+    '<div style="height:6px;background:var(--bg);border-radius:20px;overflow:hidden;margin-bottom:12px">'+
+      '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#6C3FF5,#059669);transition:.3s"></div></div>'+
+    // Trip start
+    (started
+      ? '<div style="font-size:11.5px;color:var(--t2);margin-bottom:10px">▶ Started '+ct.actualStartTime+' · Start KM <b>'+(ct.startKm||'—')+'</b></div>'
+      : '<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
+        '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Start the trip</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
+          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Start KM *</label><input type="number" id="drv-skm-'+t.id+'" value="'+(ct.startKm||'')+'"/></div>'+
+          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Loading</label><select id="drv-sload-'+t.id+'">'+
+            LOADING_TYPES.map(function(x){return '<option'+(ct.startLoading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
+          '<button class="btn btn-primary btn-sm" onclick="drvStartTrip(\''+t.id+'\')">▶ Start</button>'+
+        '</div></div>')+
+    // Destinations
+    '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Destinations</div>'+
+    ds.map(function(d,i){return _drvDestRow(t,d,i,started);}).join('')+
+    // Trip end
+    (done===ds.length&&ds.length&&started
+      ? '<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 12px;margin-top:10px">'+
+        '<div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:8px">All stops done — close the trip</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
+          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">End KM *</label><input type="number" id="drv-ekm-'+t.id+'" value="'+(ct.endKm||'')+'"/></div>'+
+          '<button class="btn btn-success btn-sm" onclick="drvEndTrip(\''+t.id+'\')">✅ Complete Trip</button>'+
+        '</div></div>'
+      : '')+
+  '</div>';
+}
+function _drvDestRow(t,d,i,started){
+  var ok=!!d.completed;
+  return '<div style="border:1.5px solid '+(ok?'#A7F3D0':'var(--bd)')+';background:'+(ok?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:'+(ok?'4px':'8px')+'">'+
+      '<div style="font-size:13px;font-weight:700">'+(ok?'✅ ':'')+(i+1)+'. '+(d.name||'—')+'</div>'+
+      (ok?'<span style="font-size:10.5px;color:#059669;font-weight:700">'+(d.loading||'')+'</span>':'')+
+    '</div>'+
+    (ok
+      ? '<div style="font-size:11px;color:var(--t2);line-height:1.7">'+
+        '🕒 Arrived '+(d.arriveTime||'—')+' · Departed '+(d.departTime||'—')+' &nbsp; 📏 KM <b>'+(d.km||'—')+'</b>'+
+        (d.location?'<br>📍 '+d.location:'')+
+        (d.podPhoto?'<br><img src="'+d.podPhoto+'" style="height:52px;border-radius:6px;border:1px solid #A7F3D0;margin-top:4px"/>':'')+
+        (d.podNote?'<br>📝 '+d.podNote:'')+
+        '</div>'
+      : (started
+        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
+          '<div class="fg" style="width:100px;margin:0"><label style="font-size:10.5px">Loading</label><select id="dd-l-'+t.id+'-'+i+'">'+
+            LOADING_TYPES.map(function(x){return '<option'+(d.loading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
+          '<div class="fg" style="width:82px;margin:0"><label style="font-size:10.5px">KM *</label><input type="number" id="dd-k-'+t.id+'-'+i+'" value="'+(d.km||'')+'"/></div>'+
+          '<div class="fg" style="width:92px;margin:0"><label style="font-size:10.5px">Arrived</label><input type="time" id="dd-a-'+t.id+'-'+i+'" value="'+(d.arriveTime||'')+'"/></div>'+
+          '<div class="fg" style="width:92px;margin:0"><label style="font-size:10.5px">Departed</label><input type="time" id="dd-d-'+t.id+'-'+i+'" value="'+(d.departTime||'')+'"/></div>'+
+          '<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 POD'+
+            '<input type="file" accept="image/*" capture="environment" style="display:none" onchange="drvPOD(\''+t.id+'\','+i+',this)"/></label>'+
+          '<button class="btn btn-success btn-sm" onclick="drvCompleteDest(\''+t.id+'\','+i+')">✓ Complete</button>'+
+          '<div id="dd-pod-'+t.id+'-'+i+'" style="width:100%"></div>'+
+        '</div>'
+        : '<div style="font-size:11px;color:var(--t3)">Start the trip first</div>'))+
+  '</div>';
+}
+function drvStartTrip(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var c=_shipNormalize(t);
+  var km=+((document.getElementById('drv-skm-'+id)||{}).value||0);
+  if(!km){toast('Enter the start KM','err');return;}
+  c.startKm=km;
+  c.startLoading=(document.getElementById('drv-sload-'+id)||{}).value||'Loading';
+  var now=new Date();
+  c.actualStartTime=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  if(!c.startTime)c.startTime=c.actualStartTime;
+  t.status='in_progress';
+  t.tl.push({ts:now.toLocaleString('en-GB'),user:S.user.name,action:'▶ Trip started',detail:'Start KM '+km+' · '+c.startLoading});
+  audit('DRV_START','Start KM '+km,id);
+  _drvGeo(function(loc){if(loc){c.startLocation=loc;_lcSave&&_lcSave();}});
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  toast('▶ Trip started','ok');rDriverContract();
+}
+function drvPOD(id,i,input){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var f=(input.files||[])[0];if(!f)return;
+  var rd=new FileReader();
+  rd.onload=function(){
+    var img=new Image();
+    img.onload=function(){
+      var max=900,sc=Math.min(1,max/Math.max(img.width,img.height));
+      var cv=document.createElement('canvas');cv.width=img.width*sc;cv.height=img.height*sc;
+      cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
+      var c=_shipNormalize(t);
+      if(!c.destinations[i])c.destinations[i]={};
+      c.destinations[i].podPhoto=cv.toDataURL('image/jpeg',0.7);
+      _lcSave&&_lcSave();
+      var prev=document.getElementById('dd-pod-'+id+'-'+i);
+      if(prev)prev.innerHTML='<img src="'+c.destinations[i].podPhoto+'" style="height:48px;border-radius:6px;border:1px solid var(--bd);margin-top:6px"/>';
+      toast('📷 POD attached','ok');
+    };
+    img.src=rd.result;
+  };
+  rd.readAsDataURL(f);
+}
+function _drvGeo(cb){
+  if(!navigator.geolocation){cb(null);return;}
+  navigator.geolocation.getCurrentPosition(
+    function(p){cb(p.coords.latitude.toFixed(5)+', '+p.coords.longitude.toFixed(5));},
+    function(){cb(null);},{timeout:8000,maximumAge:60000});
+}
+function drvCompleteDest(id,i){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var c=_shipNormalize(t);
+  var d=c.destinations[i];if(!d)return;
+  var g=function(p){var e=document.getElementById('dd-'+p+'-'+id+'-'+i);return e?e.value:'';};
+  var km=+g('k');
+  if(!km){toast('Enter the KM reading at this stop','err');return;}
+  var prevKm=i===0?(+c.startKm||0):(+((c.destinations[i-1]||{}).km)||0);
+  if(km<prevKm){toast('KM ('+km+') cannot be less than the previous reading ('+prevKm+')','err');return;}
+  var now=new Date();
+  d.loading=g('l')||'Unloading';
+  d.km=km;
+  d.arriveTime=g('a')||now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  d.departTime=g('d')||'';
+  d.completed=true;
+  d.completedAt=now.toLocaleString('en-GB');
+  d.completedBy=S.user.name;
+  t.tl.push({ts:d.completedAt,user:S.user.name,action:'📍 Stop '+(i+1)+' completed — '+d.name,
+    detail:d.loading+' · KM '+km+' · arrived '+d.arriveTime+(d.podPhoto?' · POD attached':'')});
+  audit('DRV_STOP',d.name+' · KM '+km,id);
+  _drvGeo(function(loc){
+    if(loc){d.location=loc;_lcSave&&_lcSave();syncTrip&&syncTrip(t);rDriverContract();}
+  });
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  toast('✅ Stop '+(i+1)+' completed','ok');rDriverContract();
+}
+function drvEndTrip(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var c=_shipNormalize(t);
+  var km=+((document.getElementById('drv-ekm-'+id)||{}).value||0);
+  if(!km){toast('Enter the end KM','err');return;}
+  var lastKm=(c.destinations||[]).reduce(function(m,d){return Math.max(m,+d.km||0);},+c.startKm||0);
+  if(km<lastKm){toast('End KM cannot be less than the last reading ('+lastKm+')','err');return;}
+  var now=new Date();
+  c.endKm=km;
+  c.endTime=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  t.status='completed';
+  t.km=_shipTripKm(t);
+  var res=shipCalc(t);if(res){t.cost=res.total;t.slaLines=res.lines;}
+  t.tl.push({ts:now.toLocaleString('en-GB'),user:S.user.name,action:'✅ Trip completed',
+    detail:'End KM '+km+' · total '+t.km+' km'+(res?' · EGP '+res.total:'')});
+  audit('DRV_COMPLETE','End KM '+km+' · '+t.km+' km',id);
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  toast('✅ Trip completed — '+t.km+' km','ok');rDriverContract();
 }
 
 </script>
