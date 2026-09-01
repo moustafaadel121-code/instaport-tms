@@ -3636,7 +3636,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval','ip_dmgpos'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -13913,11 +13913,25 @@ function _opsCard(t){
       '<div style="font-size:10.5px;color:var(--t2);margin-bottom:9px">'+form.doc+' — المسح والصور والبنود والاعتماد داخل النموذج</div>'+
       '<button class="btn '+(approved?'btn-outline':'btn-primary')+'" style="width:100%;margin-bottom:8px" onclick="openInspectionForm(\''+t.id+'\')">📋 '+(approved?'عرض النموذج':'فتح النموذج')+' ('+fp.yes+'/'+fp.total+')</button>'+
       '<div style="display:flex;gap:8px;flex-wrap:wrap;font-size:11px">'+
-        '<span style="color:'+(fsig.officer?'#059669':'var(--t3)')+'">'+(fsig.officer?'✓ '+form.signatures[0].label+': '+fsig.officer.by:form.signatures[0].label+' — بانتظار الاعتماد')+'</span>'+
-        '<span style="color:'+(fsig.supervisor?'#059669':'var(--t3)')+'">'+(fsig.supervisor?'✓ '+form.signatures[1].label+': '+fsig.supervisor.by:form.signatures[1].label+' — بانتظار الاعتماد')+'</span>'+
+        form.signatures.map(function(sg){
+          var s=fsig[sg.id];
+          return '<span style="color:'+(s?'#059669':'var(--t3)')+'">'+(s?'✓ '+sg.label+': '+s.by:sg.label+' — بانتظار الاعتماد')+'</span>';
+        }).join('')+
       '</div>'+
       (approved?'<button class="btn btn-outline btn-sm" style="width:100%;margin-top:8px" onclick="printInspectionForm(\''+t.id+'\',\''+form.id+'\')">📄 PDF بالصور</button>':'')+
     '</div>':'')+
+
+    // ── damage during unloading: raise the consolidated damage report
+    (form&&form.id==='inbound'
+      ?'<div style="border:1.5px solid '+(_dmgRaised(t)?'#FCA5A5':'var(--bd)')+';background:'+(_dmgRaised(t)?'#FEF2F2':'var(--surf)')+';border-radius:10px;padding:11px 12px;margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:7px;direction:rtl">'+
+          '<div style="font-size:12.5px;font-weight:800;color:var(--t)">هل يوجد تلف؟</div>'+_dmgBadge(t)+
+        '</div>'+
+        '<div style="font-size:10.5px;color:var(--t2);margin-bottom:8px;direction:rtl;text-align:right">تقرير التوالف — WH4004A-XIX/01 + WH4004A-XXXXI/01 — يُعتمد من مسئول الاستلام ومشرف المخزن ومسئول الجودة</div>'+
+        '<button class="btn '+(_dmgRaised(t)?'btn-danger':'btn-outline')+'" style="width:100%" onclick="_dmgOpen(\''+t.id+'\')">🚨 '+(_dmgRaised(t)?'فتح تقرير التوالف':'تسجيل تلف')+'</button>'+
+        (_formLocked(t,INSPECTION_FORMS.damage)&&_dmgRaised(t)?'<button class="btn btn-outline btn-sm" style="width:100%;margin-top:7px" onclick="printInspectionForm(\''+t.id+'\',\'damage\')">📄 PDF تقرير التوالف</button>':'')+
+      '</div>'
+      :'')+
     // Approving the form is the step approval — nothing to sign twice
     (approved
       ?'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#065F46;text-align:center">✅ اعتُمد النموذج وأُرسلت الشحنة للخطوة التالية</div>'
@@ -14057,6 +14071,8 @@ function opsScan(id,kind){
 function _opsUnitCount(t){return (t.ops&&t.ops.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';}).length;}
 function _opsRecordScan(id,kind,code,silent){
   var t=_opsGet(id);if(!t)return false;
+  // a damaged-carton scan belongs to its row in the damage report
+  if(kind==='dmgcarton')return _dmgSetScan(id,code);
   var isUnit=(kind==='unit'||kind==='carton');
   // Dedupe units by code (same pallet scanned twice)
   if(isUnit&&t.ops.scans.some(function(s){return (s.kind==='unit'||s.kind==='carton')&&s.code===code;})){
@@ -22044,6 +22060,8 @@ function wfAdvance(id,note){
   if(stage.role==='operation'){
     var _f=_formFor(t);
     if(_f&&!_formLocked(t,_f)){toast('يجب اعتماد نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}
+    // a raised damage report has to be closed before the leg moves on
+    if(_dmgRaised(t)&&!_formLocked(t,INSPECTION_FORMS.damage)){toast('اعتمد تقرير التوالف أولاً (٣ اعتمادات)','err');openInspectionForm(id,'damage');return;}
   }
   requirePwd(stage.icon+' '+stage.label+' — '+id,function(){_wfAdvanceNow(id,note);});
 }
@@ -22406,8 +22424,76 @@ var INSPECTION_FORMS={
       {id:'supervisor',label:'مشرف الاستلام',   labelEn:'Receiving Supervisor', role:'supervisor'}
     ],
     note:'في حالة عدم تطابق أي من البنود السابقة يتم توضيح الحالة في الملاحظات و إبلاغ قسم الجودة لاتخاذ اللازم'
+  },
+  // ── Damage report ────────────────────────────────────────────────
+  // Two paper documents merged into one: DAMAGE REPORT (WH4004A-XIX/01)
+  // supplies the customer block, the damage location, the cause and the
+  // action taken; Report inbound check for damages (WH4004A-XXXXI/01)
+  // supplies the inspection method and the damaged-carton register. Raised
+  // during unloading whenever damage is found, and signed three times —
+  // receiving officer, warehouse supervisor, quality.
+  damage:{
+    id:'damage',
+    doc:'WH4004A-XIX/01 + WH4004A-XXXXI/01',
+    title:'تقرير التوالف وفحص التلف عند الاستلام',
+    titleEn:'Damage Report & Inbound Damage Check',
+    onDemand:true,                 // raised only when there is damage
+    passMark:0,
+    header:[
+      {id:'customer',   label:'العميل',                  type:'text',auto:true},
+      {id:'order',      label:'أمر الاستلام / الشحن',    type:'text',auto:true},
+      {id:'itemCode',   label:'كود الصنف',               type:'text'},
+      {id:'itemName',   label:'اسم الصنف',               type:'text'},
+      {id:'batchNo',    label:'رقم الباتش',              type:'text'},
+      {id:'supplier',   label:'اسم الشركة',              type:'text'},
+      {id:'qtyRecv',    label:'الكمية المستلمة',         type:'text'},
+      {id:'palletsRecv',label:'عدد الباليتات المستلمة',  type:'text'}
+    ],
+    // single-choice blocks from the DAMAGE REPORT sheet
+    choices:[
+      {id:'location',label:'مكان التلف',labelEn:'Damage location',other:'أخرى',
+        options:['داخل الشاحنة / الحاوية','أثناء الاستلام','أثناء التحميل']},
+      {id:'reason',  label:'السبب',    labelEn:'Reason',other:'سبب آخر',
+        options:['سوء تعامل','تكدس البضاعة','طريقة الرص داخل الشاحنة','حدوث خطأ أثناء التعامل بالرافعة الشوكية']}
+    ],
+    sections:[
+      {title:'طريقة الفحص',items:[
+        {n:'1',text:'التأكد من عدم وجود توالف أعلى الباليتة رقم # 1'},
+        {n:'2',text:'التأكد من عدم وجود توالف بجوانب الباليتة رقم # 2 و 3 و 4 و 5'},
+        {n:'3',text:'التأكد من عدم ضغط الشرنك البلاستيك على أطراف جوانب الباليتة رقم # 6'},
+        {n:'4',text:'التأكد من عدم غلق الكراتين غير المكتملة بإحكام وعدم تعرض المستحضر من الداخل لأي عامل يؤدي إلى تلفه — مثال: عدم وجود لاصق الغلق على المستحضر مباشرة'}
+      ]}
+    ],
+    damageTable:true,              // the damaged-carton register
+    actionField:true,              // الإجراء المتخذ
+    signatures:[
+      {id:'officer',   label:'مسئول الشحن والاستلام',labelEn:'Shipping & Receiving Officer',role:'operation'},
+      {id:'supervisor',label:'مشرف المخزن',          labelEn:'WH Supervisor',               role:'supervisor'},
+      {id:'quality',   label:'مسئول الجودة',          labelEn:'Quality Representative',      role:'quality'}
+    ],
+    note:'يُحرَّر التقرير فور اكتشاف التلف ويُرفق بمستندات الاستلام، ويُعتمد من مسئول الاستلام ومشرف المخزن ومسئول الجودة.'
   }
 };
+// Where a damaged carton sat on the pallet. Numbered to match the diagram on
+// the paper form; renameable per organisation.
+var DMG_POS_DEFAULT=[
+  {n:'1',label:'أعلى الباليتة'},
+  {n:'2',label:'جانب الباليتة — أمامي'},
+  {n:'3',label:'جانب الباليتة — خلفي'},
+  {n:'4',label:'جانب الباليتة — أيسر'},
+  {n:'5',label:'جانب الباليتة — أيمن'},
+  {n:'6',label:'أطراف الجوانب — ضغط الشرنك'}
+];
+function _dmgPositions(){
+  try{
+    var v=JSON.parse(localStorage.getItem('ip_dmgpos')||'null');
+    if(v&&v.length)return v;
+  }catch(e){}
+  return DMG_POS_DEFAULT;
+}
+function _dmgSavePositions(list){
+  try{localStorage.setItem('ip_dmgpos',JSON.stringify(list||DMG_POS_DEFAULT));}catch(e){}
+}
 // Which form applies to a shipment at its current step
 function _formFor(t){
   if(!t)return null;
@@ -22447,6 +22533,7 @@ function openInspectionForm(id,formId){
   if(!st.header.customer)st.header.customer=t.customer||'';
   if(!st.header.truckNo)st.header.truckNo=t.truck||'';
   if(!st.header.truckType)st.header.truckType=t.truckType||'';
+  if(!st.header.order)st.header.order=t.id;
   var p=_formProgress(t,form);
   var locked=_formLocked(t,form);
   var cfg=_opsCfg();
@@ -22483,13 +22570,35 @@ function openInspectionForm(id,formId){
               return '<span id="fh-'+f.id+'-'+(o==='نعم'?'y':'n')+'" onclick="'+(locked?'':'_formHdr(\''+id+'\',\''+form.id+'\',\''+f.id+'\',\''+o+'\')')+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;border:1.5px solid '+(on?'#6C3FF5':'var(--bd)')+';background:'+(on?'#6C3FF5':'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o+'</span>';
             }).join('')+'</div></div>';
       }
-      return '<div><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:3px">'+f.label+'</label>'+
-        '<input '+(locked?'disabled':'')+' type="'+(f.type==='time'?'time':'text')+'" value="'+String(v).replace(/"/g,'&quot;')+'" '+
+      // fields the shipment already knows are filled in and left alone
+      return '<div><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:3px">'+f.label+(f.auto?' 🔒':'')+'</label>'+
+        '<input '+(locked||f.auto?'disabled':'')+' type="'+(f.type==='time'?'time':'text')+'" value="'+String(v).replace(/"/g,'&quot;')+'" '+
         'onchange="_formHdr(\''+id+'\',\''+form.id+'\',\''+f.id+'\',this.value)" '+
-        'style="width:100%;padding:7px 9px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);color:var(--t)"/></div>';
+        'style="width:100%;padding:7px 9px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:'+(f.auto?'var(--surf)':'var(--bg)')+';color:var(--t)"/></div>';
     }).join('')+'</div>'+
 
+    // ── single-choice blocks (damage location, cause)
+    (form.choices||[]).map(function(c){
+      var v=st.header[c.id]||'';
+      var opts=c.options.concat(c.other?[c.other]:[]);
+      return '<div style="direction:rtl;margin-bottom:10px">'+
+        '<div style="font-size:12px;font-weight:800;color:var(--c1);margin-bottom:6px">'+c.label+(c.labelEn?' <span style="font-weight:600;color:var(--t3);font-size:10.5px">'+c.labelEn+'</span>':'')+'</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:6px">'+
+        opts.map(function(o){
+          var on=v===o;
+          return '<span onclick="'+(locked?'':'_formHdr(\''+id+'\',\''+form.id+'\',\''+c.id+'\',this.dataset.v);_formChoice(this)')+'" data-v="'+o.replace(/"/g,'&quot;')+'" '+
+            'class="fc-'+c.id+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11.5px;font-weight:700;padding:6px 12px;border-radius:20px;border:1.5px solid '+(on?'#6C3FF5':'var(--bd)')+';background:'+(on?'#6C3FF5':'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o+'</span>';
+        }).join('')+'</div>'+
+        (c.other?'<input '+(locked?'disabled':'')+' placeholder="وضّح…" value="'+String(st.header[c.id+'_other']||'').replace(/"/g,'&quot;')+'" '+
+          'onchange="_formHdr(\''+id+'\',\''+form.id+'\',\''+c.id+'_other\',this.value)" '+
+          'style="width:100%;margin-top:6px;padding:7px 9px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);color:var(--t)"/>':'')+
+      '</div>';
+    }).join('')+
+
     // ── evidence: plate, units, photos — part of the document
+    // The damage report is a separate document raised during unloading; the
+    // vehicle evidence already sits on the receiving inspection.
+    (form.damageTable?'':
     '<div style="direction:rtl">'+
     '<div style="font-size:12px;font-weight:800;color:var(--c1);margin:4px 0 7px">المرفقات والمسح</div>'+
     box('رقم السيارة (مسح)',!!plate,
@@ -22514,7 +22623,7 @@ function openInspectionForm(id,formId){
           (locked?'':'<span onclick="opsDelPhoto(\''+id+'\','+i+');setTimeout(function(){openInspectionForm(\''+id+'\',\''+form.id+'\');},150)" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span>')+
           '</div>';
       }).join('')+'</div>':''))+
-    '</div>'+
+    '</div>')+
 
     // ── the checklist items
     '<div style="direction:rtl;font-size:12px;font-weight:800;color:var(--c1);margin:10px 0 7px">البنود</div>'+
@@ -22533,11 +22642,38 @@ function openInspectionForm(id,formId){
         }).join('');
     }).join('')+'</div>'+
 
+    // ── the damaged-carton register: scanned numbers, pallet positions
+    (form.damageTable
+      ?'<div style="direction:rtl;display:flex;justify-content:space-between;align-items:center;gap:8px;margin:12px 0 7px">'+
+         '<div style="font-size:12px;font-weight:800;color:var(--c1)">الكراتين التالفة</div>'+
+         (locked?'':'<button class="btn btn-primary btn-sm" onclick="_dmgAdd(\''+id+'\')">＋ إضافة كرتونة تالفة</button>')+
+       '</div>'+
+       '<div id="dmg-table" style="max-height:320px;overflow:auto;margin-bottom:10px">'+_dmgTableHTML(t,locked)+'</div>'+
+       '<div id="dmg-totals">'+_dmgTotalsHTML(t)+'</div>'+
+       // photographic evidence of the damage itself
+       '<div style="direction:rtl;font-size:12px;font-weight:800;color:var(--c1);margin:4px 0 7px">صور التلف</div>'+
+       '<div style="direction:rtl;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'+
+         (locked?'':'<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 إضافة صورة<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+id+'\',this);setTimeout(function(){openInspectionForm(\''+id+'\',\''+form.id+'\');},600)"/></label>')+
+         '<span style="font-size:11.5px;color:var(--t2)">'+photos.length+' صورة</span>'+
+         (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px">'+photos.map(function(ph,i){
+           return '<div style="position:relative"><img src="'+ph.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/>'+
+             (locked?'':'<span onclick="opsDelPhoto(\''+id+'\','+i+');setTimeout(function(){openInspectionForm(\''+id+'\',\''+form.id+'\');},150)" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span>')+
+             '</div>';
+         }).join('')+'</div>':'')+
+       '</div>'
+      :'')+
+
+    // ── الإجراء المتخذ
+    (form.actionField
+      ?'<div class="fg" style="direction:rtl"><label style="font-size:11.5px">الإجراء المتخذ <span style="color:var(--t3);font-weight:600">Action Taken</span></label>'+
+        '<textarea '+(locked?'disabled':'')+' rows="2" onchange="_formHdr(\''+id+'\',\''+form.id+'\',\'action\',this.value)">'+(st.header.action||'')+'</textarea></div>'
+      :'')+
+
     '<div style="direction:rtl;font-size:11px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:7px 10px;margin-bottom:10px">'+form.note+'</div>'+
     '<div class="fg" style="direction:rtl"><label style="font-size:11.5px">ملاحظات</label>'+
       '<textarea '+(locked?'disabled':'')+' rows="2" onchange="_formNote(\''+id+'\',\''+form.id+'\',this.value)">'+(st.notes||'')+'</textarea></div>'+
 
-    (!evidenceOk?'<div style="direction:rtl;font-size:11px;color:#B45309;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:7px 10px;margin-bottom:8px">أكمل المسح والصور قبل الاعتماد</div>':'')+
+    (!form.damageTable&&!evidenceOk?'<div style="direction:rtl;font-size:11px;color:#B45309;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:7px 10px;margin-bottom:8px">أكمل المسح والصور قبل الاعتماد</div>':'')+
 
     // ── the inspection ends here, directly before the approvals
     '<div id="form-timing-end">'+_formEndHTML(t,form,locked)+'</div>'+
@@ -22580,6 +22716,132 @@ function _fmtDur(ms){
   var m=Math.round(s/60);
   return m<60?(m+' د'):(Math.floor(m/60)+' س '+(m%60)+' د');
 }
+// ══ Damaged-carton register ════════════════════════════════════════
+// One row per damaged carton: its number is scanned, never typed; its place
+// on the pallet is picked from the list; and the row carries the stamped
+// moment it was recorded, so the register reads as a timeline of the
+// unloading rather than a sheet filled in afterwards.
+function _dmgRows(t){
+  var st=_formState(t,INSPECTION_FORMS.damage);
+  if(!st.rows)st.rows=[];
+  return st.rows;
+}
+function _dmgTotals(t){
+  var rows=_dmgRows(t);
+  var pallets={};
+  rows.forEach(function(r){if(r.pallet)pallets[r.pallet]=1;});
+  return {
+    cartons:rows.length,
+    units:rows.reduce(function(a,r){return a+(+r.units||0);},0),
+    pallets:Object.keys(pallets).length
+  };
+}
+function _dmgAdd(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS.damage;
+  if(_formLocked(t,form)){toast('التقرير معتمد — لا يمكن التعديل','err');return;}
+  var s=_tc();
+  _dmgRows(t).push({carton:'',pallet:'',pos:'',units:'',item:'',batch:'',expiry:'',desc:'',
+    at:s.at,ms:s.ms,src:s.src,by:S.user?S.user.name:''});
+  _lcSave&&_lcSave();
+  _dmgRefresh(t);
+}
+function _dmgDel(id,i){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(_formLocked(t,INSPECTION_FORMS.damage)){toast('التقرير معتمد — لا يمكن التعديل','err');return;}
+  _dmgRows(t).splice(i,1);_lcSave&&_lcSave();_dmgRefresh(t);
+}
+function _dmgSet(id,i,k,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(_formLocked(t,INSPECTION_FORMS.damage)){toast('التقرير معتمد — لا يمكن التعديل','err');return;}
+  var r=_dmgRows(t)[i];if(!r)return;
+  r[k]=v;
+  if(!r.at){var s=_tc();r.at=s.at;r.ms=s.ms;r.src=s.src;r.by=S.user?S.user.name:'';}
+  _lcSave&&_lcSave();
+  if(k==='units'||k==='pallet')_dmgRefreshTotals(t);
+}
+// The carton number comes off the camera — barcode or QR
+var _dmgScanRow=-1;
+function _dmgScan(id,i){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(_formLocked(t,INSPECTION_FORMS.damage)){toast('التقرير معتمد — لا يمكن التعديل','err');return;}
+  _dmgScanRow=i;
+  opsScan(id,'dmgcarton');
+}
+function _dmgSetScan(id,code){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return false;
+  var r=_dmgRows(t)[_dmgScanRow];
+  if(!r){toast('أضف صفاً أولاً','err');return false;}
+  r.carton=code;
+  if(!r.at){var s=_tc();r.at=s.at;r.ms=s.ms;r.src=s.src;r.by=S.user?S.user.name:'';}
+  r.scanned=true;
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:_tc().at,user:S.user?S.user.name:'',action:'🚨 كرتونة تالفة — مسح',detail:code});
+  audit('DMG_SCAN',code,id);
+  _lcSave&&_lcSave();
+  toast('✓ رقم الكرتونة: '+code,'ok');
+  if(!(typeof _formReturn==='function'&&_formReturn()))rOperation();
+  return true;
+}
+function _dmgRefresh(t){
+  var el=document.getElementById('dmg-table');
+  if(el)el.innerHTML=_dmgTableHTML(t,_formLocked(t,INSPECTION_FORMS.damage));
+  _dmgRefreshTotals(t);
+}
+function _dmgRefreshTotals(t){
+  var el=document.getElementById('dmg-totals');
+  if(el)el.innerHTML=_dmgTotalsHTML(t);
+}
+function _dmgTotalsHTML(t){
+  var g=_dmgTotals(t);
+  var cell=function(l,v){return '<div style="flex:1;min-width:110px;background:var(--bg);border:1.5px solid var(--bd);border-radius:10px;padding:8px 10px;text-align:center">'+
+    '<div style="font-size:10px;font-weight:700;color:var(--t2)">'+l+'</div>'+
+    '<div style="font-size:17px;font-weight:800;color:var(--c1)">'+v+'</div></div>';};
+  return '<div style="direction:rtl;display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px">'+
+    cell('إجمالي العبوات التالفة',g.units)+
+    cell('إجمالي الكراتين التالفة',g.cartons)+
+    cell('إجمالي الباليتات التالفة',g.pallets)+
+  '</div>';
+}
+function _dmgTableHTML(t,locked){
+  var rows=_dmgRows(t),pos=_dmgPositions();
+  var inp=function(i,k,v,ph,w,type){
+    return '<input '+(locked?'disabled':'')+' type="'+(type||'text')+'" value="'+String(v==null?'':v).replace(/"/g,'&quot;')+'" placeholder="'+(ph||'')+'" '+
+      'onchange="_dmgSet(\''+t.id+'\','+i+',\''+k+'\',this.value)" '+
+      'style="width:'+(w||'100%')+';padding:6px 7px;border:1.5px solid var(--bd);border-radius:7px;font-size:12px;background:var(--bg);color:var(--t)"/>';
+  };
+  if(!rows.length)
+    return '<div style="direction:rtl;font-size:12px;color:var(--t3);text-align:center;padding:16px;border:1.5px dashed var(--bd);border-radius:10px">'+
+      'لا توجد كراتين تالفة مسجّلة'+(locked?'':' — اضغط «إضافة كرتونة تالفة»')+'</div>';
+  return rows.map(function(r,i){
+    return '<div style="direction:rtl;border:1.5px solid var(--bd);border-radius:10px;padding:10px;margin-bottom:8px;background:var(--surf)">'+
+      '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'+
+        '<span style="background:var(--c1);color:#fff;width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;flex-shrink:0">'+(i+1)+'</span>'+
+        '<div style="flex:1">'+
+          '<div style="font-size:10px;font-weight:700;color:var(--t2)">رقم الكرتونة التالفة</div>'+
+          '<div style="display:flex;gap:6px;align-items:center;margin-top:3px">'+
+            (locked?'':'<button class="btn btn-outline btn-sm" onclick="_dmgScan(\''+t.id+'\','+i+')">📷 مسح</button>')+
+            '<span style="font-size:13.5px;font-weight:800;direction:ltr">'+(r.carton||'<span style="color:var(--t3);font-weight:400;font-size:11.5px">لم يُمسح</span>')+'</span>'+
+          '</div></div>'+
+        (locked?'':'<span onclick="_dmgDel(\''+t.id+'\','+i+')" style="cursor:pointer;color:#EF4444;font-size:17px;font-weight:800;padding:0 4px">×</span>')+
+      '</div>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">'+
+        '<div><label style="font-size:10px;font-weight:600;color:var(--t2)">مكان الكرتونة على الباليتة</label>'+
+          '<select '+(locked?'disabled':'')+' onchange="_dmgSet(\''+t.id+'\','+i+',\'pos\',this.value)" style="width:100%;padding:6px 7px;border:1.5px solid var(--bd);border-radius:7px;font-size:12px;background:var(--bg);color:var(--t)">'+
+          '<option value="">— اختر —</option>'+
+          pos.map(function(p){return '<option value="'+p.n+'"'+(r.pos===p.n?' selected':'')+'>'+p.n+' — '+p.label+'</option>';}).join('')+
+          '</select></div>'+
+        '<div><label style="font-size:10px;font-weight:600;color:var(--t2)">رقم الباليتة</label>'+inp(i,'pallet',r.pallet,'مثال 12')+'</div>'+
+        '<div><label style="font-size:10px;font-weight:600;color:var(--t2)">عدد العبوات التالفة</label>'+inp(i,'units',r.units,'0','100%','number')+'</div>'+
+        '<div><label style="font-size:10px;font-weight:600;color:var(--t2)">صنف الكرتونة التالفة</label>'+inp(i,'item',r.item,'')+'</div>'+
+        '<div><label style="font-size:10px;font-weight:600;color:var(--t2)">رقم التشغيلة (Batch)</label>'+inp(i,'batch',r.batch,'')+'</div>'+
+        '<div><label style="font-size:10px;font-weight:600;color:var(--t2)">تاريخ انتهاء الصلاحية</label>'+inp(i,'expiry',r.expiry,'','100%','date')+'</div>'+
+        '<div style="grid-column:1/-1"><label style="font-size:10px;font-weight:600;color:var(--t2)">وصف حالة التلف</label>'+inp(i,'desc',r.desc,'')+'</div>'+
+      '</div>'+
+      (r.at?'<div style="font-size:9.5px;color:var(--t3);margin-top:6px">🕒 '+r.at+' '+(r.src==='server'?'🔒':'⚠')+' · '+(r.by||'')+'</div>':'')+
+    '</div>';
+  }).join('');
+}
 function _formStampCell(label,stamp,locked,btn){
   return '<div style="flex:1;min-width:118px;border:1.5px solid '+(stamp?'#A7F3D0':'var(--bd)')+';background:'+(stamp?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:8px 10px">'+
     '<div style="font-size:10.5px;font-weight:800;color:'+(stamp?'#065F46':'var(--t2)')+'">'+label+'</div>'+
@@ -22619,6 +22881,26 @@ function _formRefreshTiming(t,form){
   if(a)a.innerHTML=_formStartHTML(t,form,locked);
   var b=document.getElementById('form-timing-end');
   if(b)b.innerHTML=_formEndHTML(t,form,locked);
+}
+// ── Damage report: raised on demand, then it must be finished ──────
+// Once anybody opens a damage report on a shipment it becomes part of that
+// shipment's paperwork, so the receiving leg will not close until all three
+// signatures are on it.
+function _dmgRaised(t){
+  var f=t&&t.forms&&t.forms.damage;
+  return !!(f&&(f.inspStart||(f.rows&&f.rows.length)));
+}
+function _dmgOpen(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  openInspectionForm(id,'damage');
+}
+function _dmgBadge(t){
+  if(!_dmgRaised(t))return '';
+  var done=_formLocked(t,INSPECTION_FORMS.damage);
+  var g=_dmgTotals(t);
+  return '<span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;'+
+    (done?'background:#FEE2E2;color:#B91C1C':'background:#FEF3C7;color:#B45309')+'">'+
+    (done?'🚨 توالف معتمد':'🚨 توالف — غير معتمد')+' · '+g.cartons+' كرتونة</span>';
 }
 // A form is locked once every signature it asks for has been given
 function _formLocked(t,form){
@@ -22709,6 +22991,14 @@ function _formHdr(id,fid,k,v){
     });
   }
 }
+// Highlight the picked option in a single-choice block, in place
+function _formChoice(el){
+  var row=el.parentNode;
+  row.querySelectorAll('span').forEach(function(o){
+    o.style.border='1.5px solid var(--bd)';o.style.background='var(--surf)';o.style.color='var(--t2)';
+  });
+  el.style.border='1.5px solid #6C3FF5';el.style.background='#6C3FF5';el.style.color='#fff';
+}
 function _formNote(id,fid,v){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   _formState(t,INSPECTION_FORMS[fid]).notes=v;_lcSave&&_lcSave();
@@ -22723,12 +23013,22 @@ function _formSign(id,fid,sigId){
   if(!st.inspStart){toast('اضغط ▶ بدء الفحص أولاً','err');return;}
   if(!st.inspEnd){toast('اضغط ■ إنهاء الفحص قبل الاعتماد','err');return;}
   var _cfg=_opsCfg(),_op=t.ops||{};
-  var _plate=(_op.scans||[]).find(function(s){return s.kind==='plate';});
-  var _units=(_op.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';});
-  if(_cfg.requirePlateScan&&!_plate){toast('امسح رقم السيارة أولاً','err');return;}
-  if((_op.photos||[]).length<_cfg.minPhotos){toast('أضف '+_cfg.minPhotos+' صورة على الأقل','err');return;}
-  if(_op.expectedUnits&&_units.length<_op.expectedUnits){
-    if(!confirm('تم مسح '+_units.length+' من '+_op.expectedUnits+' وحدة. الاعتماد رغم ذلك؟'))return;
+  if(form.damageTable){
+    // A damage report is only a report if it names what was damaged
+    var _rows=_dmgRows(t);
+    if(!_rows.length){toast('سجّل الكراتين التالفة أولاً','err');return;}
+    var _bad=_rows.findIndex(function(r){return !r.carton||!r.pos||!(+r.units>0);});
+    if(_bad>-1){toast('أكمل الصف '+(_bad+1)+': رقم الكرتونة (مسح) والمكان وعدد العبوات','err');return;}
+    if(!st.header.location){toast('حدّد مكان التلف','err');return;}
+    if(!st.header.reason){toast('حدّد سبب التلف','err');return;}
+  }else{
+    var _plate=(_op.scans||[]).find(function(s){return s.kind==='plate';});
+    var _units=(_op.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';});
+    if(_cfg.requirePlateScan&&!_plate){toast('امسح رقم السيارة أولاً','err');return;}
+    if((_op.photos||[]).length<_cfg.minPhotos){toast('أضف '+_cfg.minPhotos+' صورة على الأقل','err');return;}
+    if(_op.expectedUnits&&_units.length<_op.expectedUnits){
+      if(!confirm('تم مسح '+_units.length+' من '+_op.expectedUnits+' وحدة. الاعتماد رغم ذلك؟'))return;
+    }
   }
   // signatures are given in the order the form lists them
   var _idx=form.signatures.indexOf(sg);
@@ -22747,6 +23047,17 @@ function _formSign(id,fid,sigId){
     audit('FORM_SIGN',form.doc+' '+sg.id+' '+p.pct+'%',id);
     // once the form has every signature it asks for, it mirrors into the shipment
     var _done=_formLocked(t,form);
+    if(_done&&form.damageTable){
+      var _g=_dmgTotals(t);
+      t.damage={doc:form.doc,cartons:_g.cartons,units:_g.units,pallets:_g.pallets,
+        location:st.header.location||'',reason:st.header.reason||'',
+        at:st.signatures[form.signatures[form.signatures.length-1].id].at,
+        signedBy:form.signatures.map(function(s){return (st.signatures[s.id]||{}).by||'';})};
+      _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+      toast('✅ اعتُمد تقرير التوالف','ok');
+      openInspectionForm(id,fid);
+      return;
+    }
     if(_done){
       var _last=st.signatures[form.signatures[form.signatures.length-1].id];
       if(!t.ops)t.ops={scans:[],photos:[],checklist:{}};
@@ -22786,6 +23097,18 @@ function exportInspectionForm(id,fid){
       rows.push([i.n,i.text,st.answers[i.n]==='yes'?'نعم':(st.answers[i.n]==='no'?'لا':'')]);
     });
   });
+  if(form.damageTable){
+    var g=_dmgTotals(t),pos=_dmgPositions();
+    rows.push([],['#','رقم الكرتونة التالفة','رقم الباليتة','مكان الكرتونة على الباليتة',
+      'عدد العبوات التالفة','صنف الكرتونة','رقم التشغيلة','تاريخ الصلاحية','وصف حالة التلف','وقت التسجيل']);
+    _dmgRows(t).forEach(function(r,i){
+      var px=pos.find(function(q){return q.n===r.pos;});
+      rows.push([i+1,r.carton||'',r.pallet||'',r.pos?(r.pos+' — '+(px?px.label:'')):'',
+        r.units||'',r.item||'',r.batch||'',r.expiry||'',r.desc||'',r.at||'']);
+    });
+    rows.push([],['إجمالي العبوات التالفة',g.units,''],['إجمالي الكراتين التالفة',g.cartons,''],
+      ['إجمالي الباليتات التالفة',g.pallets,''],['الإجراء المتخذ',st.header.action||'','']);
+  }
   rows.push([],['النتيجة',p.yes+'/'+p.total,p.pct+'%'],['ملاحظات',st.notes||'','']);
   form.signatures.forEach(function(sg){
     var s=(st.signatures||{})[sg.id];
@@ -22828,7 +23151,9 @@ function printInspectionForm(id,fid){
   var docNo=form.doc+' / '+t.id;
   var w=_docOpen({
     title:form.title, sub:esc(t.id)+' — '+esc(t.customer), docNo:docNo, rtl:true,
-    status:p.passed?'مطابق '+p.pct+'%':'يوجد عدم مطابقة',
+    status:form.damageTable
+      ?('توالف: '+_dmgTotals(t).cartons+' كرتونة · '+_dmgTotals(t).units+' عبوة')
+      :(p.passed?'مطابق '+p.pct+'%':'يوجد عدم مطابقة'),
     width:980, height:820,
     css:'body{direction:rtl}'+
       'table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:12px}td,th{border:1px solid #999;padding:5px 7px}'+
@@ -22851,14 +23176,23 @@ function printInspectionForm(id,fid){
       '<br>مصدر الوقت: <b>'+((st.inspStart&&st.inspStart.src==='server')?'ساعة السيرفر (موثّقة)':'ساعة الجهاز (غير موثّقة)')+'</b>'+
       (st.inspStart&&!st.inspStart.trusted?' — ⚠ ساعة الجهاز كانت منحرفة '+esc(st.inspStart.drift)+' ثانية':'')+
     '</span></div>'+
-    // evidence block
-    '<div class="ev"><b>المرفقات والمسح</b><br>'+
+    // damage location and cause
+    ((form.choices||[]).length
+      ?'<div class="ev">'+(form.choices||[]).map(function(c){
+          var v=st.header[c.id]||'—';
+          var ot=st.header[c.id+'_other'];
+          return '<b>'+esc(c.label)+':</b> '+esc(v)+(ot?' — '+esc(ot):'');
+        }).join('<br>')+'</div>'
+      :'')+
+    // evidence block — the vehicle scan belongs to the inspection forms
+    (form.damageTable?''
+      :'<div class="ev"><b>المرفقات والمسح</b><br>'+
       '<span style="font-size:11.5px">رقم السيارة (مسح): <b>'+esc(plate?plate.code:'—')+'</b>'+
       ' &nbsp;·&nbsp; البالتات/الكراتين: <b>'+units.length+(op.expectedUnits?' / '+op.expectedUnits:'')+'</b>'+
       ' &nbsp;·&nbsp; الصور: <b>'+photos.length+'</b></span>'+
       (units.length?'<div class="codes">'+units.map(function(s){return esc(s.code);}).join(' · ')+'</div>':'')+
-    '</div>'+
-    (photos.length?'<div class="ev"><b>صور السيارة والشحنة</b><div class="ph">'+
+    '</div>')+
+    (photos.length?'<div class="ev"><b>'+(form.damageTable?'صور التلف':'صور السيارة والشحنة')+'</b><div class="ph">'+
       photos.map(function(ph){return '<img src="'+ph.data+'"/>';}).join('')+'</div></div>':'')+
     // checklist
     '<table><tr><th style="width:42px">لا</th><th style="width:42px">نعم</th><th>البنود</th><th style="width:36px">#</th></tr>'+
@@ -22871,6 +23205,31 @@ function printInspectionForm(id,fid){
             '<td>'+esc(i.text)+'</td><td style="text-align:center">'+i.n+'</td></tr>';
         }).join('');
     }).join('')+'</table>'+
+    // the damaged-carton register
+    (form.damageTable?(function(){
+      var rows=_dmgRows(t),g=_dmgTotals(t),pos=_dmgPositions();
+      var posLbl=function(n){var x=pos.find(function(q){return q.n===n;});return x?(n+' — '+x.label):(n||'—');};
+      return '<div style="font-size:13px;font-weight:800;margin:10px 0 5px">الكراتين التالفة</div>'+
+        '<table><tr>'+
+          '<th>وقت التسجيل</th><th>وصف حالة التلف</th><th>تاريخ الصلاحية</th><th>رقم التشغيلة</th>'+
+          '<th>صنف الكرتونة</th><th>عدد العبوات</th><th>مكان الكرتونة على الباليتة</th>'+
+          '<th>رقم الباليتة</th><th>رقم الكرتونة التالفة</th><th style="width:30px">#</th></tr>'+
+        (rows.length?rows.map(function(r,i){
+          return '<tr><td style="font-size:10px">'+esc(r.at||'')+(r.src==='server'?' 🔒':'')+'</td>'+
+            '<td>'+esc(r.desc)+'</td><td>'+esc(r.expiry)+'</td><td>'+esc(r.batch)+'</td>'+
+            '<td>'+esc(r.item)+'</td><td style="text-align:center">'+esc(r.units)+'</td>'+
+            '<td>'+esc(posLbl(r.pos))+'</td><td style="text-align:center">'+esc(r.pallet)+'</td>'+
+            '<td style="direction:ltr;text-align:right;font-weight:700">'+esc(r.carton)+'</td>'+
+            '<td style="text-align:center">'+(i+1)+'</td></tr>';
+        }).join('')
+        :'<tr><td colspan="10" style="text-align:center;color:#777">لا توجد كراتين تالفة مسجّلة</td></tr>')+
+        '</table>'+
+        '<div class="ev"><b>الإجماليات</b><br><span style="font-size:11.5px">'+
+          'إجمالي عدد العبوات التالفة: <b>'+g.units+'</b>'+
+          ' &nbsp;·&nbsp; إجمالي عدد الكراتين التالفة: <b>'+g.cartons+'</b>'+
+          ' &nbsp;·&nbsp; إجمالي عدد الباليتات التالفة: <b>'+g.pallets+'</b></span></div>'+
+        (st.header.action?'<div style="font-size:12px;margin-bottom:8px"><b>الإجراء المتخذ:</b> '+esc(st.header.action)+'</div>':'');
+    })():'')+
     '<div style="font-size:12px;margin:8px 0"><b>النتيجة:</b> '+p.yes+'/'+p.total+' ('+p.pct+'%) — '+esc(form.note)+'</div>'+
     (st.notes?'<div style="font-size:12px;margin-bottom:8px"><b>ملاحظات:</b> '+esc(st.notes)+'</div>':'')+
     '<div class="sig">'+form.signatures.map(function(sg){
