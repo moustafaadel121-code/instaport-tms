@@ -3636,7 +3636,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_approval'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -5922,6 +5922,13 @@ function nav(page){
 // HELPERS
 // ══════════════════════════════════════════════════
 function stB(s){
+  // a step defined by the customer's own chain still needs a badge
+  if(typeof WF_CHAIN!=='undefined'){
+    var _st=WF_CHAIN.find(function(x){return x.id===s;});
+    if(_st&&['awaiting_operation','awaiting_quality','in_transit','inbound_operation'].indexOf(s)<0){
+      return '<span class="tag tag-info">'+_st.icon+' '+_st.step+': '+_st.label+'</span>';
+    }
+  }
   // Outbound flow: awaiting_truck → awaiting_quality → awaiting_ctrl → awaiting_security → in_transit
   // Inbound flow:  inbound_ctrl → inbound_security → inbound_quality → completed
   var m={
@@ -5935,6 +5942,8 @@ function stB(s){
     inbound_operation:'<span class="tag tag-pend">&#128247; IN-2: Operations</span>',
     inbound_ctrl:     '<span class="tag tag-info">&#128228; IN-3: Control Room</span>',
     inbound_quality:  '<span class="tag tag-blue">&#129514; Quality Check</span>',
+    inbound_supervisor:'<span class="tag tag-info">&#128100; IN-2: Supervisor</span>',
+    plan_revision:    '<span class="tag tag-hold">&#10006; مرفوض — تعديل المشرف</span>',
     completed:        '<span class="tag tag-ok">&#9989; Completed</span>',
     cancelled:        '<span class="tag tag-hold">&#10060; Cancelled</span>'
   };
@@ -8577,7 +8586,10 @@ function rTrips(){
     '<button class="btn btn-outline btn-sm" id="tr-col-btn" onclick="_trToggleCols()">⚙ Columns</button>'+
     (canAdd?'<button class="btn btn-primary" onclick="openTrip()">+ New Shipment</button>':'')+
     '</div></div>'+
-    ((S.role==='supervisor'||can('all'))?wfRevisionHTML():'')+
+    ((S.role==='supervisor'||can('all'))?(
+      (function(){var q=_wfMyQueue('supervisor');
+        return q.length?'<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">بانتظار اعتمادك ('+q.length+')</div>'+wfQueueHTML('supervisor'):'';})()
+      +wfRevisionHTML()):'')+
 
     // Column configurator (hidden by default)
     '<div id="tr-col-panel" style="display:none;background:var(--surf);border:1px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:10px">'+
@@ -21699,60 +21711,140 @@ function invoiceApprovedSheets(){
 // Dispatch is gone: the truck and driver are assigned on the request itself.
 // ══════════════════════════════════════════════════════════════════
 var WF_DEFAULT=[
-  {id:'awaiting_operation', leg:'out', step:'OUT-1', label:'Operations Check',   role:'operation',    icon:'📷', next:'awaiting_quality'},
-  {id:'awaiting_quality',   leg:'out', step:'OUT-2', label:'Quality Approval',   role:'quality',      icon:'🧪', next:'awaiting_ctrl'},
-  {id:'awaiting_ctrl',      leg:'out', step:'OUT-3', label:'Control Room',       role:'control_room', icon:'🎛️', next:'awaiting_security'},
-  {id:'awaiting_security',  leg:'out', step:'OUT-4', label:'Security Gate Out',  role:'security',     icon:'🔒', next:'in_transit'},
-  {id:'in_transit',         leg:'transit', step:'—', label:'In Transit',         role:'driver',       icon:'🚚', next:'inbound_security'},
-  {id:'inbound_security',   leg:'in',  step:'IN-1',  label:'Security Gate In',   role:'security',     icon:'🔒', next:'inbound_operation'},
-  {id:'inbound_operation',  leg:'in',  step:'IN-2',  label:'Operations Unloading',role:'operation',   icon:'📷', next:'inbound_quality'},
-  {id:'inbound_quality',    leg:'in',  step:'IN-3',  label:'Quality Final Approval',role:'quality',   icon:'🧪', next:'completed'}
+  {id:'awaiting_operation',  leg:'out', step:'OUT-1', label:'Operations Check',    role:'operation',  icon:'📷', next:'awaiting_quality'},
+  {id:'awaiting_quality',    leg:'out', step:'OUT-2', label:'Quality Approval',    role:'quality',    icon:'🧪', next:'in_transit'},
+  {id:'in_transit',          leg:'transit', step:'—', label:'In Transit',          role:'driver',     icon:'🚚', next:'inbound_operation'},
+  {id:'inbound_operation',   leg:'in',  step:'IN-1',  label:'Operations Unloading',role:'operation',  icon:'📷', next:'inbound_supervisor'},
+  {id:'inbound_supervisor',  leg:'in',  step:'IN-2',  label:'Supervisor Approval', role:'supervisor', icon:'👤', next:'completed'}
 ];
-// The chain is per-organisation: enable/disable steps in Admin → Operations
 var WF_CHAIN=WF_DEFAULT.map(function(s){return Object.assign({},s);});
+
+// ══════════════════════════════════════════════════════════════════
+// APPROVAL CHAIN — defined per organisation, not baked into the code.
+// Steps are stored, editable and reorderable; the driver leg always sits
+// between the outbound and inbound legs.
+// ══════════════════════════════════════════════════════════════════
+var WF_TRANSIT={id:'in_transit',leg:'transit',step:'—',label:'In Transit',role:'driver',icon:'🚚'};
+function _wfStored(){
+  try{
+    var raw=localStorage.getItem('ip_wfchain');
+    if(raw){var a=JSON.parse(raw);if(a&&a.length)return a;}
+  }catch(e){}
+  // first run: seed from the shipped default
+  return WF_DEFAULT.filter(function(s){return s.leg!=='transit';})
+    .map(function(s){return {id:s.id,leg:s.leg,label:s.label,role:s.role,icon:s.icon,enabled:true};});
+}
+function _wfSaveChain(steps){
+  try{localStorage.setItem('ip_wfchain',JSON.stringify(steps));}catch(e){}
+  _wfLoadChain();
+}
+// Rebuild the live chain: outbound steps, the driver leg, inbound steps
 function _wfLoadChain(){
-  var off={};
-  try{off=JSON.parse(localStorage.getItem('ip_wfsteps')||'{}');}catch(e){}
-  var active=WF_DEFAULT.filter(function(s){
-    return s.leg==='transit'||off[s.id]!==false;   // transit is always part of it
-  }).map(function(s){return Object.assign({},s);});
-  // relink each step to the next active one, and renumber
+  var stored=_wfStored().filter(function(s){return s.enabled!==false;});
+  var out=stored.filter(function(s){return s.leg==='out';});
+  var inb=stored.filter(function(s){return s.leg==='in';});
+  var chain=out.concat([Object.assign({},WF_TRANSIT)]).concat(inb);
   var oN=0,iN=0;
-  active.forEach(function(s,i){
-    s.next=active[i+1]?active[i+1].id:'completed';
+  chain.forEach(function(s,i){
+    s.next=chain[i+1]?chain[i+1].id:'completed';
     if(s.leg==='out')s.step='OUT-'+(++oN);
     else if(s.leg==='in')s.step='IN-'+(++iN);
   });
-  WF_CHAIN=active;
+  WF_CHAIN=chain;
   return WF_CHAIN;
 }
-function _wfStepEnabled(id){
-  try{var o=JSON.parse(localStorage.getItem('ip_wfsteps')||'{}');return o[id]!==false;}catch(e){return true;}
-}
-function _wfToggleStep(id,on){
-  var o={};try{o=JSON.parse(localStorage.getItem('ip_wfsteps')||'{}');}catch(e){}
-  o[id]=on;
-  try{localStorage.setItem('ip_wfsteps',JSON.stringify(o));}catch(e){}
+// ── Admin → Operations: the chain editor ──
+function _wfChainHTML(){
+  var steps=_wfStored();
   _wfLoadChain();
+  var roles=Object.keys(RL);
+  var legRow=function(leg,title,hint){
+    var list=steps.map(function(s,i){return {s:s,i:i};}).filter(function(x){return x.s.leg===leg;});
+    return '<div style="margin-bottom:14px">'+
+      '<div style="font-size:12px;font-weight:800;color:var(--c1);margin-bottom:2px">'+title+'</div>'+
+      '<div style="font-size:11px;color:var(--t2);margin-bottom:8px">'+hint+'</div>'+
+      (list.length?list.map(function(x,pos){
+        var s=x.s;var live=WF_CHAIN.find(function(c){return c.id===s.id;});
+        return '<div style="display:flex;align-items:center;gap:7px;padding:8px 0;border-bottom:1px solid var(--bd)">'+
+          '<label class="fg-toggle" style="flex-shrink:0"><input type="checkbox" '+(s.enabled!==false?'checked':'')+' onchange="_wfStepSet('+x.i+',\'enabled\',this.checked)"/><span class="fg-slider"></span></label>'+
+          '<span style="font-size:10.5px;font-weight:800;color:'+(s.enabled!==false?'#6C3FF5':'var(--t3)')+';min-width:44px">'+(live?live.step:'—')+'</span>'+
+          '<input value="'+String(s.icon||'📋').replace(/"/g,'&quot;')+'" onchange="_wfStepSet('+x.i+',\'icon\',this.value)" style="width:42px;padding:5px;border:1px solid var(--bd);border-radius:6px;font-size:15px;text-align:center;background:var(--bg)"/>'+
+          '<input value="'+String(s.label||'').replace(/"/g,'&quot;')+'" onchange="_wfStepSet('+x.i+',\'label\',this.value)" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;font-size:12px;background:var(--bg);color:var(--t)"/>'+
+          '<select onchange="_wfStepSet('+x.i+',\'role\',this.value)" style="padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:11.5px;background:var(--bg);color:var(--t)">'+
+            roles.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+(RL[r]||r)+'</option>';}).join('')+'</select>'+
+          '<span onclick="_wfStepMove('+x.i+',-1)" style="cursor:'+(pos===0?'not-allowed':'pointer')+';opacity:'+(pos===0?'.3':'1')+';font-size:15px;padding:0 3px" title="Up">▲</span>'+
+          '<span onclick="_wfStepMove('+x.i+',1)" style="cursor:'+(pos===list.length-1?'not-allowed':'pointer')+';opacity:'+(pos===list.length-1?'.3':'1')+';font-size:15px;padding:0 3px" title="Down">▼</span>'+
+          '<span onclick="_wfStepDel('+x.i+')" style="cursor:pointer;color:#EF4444;font-size:16px;padding:0 3px" title="Remove">×</span>'+
+        '</div>';
+      }).join(''):'<div style="font-size:11.5px;color:var(--t3);padding:6px 0">No steps — shipments will pass straight through this leg.</div>')+
+      '<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="_wfStepAdd(\''+leg+'\')">+ Add step</button>'+
+    '</div>';
+  };
+  return '<div class="card">'+
+    '<div style="font-size:14px;font-weight:800;margin-bottom:4px">🔄 Approval Chain</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Define who approves what. Add, rename, reorder or switch off any step — the chain relinks and renumbers itself. Nothing here is fixed in code.</div>'+
+    legRow('out','Outbound — before departure','From the shipment request until the truck leaves.')+
+    '<div style="background:var(--bg);border-radius:8px;padding:9px 12px;font-size:11.5px;color:var(--t2);margin-bottom:14px">🚚 <b>In Transit</b> — the driver records the journey (always part of the chain)</div>'+
+    legRow('in','Inbound — after the driver returns','From arrival until the shipment is complete and priced.')+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--bd);padding-top:10px">'+
+      '<button class="btn btn-outline btn-sm" onclick="_wfChainReset()">↺ Reset to default</button>'+
+      '<span style="font-size:11px;color:var(--t3);align-self:center">Live chain: '+WF_CHAIN.filter(function(s){return s.leg!=='transit';}).map(function(s){return s.step;}).join(' → ')+' → completed</span>'+
+    '</div></div>';
+}
+function _wfStepSet(i,k,v){
+  var steps=_wfStored();
+  if(!steps[i])return;
+  steps[i][k]=v;
+  _wfSaveChain(steps);
   if(typeof rAdminOperations==='function')rAdminOperations();
   toast('Workflow updated','ok');
 }
-function _wfChainHTML(){
-  _wfLoadChain();
-  return '<div class="card">'+
-    '<div style="font-size:14px;font-weight:800;margin-bottom:4px">🔄 Approval Chain</div>'+
-    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Turn a step off and the chain relinks around it. Steps are renumbered automatically.</div>'+
-    WF_DEFAULT.filter(function(s){return s.leg!=='transit';}).map(function(s){
-      var on=_wfStepEnabled(s.id);
-      var live=WF_CHAIN.find(function(x){return x.id===s.id;});
-      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bd)">'+
-        '<label class="fg-toggle" style="flex-shrink:0"><input type="checkbox" '+(on?'checked':'')+' onchange="_wfToggleStep(\''+s.id+'\',this.checked)"/><span class="fg-slider"></span></label>'+
-        '<span style="font-size:10.5px;font-weight:800;color:'+(on?'#6C3FF5':'var(--t3)')+';min-width:46px">'+(live?live.step:'—')+'</span>'+
-        '<span style="flex:1;font-size:13px;color:var(--t)'+(on?'':';opacity:.45;text-decoration:line-through')+'">'+s.icon+' '+s.label+'</span>'+
-        '<span style="font-size:10.5px;color:var(--t3)">'+(RL[s.role]||s.role)+'</span></div>';
-    }).join('')+
-  '</div>';
+function _wfStepMove(i,dir){
+  var steps=_wfStored();
+  var s=steps[i];if(!s)return;
+  // move within the same leg
+  var sameLeg=steps.map(function(x,idx){return {x:x,idx:idx};}).filter(function(o){return o.x.leg===s.leg;});
+  var pos=sameLeg.findIndex(function(o){return o.idx===i;});
+  var target=sameLeg[pos+dir];
+  if(!target)return;
+  steps[i]=target.x;steps[target.idx]=s;
+  _wfSaveChain(steps);
+  if(typeof rAdminOperations==='function')rAdminOperations();
 }
+function _wfStepDel(i){
+  var steps=_wfStored();
+  if(!steps[i])return;
+  var used=(S.trips||[]).some(function(t){return t.status===steps[i].id;});
+  if(used){toast('Shipments are sitting at this step — switch it off instead','err');return;}
+  if(!confirm('Remove the step "'+steps[i].label+'"?'))return;
+  steps.splice(i,1);
+  _wfSaveChain(steps);
+  if(typeof rAdminOperations==='function')rAdminOperations();
+  toast('Step removed','ok');
+}
+function _wfStepAdd(leg){
+  var label=prompt('Step name:','');
+  if(!label||!label.trim())return;
+  var steps=_wfStored();
+  var id=(leg==='in'?'inbound_':'awaiting_')+label.trim().toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'');
+  if(steps.some(function(s){return s.id===id;})){toast('A step with this name already exists','err');return;}
+  var step={id:id,leg:leg,label:label.trim(),role:'operation',icon:'📋',enabled:true};
+  // append at the end of its leg
+  var lastOfLeg=-1;
+  steps.forEach(function(s,i){if(s.leg===leg)lastOfLeg=i;});
+  steps.splice(lastOfLeg+1,0,step);
+  _wfSaveChain(steps);
+  if(typeof rAdminOperations==='function')rAdminOperations();
+  toast('Step added — set its role','ok');
+}
+function _wfChainReset(){
+  if(!confirm('Reset the approval chain to the default?'))return;
+  try{localStorage.removeItem('ip_wfchain');}catch(e){}
+  _wfLoadChain();
+  if(typeof rAdminOperations==='function')rAdminOperations();
+  toast('Chain reset','ok');
+}
+
 function _wfStage(status){return WF_CHAIN.find(function(s){return s.id===status;})||null;}
 function _wfNext(status){var s=_wfStage(status);return s?s.next:null;}
 function _wfForRole(role){
@@ -22004,11 +22096,14 @@ function _finRateCardHTML(card){
 // is stranded in a status no screen looks for any more.
 // ══════════════════════════════════════════════════════════════════
 var WF_LEGACY_MAP={
-  in_progress:      'awaiting_operation',
-  awaiting_truck:   'awaiting_operation',
-  awaiting_ops:     'awaiting_operation',
-  inbound_ctrl:     'inbound_quality',   // control room left the inbound chain
-  inbound_operation:'inbound_operation'
+  in_progress:       'awaiting_operation',
+  awaiting_truck:    'awaiting_operation',
+  awaiting_ops:      'awaiting_operation',
+  awaiting_ctrl:     'awaiting_quality',      // control room left the outbound chain
+  awaiting_security: 'awaiting_quality',      // security gate left the outbound chain
+  inbound_security:  'inbound_operation',     // security gate left the inbound chain
+  inbound_ctrl:      'inbound_supervisor',
+  inbound_quality:   'inbound_supervisor'     // quality left the inbound chain
 };
 function _wfMigrate(){
   var chain={};(WF_CHAIN||[]).forEach(function(s){chain[s.id]=1;});
