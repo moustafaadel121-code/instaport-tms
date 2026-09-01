@@ -13816,6 +13816,8 @@ function rOperation(){
   c.innerHTML=
     '<div class="page-head"><div><h2>📷 Operations</h2>'+
     '<div class="page-head-sub">Scan, photograph &amp; verify shipments before departure</div></div>'+
+    '<button class="btn btn-outline btn-sm" onclick="exportInspectionsByLeg(\'outbound\')">⬇ نماذج الشحن</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="exportInspectionsByLeg(\'inbound\')">⬇ نماذج الاستلام</button>'+
     '<button class="btn btn-outline btn-sm" onclick="rOperation()">↻ Refresh</button></div>'+
     (trips.length===0
       ? _emptyState('✅','Nothing to process','Shipments reach you at OUT-1 (loading) and IN-2 (unloading).','')
@@ -13860,6 +13862,12 @@ function _opsCard(t){
       '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'plate\')">🔖 Scan Plate</button>'+
       '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'unit\')">📦 Scan Pallets/Cartons</button>'+
       '<button class="btn btn-outline btn-sm" onclick="opsSetExpected(\''+t.id+'\')">🔢 Expected'+(expected?': '+expected:'')+'</button>'+
+      (function(){
+        var f=_formFor(t);if(!f)return '';
+        var pr=_formProgress(t,f);var sg=_formState(t,f).signatures||{};
+        var both=sg.officer&&sg.supervisor;
+        return '<button class="btn '+(both?'btn-success':'btn-outline')+' btn-sm" onclick="openInspectionForm(\''+t.id+'\')">📋 '+f.title+' '+(both?'✓':pr.yes+'/'+pr.total)+'</button>';
+      })()+
       '<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 Add Photo'+
         '<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+t.id+'\',this)"/></label>'+
     '</div>'+
@@ -14154,6 +14162,8 @@ function opsCompleteLoading(id){
   var cfg=_opsCfg();
   var inbound=t.status==='inbound_operation';
   var work=inbound?'Unloading':'Loading';
+  var _f=_formFor(t);
+  if(_f){var _fs=_formState(t,_f);if(!(_fs.signatures&&_fs.signatures.officer&&_fs.signatures.supervisor)){toast('يجب استكمال وتوقيع نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}}
   if(!_chkRequiredDone(t)){toast('Complete the required checklist items first','err');return;}
   if((t.ops.photos||[]).length<cfg.minPhotos){toast('At least '+cfg.minPhotos+' photo(s) required','err');return;}
   if(cfg.requirePlateScan&&!(t.ops.scans||[]).some(function(s){return s.kind==='plate';})){toast('Scan the truck plate first','err');return;}
@@ -22063,6 +22073,342 @@ function _wfMigrate(){
     audit('WF_MIGRATE',moved+' shipments','');
   }
   return moved;
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// OFFICIAL INSPECTION FORMS — the controlled EPx documents
+//   فحص عمليات الشحن   WH4003A-VI/04  (outbound, 14 items)
+//   فحص عمليات الإستلام WH4004A-XXIII/03 (inbound, 7 + product items)
+// Each form is signed twice: the officer who ran it and the supervisor who
+// verifies it — matching the signature blocks on the paper form.
+// ══════════════════════════════════════════════════════════════════
+var INSPECTION_FORMS={
+  outbound:{
+    id:'outbound',
+    doc:'WH4003A-VI/04',
+    title:'فحص عمليات الشحن',
+    titleEn:'Shipping Operations Inspection',
+    passMark:100,           // the form requires 100% of items
+    header:[
+      {id:'customer',   label:'اسم العميل',            type:'text'},
+      {id:'inspectTime',label:'وقت الفحص',             type:'time'},
+      {id:'dockNo',     label:'رقم الدوك',             type:'text'},
+      {id:'lineNo',     label:'رقم اللاين',            type:'text'},
+      {id:'truckNo',    label:'رقم السيارة',           type:'text'},
+      {id:'truckType',  label:'نوع السيارة',           type:'text'},
+      {id:'loggerSerial',label:'Data Logger Serial',   type:'text'},
+      {id:'sealNo',     label:'Seal No.',              type:'text'},
+      {id:'truckSensor',label:'Truck Sensor موجود فى مكانه الصحيح تحت الوحدة',type:'yesno'},
+      {id:'temp',       label:'درجة حرارة السيارة أثناء الفحص (Dry 15-25°C / 2-8°C)',type:'text'}
+    ],
+    sections:[
+      {title:'أولاً: منطقة الشحن',items:[
+        {n:'1',  text:'منطقة الشحن خالية من المستندات والمنتجات الخاصة بالعملية السابقة واللافتات المبينة للحالة موجودة.'}
+      ]},
+      {title:'ثانياً: السيارة',items:[
+        {n:'2',  text:'صندوق السيارة نظيفة وخالية من الأتربة والشحوم و أى بقايا أخرى.'},
+        {n:'3',  text:'أرضية صندوق السيارة سليمة ولا يوجد بها ثقوب أو مسامير أو أجزاء حادة.'},
+        {n:'4',  text:'الباب سليم ولا يوجد به أي ثقوب ومحكم الغلق.'},
+        {n:'5',  text:'لا يوجد تلف أو صدأ في جسم السيارة.'},
+        {n:'6',  text:'لا توجد رائحة نفاذة سواء كريهة أو عطرية.'},
+        {n:'7',  text:'السيارة خالية من الحشرات.'},
+        {n:'8',  text:'الأسقف والجوانب سليمة ولا يوجد بها ثقوب (يتم بالوقوف داخل السيارة وغلق الباب والتأكد من عدم وجود ضوء نافذ).'},
+        {n:'9',  text:'التأكد من عمل وحدة المبرد الموجودة داخل صندوق الشحن الخاص بالسيارة ان وجد و كذلك وصلة صرف المياه متصلة مع وحدة التبريد وليس بها ثنايات وسليمة ظاهرياً.'},
+        {n:'10', text:'جهاز تجميع درجات الحرارة المتواجد بالسيارة (Data logger / RMS).'},
+        {n:'10.1',text:'RMS / Data logger متواجد داخل السيارة وموجود في المكان المخصص له داخل صندوق الشاحنة.',sub:true},
+        {n:'10.2',text:'مكتوب عليه نفس أرقام وحروف السيارة.',sub:true},
+        {n:'10.3',text:'وجود كلمة LOG أو Logging أسفل شاشة الداتا لوجر لتأكيد تسجيل درجة الحرارة.',sub:true},
+        {n:'11', text:'السيارة مؤهلة لدرجة الحرارة المطلوبة لشحن المنتج و تم التأكد من اللافتة المبينة لحالة السيارة التأهيلية داخل الصندوق (لافتة خضراء = ambient + cold / لافتة بيضاء = cold / لافتة صفراء = ambient only / بدون لافتة = dry)، والتأكد من تشغيل مبرد السيارة وضبطه على درجة الحرارة المناسبة.'},
+        {n:'12', text:'التأكد من وضع غطاء بلاستيكي (جنوة) على البضاعة الموجودة أسفل وحدة التبريد.'},
+        {n:'13', text:'البضاعة محملة طبقاً لحدود الرص المسموح بها داخل صندوق الشاحنة من حيث الارتفاعات والأطوال.'},
+        {n:'14', text:'البالتات المحملة لا توجد بينهما مسافات، تم ملئ المسافات (إن وجدت) بوضع فواصل.'}
+      ]}
+    ],
+    signatures:[
+      {id:'officer',   label:'مسئول الشحن',  labelEn:'Shipping Officer',    role:'operation'},
+      {id:'supervisor',label:'مشرف الشحن',   labelEn:'Shipping Supervisor', role:'supervisor'}
+    ],
+    note:'يجب تحقيق 100% من البنود السابقة لإتمام عملية الشحن'
+  },
+  inbound:{
+    id:'inbound',
+    doc:'WH4004A-XXIII/03',
+    title:'فحص عمليات الإستلام',
+    titleEn:'Receiving Operations Inspection',
+    passMark:100,
+    header:[
+      {id:'customer',   label:'اسم العميل',              type:'text'},
+      {id:'startTime',  label:'وقت بداية الاستلام',      type:'time'},
+      {id:'dockNo',     label:'رقم الدوك',               type:'text'},
+      {id:'lineNo',     label:'رقم اللاين',              type:'text'},
+      {id:'truckNo',    label:'رقم السيارة',             type:'text'},
+      {id:'truckType',  label:'نوع السيارة',             type:'text'},
+      {id:'loggerSerial',label:'Data Logger Serial',     type:'text'},
+      {id:'sealNo',     label:'Seal No.',                type:'text'},
+      {id:'temp',       label:'درجة حرارة السيارة أثناء الفحص',type:'text'},
+      {id:'endTime',    label:'وقت نهاية الاستلام',      type:'time'},
+      {id:'duration',   label:'مدة الاستلام',            type:'text'}
+    ],
+    sections:[
+      {title:'أولاً: منطقة الإستلام',items:[
+        {n:'1',text:'منطقة الإستلام خالية من المستندات والمنتجات الخاصة بالعملية السابقة واللافتات المبينة للحالة موجودة.'}
+      ]},
+      {title:'ثانياً: السيارة',items:[
+        {n:'2',text:'السيارة نظيفة وخالية من الأتربة والشحوم والحشرات و أى بقايا أخرى.'},
+        {n:'3',text:'التأكد من سلامة أرضية السيارة و جسم السيارة و الباب و أنه لا يوجد بهم ثقوب أو مسامير أو أجزاء حادة أو صدأ أو تلف (يتم بالوقوف داخل السيارة وغلق الباب والتأكد من عدم وجود ضوء نافذ).'},
+        {n:'4',text:'لا توجد رائحة نفاذة سواء كريهة أو عطرية.'},
+        {n:'5',text:'التأكد من عمل وحدة المبرد الموجودة داخل صندوق الشحن الخاص بالسيارة ان وجد.'},
+        {n:'6',text:'جهاز تجميع درجات الحرارة متواجد بالسيارة.'},
+        {n:'7',text:'وجود كلمة LOG أو Logging أسفل شاشة الداتا لوجر لتأكيد تسجيل درجة الحرارة.'}
+      ]},
+      {title:'ثالثاً: المنتجات',items:[
+        {n:'P1',text:'البالتات الخشبية مطابقة من حيث الجودة وأختام المعالجة طبقاً لـ SOP WH2017.'},
+        {n:'P2',text:'كل المنتجات المستلمة سليمة (إذا وجد تلف يجب إستخدام نموذج WH4004A-XIX).'},
+        {n:'P3',text:'كل المنتجات المستلمة كاملة كما في الاوردر — في حالة عدم تحقق البند السابق يتم تسجيل الكمية الناقصة.'}
+      ]}
+    ],
+    signatures:[
+      {id:'officer',   label:'مسئول الاستلام',  labelEn:'Receiving Officer',    role:'operation'},
+      {id:'supervisor',label:'مشرف الاستلام',   labelEn:'Receiving Supervisor', role:'supervisor'}
+    ],
+    note:'في حالة عدم تطابق أي من البنود السابقة يتم توضيح الحالة في الملاحظات و إبلاغ قسم الجودة لاتخاذ اللازم'
+  }
+};
+// Which form applies to a shipment at its current step
+function _formFor(t){
+  if(!t)return null;
+  var dir=(t.contract&&t.contract.transactionType)||t.dir||'Outbound';
+  if(t.status==='inbound_operation'||t.status==='inbound_quality'||/^inbound/.test(t.status||''))return INSPECTION_FORMS.inbound;
+  if(dir==='Inbound')return INSPECTION_FORMS.inbound;
+  return INSPECTION_FORMS.outbound;
+}
+function _formItems(form){
+  var out=[];(form.sections||[]).forEach(function(s){s.items.forEach(function(i){out.push(i);});});
+  return out;
+}
+function _formState(t,form){
+  if(!t.forms)t.forms={};
+  if(!t.forms[form.id])t.forms[form.id]={answers:{},header:{},notes:'',signatures:{}};
+  return t.forms[form.id];
+}
+function _formProgress(t,form){
+  var st=_formState(t,form),items=_formItems(form);
+  var yes=items.filter(function(i){return st.answers[i.n]==='yes';}).length;
+  var no=items.filter(function(i){return st.answers[i.n]==='no';}).length;
+  return {yes:yes,no:no,total:items.length,
+    pct:items.length?Math.round(yes/items.length*100):0,
+    complete:(yes+no)===items.length,
+    passed:yes===items.length};
+}
+
+// ══ Inspection form — fill, sign twice, extract ═════════════════════
+function openInspectionForm(id,formId){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=formId?INSPECTION_FORMS[formId]:_formFor(t);
+  if(!form){toast('No inspection form applies here','err');return;}
+  var st=_formState(t,form);
+  var ct=t.contract||{};
+  // prefill from the shipment
+  if(!st.header.customer)st.header.customer=t.customer||'';
+  if(!st.header.truckNo)st.header.truckNo=t.truck||'';
+  if(!st.header.truckType)st.header.truckType=t.truckType||'';
+  var p=_formProgress(t,form);
+  var locked=!!(st.signatures&&st.signatures.supervisor);
+
+  openM('<div class="m-title" style="direction:rtl;text-align:right">'+form.title+'</div>'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--t2);margin-bottom:12px">'+
+      '<span>'+form.doc+'</span>'+
+      '<span style="font-weight:700;padding:3px 10px;border-radius:20px;background:'+(p.passed?'#ECFDF5;color:#059669':(p.no?'#FEF2F2;color:#DC2626':'#FFFBEB;color:#B45309'))+'">'+p.yes+'/'+p.total+' · '+p.pct+'%</span>'+
+      '<span>'+t.id+'</span></div>'+
+    (locked?'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:7px 11px;font-size:11.5px;color:#065F46;margin-bottom:10px">🔒 موقّع ومعتمد — للعرض فقط</div>':'')+
+
+    // header fields
+    '<div style="direction:rtl;display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px">'+
+    form.header.map(function(f){
+      var v=st.header[f.id]||'';
+      if(f.type==='yesno'){
+        return '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:8px;padding:7px 10px">'+
+          '<span style="font-size:11.5px">'+f.label+'</span>'+
+          '<div style="display:flex;gap:5px">'+
+            ['نعم','لا'].map(function(o){
+              var on=v===o;
+              return '<span onclick="'+(locked?'':'_formHdr(\''+id+'\',\''+form.id+'\',\''+f.id+'\',\''+o+'\')')+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;border:1.5px solid '+(on?'#6C3FF5':'var(--bd)')+';background:'+(on?'#6C3FF5':'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o+'</span>';
+            }).join('')+'</div></div>';
+      }
+      return '<div><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:3px">'+f.label+'</label>'+
+        '<input '+(locked?'disabled':'')+' type="'+(f.type==='time'?'time':'text')+'" value="'+String(v).replace(/"/g,'&quot;')+'" '+
+        'onchange="_formHdr(\''+id+'\',\''+form.id+'\',\''+f.id+'\',this.value)" '+
+        'style="width:100%;padding:7px 9px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);color:var(--t)"/></div>';
+    }).join('')+'</div>'+
+
+    // the items
+    '<div style="direction:rtl;max-height:320px;overflow:auto;border:1.5px solid var(--bd);border-radius:10px;padding:4px 8px;margin-bottom:12px">'+
+    form.sections.map(function(sec){
+      return '<div style="font-size:12.5px;font-weight:800;color:var(--c1);padding:9px 2px 5px">'+sec.title+'</div>'+
+        sec.items.map(function(it){
+          var a=st.answers[it.n];
+          return '<div style="display:flex;align-items:flex-start;gap:8px;padding:7px 2px;border-bottom:1px solid var(--bd)'+(it.sub?';padding-right:18px':'')+'">'+
+            '<span style="font-size:10.5px;font-weight:700;color:var(--t3);min-width:26px;padding-top:3px">'+it.n+'</span>'+
+            '<span style="flex:1;font-size:12px;line-height:1.6;color:var(--t)">'+it.text+'</span>'+
+            '<div style="display:flex;gap:4px;flex-shrink:0">'+
+              [['yes','نعم','#059669'],['no','لا','#DC2626']].map(function(o){
+                var on=a===o[0];
+                return '<span onclick="'+(locked?'':'_formAns(\''+id+'\',\''+form.id+'\',\''+it.n+'\',\''+o[0]+'\')')+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11px;font-weight:700;padding:4px 11px;border-radius:8px;border:1.5px solid '+(on?o[2]:'var(--bd)')+';background:'+(on?o[2]:'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o[1]+'</span>';
+              }).join('')+
+            '</div></div>';
+        }).join('');
+    }).join('')+'</div>'+
+
+    '<div style="direction:rtl;font-size:11px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:7px 10px;margin-bottom:10px">'+form.note+'</div>'+
+    '<div class="fg" style="direction:rtl"><label style="font-size:11.5px">ملاحظات</label>'+
+      '<textarea '+(locked?'disabled':'')+' rows="2" onchange="_formNote(\''+id+'\',\''+form.id+'\',this.value)">'+(st.notes||'')+'</textarea></div>'+
+
+    // the two signatures on the paper form
+    '<div style="display:flex;gap:8px;direction:rtl">'+
+    form.signatures.map(function(sg){
+      var s=(st.signatures||{})[sg.id];
+      var mine=can('all')||S.role===sg.role;
+      return '<div style="flex:1;border:1.5px solid '+(s?'#A7F3D0':'var(--bd)')+';background:'+(s?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:9px 11px">'+
+        '<div style="font-size:11.5px;font-weight:800;color:'+(s?'#059669':'var(--t2)')+'">'+(s?'✓ ':'')+sg.label+'</div>'+
+        (s?'<div style="font-size:10.5px;color:var(--t2);margin-top:3px">'+s.by+'<br>'+s.at+'</div>'
+          :(mine
+            ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px" onclick="_formSign(\''+id+'\',\''+form.id+'\',\''+sg.id+'\')">توقيع</button>'
+            :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">'+(RL[sg.role]||sg.role)+' فقط</div>'))+
+        '</div>';
+    }).join('')+'</div>'+
+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">إغلاق</button>'+
+    '<button class="btn btn-outline" onclick="exportInspectionForm(\''+id+'\',\''+form.id+'\')">⬇ استخراج</button>'+
+    '<button class="btn btn-outline" onclick="printInspectionForm(\''+id+'\',\''+form.id+'\')">🖨 طباعة</button></div>');
+}
+function _formHdr(id,fid,k,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  _formState(t,INSPECTION_FORMS[fid]).header[k]=v;
+  _lcSave&&_lcSave();
+  if(k&&INSPECTION_FORMS[fid].header.find(function(f){return f.id===k&&f.type==='yesno';}))openInspectionForm(id,fid);
+}
+function _formNote(id,fid,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  _formState(t,INSPECTION_FORMS[fid]).notes=v;_lcSave&&_lcSave();
+}
+function _formAns(id,fid,n,val){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var st=_formState(t,INSPECTION_FORMS[fid]);
+  st.answers[n]=(st.answers[n]===val)?'':val;
+  _lcSave&&_lcSave();
+  openInspectionForm(id,fid);
+}
+function _formSign(id,fid,sigId){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS[fid],st=_formState(t,form);
+  var p=_formProgress(t,form);
+  var sg=form.signatures.find(function(s){return s.id===sigId;});
+  if(!p.complete){toast('أكمل جميع البنود أولاً ('+(p.yes+p.no)+'/'+p.total+')','err');return;}
+  // the supervisor signs only after the officer
+  if(sigId==='supervisor'&&!(st.signatures&&st.signatures.officer)){
+    toast('يوقّع '+form.signatures[0].label+' أولاً','err');return;}
+  if(!p.passed&&!st.notes){
+    toast('يوجد بند غير مطابق — اكتب الملاحظات وأبلغ الجودة','err');return;}
+  requirePwd(form.title+' — '+sg.label,function(){
+    if(!st.signatures)st.signatures={};
+    st.signatures[sigId]={by:S.user.name,role:S.role,at:new Date().toLocaleString('en-GB'),pct:p.pct};
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:st.signatures[sigId].at,user:S.user.name,
+      action:'📋 '+form.title+' — '+sg.label,
+      detail:p.yes+'/'+p.total+' ('+p.pct+'%)'+(p.passed?'':' · يوجد عدم مطابقة')});
+    audit('FORM_SIGN',form.doc+' '+sg.id+' '+p.pct+'%',id);
+    // both signatures mirror into the shipment checklist
+    if(st.signatures.officer&&st.signatures.supervisor){
+      t.inspection=t.inspection||{};
+      t.inspection[form.id]={doc:form.doc,pct:p.pct,passed:p.passed,
+        officer:st.signatures.officer.by,supervisor:st.signatures.supervisor.by,at:st.signatures.supervisor.at};
+    }
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    toast('✅ تم التوقيع','ok');
+    openInspectionForm(id,fid);
+  });
+}
+// Extract a single form, or every form of one leg, as CSV
+function exportInspectionForm(id,fid){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS[fid],st=_formState(t,form),p=_formProgress(t,form);
+  var rows=[['Document',form.doc],['Form',form.title],['Trip',t.id],['Customer',t.customer],[]];
+  form.header.forEach(function(f){rows.push([f.label,st.header[f.id]||'']);});
+  rows.push([],['#','البند','نعم/لا']);
+  form.sections.forEach(function(sec){
+    rows.push(['',sec.title,'']);
+    sec.items.forEach(function(i){
+      rows.push([i.n,i.text,st.answers[i.n]==='yes'?'نعم':(st.answers[i.n]==='no'?'لا':'')]);
+    });
+  });
+  rows.push([],['النتيجة',p.yes+'/'+p.total,p.pct+'%'],['ملاحظات',st.notes||'','']);
+  form.signatures.forEach(function(sg){
+    var s=(st.signatures||{})[sg.id];
+    rows.push([sg.label,s?s.by:'',s?s.at:'']);
+  });
+  _csvDownload(rows,form.doc.replace(/\//g,'-')+'-'+t.id+'.csv');
+  toast('⬇ تم الاستخراج','ok');
+}
+// Extract every inspection of one leg across all shipments
+function exportInspectionsByLeg(leg){
+  var form=INSPECTION_FORMS[leg];
+  var items=_formItems(form);
+  var trips=(S.trips||[]).filter(function(t){return t.forms&&t.forms[leg];});
+  if(!trips.length){toast('لا توجد نماذج '+form.title,'err');return;}
+  var rows=[['Trip','Customer','Truck','Date','Officer','Supervisor','Result','%']
+    .concat(items.map(function(i){return i.n;}))];
+  trips.forEach(function(t){
+    var st=t.forms[leg],p=_formProgress(t,form);
+    var sg=st.signatures||{};
+    rows.push([t.id,t.customer,t.truck||'',(t.contract&&t.contract.date)||'',
+      sg.officer?sg.officer.by:'',sg.supervisor?sg.supervisor.by:'',
+      p.passed?'مطابق':'غير مطابق',p.pct]
+      .concat(items.map(function(i){return st.answers[i.n]==='yes'?'نعم':(st.answers[i.n]==='no'?'لا':'');})));
+  });
+  rows.push([]);
+  rows.push(['Legend'].concat(items.map(function(i){return i.n+': '+i.text;})));
+  _csvDownload(rows,form.doc.replace(/\//g,'-')+'-all-'+new Date().toISOString().slice(0,10)+'.csv');
+  audit('FORM_EXPORT',form.doc+' · '+trips.length+' trips','');
+  toast('⬇ '+trips.length+' نموذج','ok');
+}
+function printInspectionForm(id,fid){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS[fid],st=_formState(t,form),p=_formProgress(t,form);
+  var esc=function(s){return String(s==null?'':s).replace(/</g,'&lt;');};
+  var w=window.open('','_blank');if(!w){toast('اسمح بالنوافذ المنبثقة','err');return;}
+  w.document.write('<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+form.doc+'</title><style>'+
+    'body{font-family:Segoe UI,Tahoma,Arial;padding:22px;font-size:12.5px;color:#111}'+
+    'h1{font-size:17px;margin:0 0 2px}.doc{font-size:11px;color:#666;margin-bottom:12px}'+
+    'table{width:100%;border-collapse:collapse;margin-bottom:10px}td,th{border:1px solid #999;padding:5px 7px}'+
+    'th{background:#eee}.sec{background:#f3f3f3;font-weight:800}'+
+    '.hdr td{border:none;padding:3px 6px;font-size:11.5px}'+
+    '.sig{display:flex;gap:14px;margin-top:16px}.sig div{flex:1;border:1px solid #999;padding:9px}'+
+    '@media print{.noprint{display:none}}</style></head><body>'+
+    '<h1>'+esc(form.title)+'</h1><div class="doc">'+form.doc+' — '+esc(t.id)+' — '+esc(t.customer)+'</div>'+
+    '<table class="hdr">'+form.header.map(function(f,i){
+      return (i%2===0?'<tr>':'')+'<td><b>'+esc(f.label)+':</b> '+esc(st.header[f.id]||'')+'</td>'+(i%2===1?'</tr>':'');
+    }).join('')+'</table>'+
+    '<table><tr><th style="width:44px">لا</th><th style="width:44px">نعم</th><th>البنود</th><th style="width:38px">#</th></tr>'+
+    form.sections.map(function(sec){
+      return '<tr><td colspan="4" class="sec">'+esc(sec.title)+'</td></tr>'+
+        sec.items.map(function(i){
+          var a=st.answers[i.n];
+          return '<tr><td style="text-align:center">'+(a==='no'?'✔':'')+'</td>'+
+            '<td style="text-align:center">'+(a==='yes'?'✔':'')+'</td>'+
+            '<td>'+esc(i.text)+'</td><td style="text-align:center">'+i.n+'</td></tr>';
+        }).join('');
+    }).join('')+'</table>'+
+    '<div style="font-size:12px;margin:8px 0"><b>النتيجة:</b> '+p.yes+'/'+p.total+' ('+p.pct+'%) — '+esc(form.note)+'</div>'+
+    (st.notes?'<div style="font-size:12px;margin-bottom:8px"><b>ملاحظات:</b> '+esc(st.notes)+'</div>':'')+
+    '<div class="sig">'+form.signatures.map(function(sg){
+      var s=(st.signatures||{})[sg.id];
+      return '<div><b>'+esc(sg.label)+'</b><br><br>'+(s?esc(s.by)+'<br><span style="font-size:10px;color:#666">'+esc(s.at)+'</span>':'التوقيع/التاريخ: ....................')+'</div>';
+    }).join('')+'</div>'+
+    '<div class="noprint" style="position:fixed;top:10px;left:10px"><button onclick="window.print()" style="padding:9px 18px;background:#4F1FD4;color:#fff;border:0;border-radius:8px;font-size:13px;cursor:pointer">🖨 طباعة</button></div>'+
+    '</body></html>');
+  w.document.close();
+  audit('FORM_PRINT',form.doc,id);
 }
 
 </script>
