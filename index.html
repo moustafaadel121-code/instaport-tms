@@ -3630,7 +3630,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -4894,6 +4894,7 @@ async function doLogin(){
       _idleStart();
       if(u.pin&&!u.pin.startsWith('[')&&_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
       try{_lcLoad();}catch(e){console.warn('local restore',e);}
+      try{_rolesLoad();}catch(e){console.warn('custom roles',e);}
       try{buildSB();}catch(e){console.error('buildSB',e);}
       try{_loadFeatureGates();}catch(e){}
       try{_applyBranding();}catch(e){}
@@ -10636,9 +10637,11 @@ var RBAC_ITEMS=[
 ];
 function rAdminRBAC(){
   var el=document.getElementById('admin-content');if(!el)return;
+  _rolesLoad(); // make sure custom roles are registered before we list them
   var roles=Object.keys(RL).filter(function(r){return r!=='admin';});
   var cats=[...new Set(RBAC_ITEMS.map(function(x){return x.cat;}))];
-  el.innerHTML='<div class="card"><div class="card-hd"><div class="card-title">🔐 Role Access Rights Configuration</div><button class="btn btn-primary btn-sm" onclick="saveRBAC()">💾 Save Changes</button></div>'+
+  el.innerHTML=_rolesCardHTML()+
+  '<div class="card"><div class="card-hd"><div class="card-title">🔐 Role Access Rights Configuration</div><button class="btn btn-primary btn-sm" onclick="saveRBAC()">💾 Save Changes</button></div>'+
   '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Configure which roles can access specific features. Changes take effect immediately.</div>'+
   '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Permission</th>'+roles.map(function(r){return '<th style="text-align:center;font-size:11px">'+RL[r]+'</th>';}).join('')+'</tr></thead><tbody>'+
   cats.map(function(cat){var items=RBAC_ITEMS.filter(function(x){return x.cat===cat;});return '<tr><td colspan="'+(roles.length+1)+'" style="background:var(--c1l);font-size:11px;font-weight:700;color:var(--c1);padding:8px 14px;text-transform:uppercase">'+cat+'</td></tr>'+items.map(function(item){return '<tr><td style="font-size:13px">'+item.label+'</td>'+roles.map(function(r){var checked=!!(PERMS[r]&&PERMS[r][item.key]);return '<td style="text-align:center"><input type="checkbox" id="rbac-'+r+'-'+item.key+'" '+(checked?'checked':'')+' style="width:16px;height:16px;cursor:pointer" title="'+RL[r]+': '+item.label+'"/></td>';}).join('')+'</tr>';}).join('');}).join('')+
@@ -10650,6 +10653,7 @@ function rAdminRBAC(){
 function saveRBAC(){
   var roles=Object.keys(RL).filter(function(r){return r!=='admin';});
   roles.forEach(function(r){if(!PERMS[r])PERMS[r]={};RBAC_ITEMS.forEach(function(item){var cb=document.getElementById('rbac-'+r+'-'+item.key);if(cb)PERMS[r][item.key]=cb.checked?1:0;});});
+  if(S.customRoles){Object.keys(S.customRoles).forEach(function(id){if(PERMS[id])S.customRoles[id].perms=JSON.parse(JSON.stringify(PERMS[id]));});_rolesSave();}
   audit('RBAC_UPDATE','Role permissions updated','');toast('Role permissions saved!','ok');
 }
 function rbacReset(){PERMS=JSON.parse(JSON.stringify(DEFAULT_PERMISSIONS));rAdminRBAC();toast('Reset to defaults','ok');}
@@ -20780,6 +20784,126 @@ function drvEndTrip(id){
   audit('DRV_COMPLETE','End KM '+km+' · '+t.km+' km',id);
   _lcSave&&_lcSave();syncTrip&&syncTrip(t);
   toast('✅ Trip completed — '+t.km+' km','ok');rDriverContract();
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// CUSTOM ROLES — admins can create their own roles at runtime.
+// A custom role is a first-class role: it appears in the user form,
+// the RBAC matrix, Page Access, the sidebar and the translations.
+// ══════════════════════════════════════════════════════════════════
+function _rolesLoad(){
+  try{S.customRoles=JSON.parse(localStorage.getItem('ip_customroles')||'{}');}catch(e){S.customRoles={};}
+  _rolesApply();
+  return S.customRoles;
+}
+function _rolesSave(){
+  try{localStorage.setItem('ip_customroles',JSON.stringify(S.customRoles||{}));}catch(e){}
+  _rolesApply();
+}
+// Merge custom roles into the live role registries
+function _rolesApply(){
+  var cr=S.customRoles||{};
+  Object.keys(cr).forEach(function(id){
+    var r=cr[id];
+    RL[id]=r.label||id;
+    if(!PAGES[id])PAGES[id]=(r.pages||[]).map(function(p){return {id:p.id,icon:p.icon,l:p.l};});
+    else PAGES[id].length=0,(r.pages||[]).forEach(function(p){PAGES[id].push({id:p.id,icon:p.icon,l:p.l});});
+    if(!PERMS[id])PERMS[id]={};
+    if(r.perms)Object.keys(r.perms).forEach(function(k){PERMS[id][k]=r.perms[k];});
+    // make the role name translatable
+    if(typeof I18N_DICT!=='undefined'&&(r.labelAr||r.labelFr)){
+      I18N_DICT[r.label]={ar:r.labelAr||r.label,fr:r.labelFr||r.label};
+    }
+  });
+}
+function _isCustomRole(id){return !!((S.customRoles||{})[id]);}
+function _roleUserCount(id){return (USERS||[]).filter(function(u){return u.role===id;}).length;}
+
+function openNewRole(editId){
+  _rolesLoad();
+  var r=editId?S.customRoles[editId]:null;
+  var master=(typeof ALL_PAGES_MASTER!=='undefined')?ALL_PAGES_MASTER:[];
+  var chosen=r?(r.pages||[]).map(function(p){return p.id;}):['dashboard'];
+  var baseOpts=Object.keys(RL).filter(function(k){return !_isCustomRole(k);})
+    .map(function(k){return '<option value="'+k+'">'+RL[k]+'</option>';}).join('');
+  openM('<div class="m-title">👔 '+(r?'Edit Role — '+r.label:'Create New Role')+'</div>'+
+    '<div style="font-size:11.5px;color:var(--t2);margin-bottom:12px">A custom role behaves like any built-in one: assign it to users, tune its permissions in Role Access, and its pages here.</div>'+
+    '<div class="frow"><div class="fg"><label>Role Name (English) *</label><input id="nr-label" value="'+(r?r.label:'')+'" placeholder="e.g. Warehouse Keeper"/></div>'+
+      '<div class="fg"><label>Icon</label><input id="nr-icon" value="'+(r?r.icon||'👔':'👔')+'" maxlength="4" style="text-align:center;font-size:18px"/></div></div>'+
+    '<div class="frow"><div class="fg"><label>الاسم بالعربية</label><input id="nr-ar" value="'+(r?r.labelAr||'':'')+'" placeholder="اختياري"/></div>'+
+      '<div class="fg"><label>Nom en français</label><input id="nr-fr" value="'+(r?r.labelFr||'':'')+'" placeholder="optionnel"/></div></div>'+
+    (r?'':'<div class="fg f1"><label>Start from an existing role\'s permissions</label><select id="nr-base"><option value="">— none (blank) —</option>'+baseOpts+'</select></div>')+
+    '<div style="font-size:12px;font-weight:700;margin:14px 0 8px">Pages this role can see</div>'+
+    '<div style="max-height:220px;overflow:auto;border:1.5px solid var(--bd);border-radius:10px;padding:8px">'+
+      master.map(function(p){
+        var on=p.always||chosen.indexOf(p.id)>-1;
+        return '<label style="display:flex;align-items:center;gap:8px;padding:5px 4px;font-size:12.5px;cursor:'+(p.always?'not-allowed':'pointer')+';opacity:'+(p.always?'.6':'1')+'">'+
+          '<input type="checkbox" class="nr-page" value="'+p.id+'" data-icon="'+p.icon+'" data-l="'+p.l+'" '+(on?'checked':'')+(p.always?' disabled':'')+'/>'+
+          '<span>'+p.icon+' '+p.l+(p.always?' <span style="font-size:10px;color:var(--t3)">[always]</span>':'')+'</span></label>';
+      }).join('')+
+    '</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_roleSubmit('+(r?"'"+editId+"'":'null')+')">'+(r?'Save changes':'Create Role')+'</button></div>');
+}
+function _roleSubmit(editId){
+  var g=function(id){var e=document.getElementById(id);return e?e.value.trim():'';};
+  var label=g('nr-label');
+  if(!label){toast('Enter a role name','err');return;}
+  var id=editId||('role_'+label.toLowerCase().replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,''));
+  if(!editId&&(RL[id]||S.customRoles[id])){toast('A role with this name already exists','err');return;}
+  var pages=[];
+  document.querySelectorAll('.nr-page').forEach(function(cb){
+    var master=(typeof ALL_PAGES_MASTER!=='undefined')?ALL_PAGES_MASTER:[];
+    var pg=master.find(function(p){return p.id===cb.value;});
+    if(cb.checked||(pg&&pg.always))pages.push({id:cb.value,icon:cb.dataset.icon,l:cb.dataset.l});
+  });
+  if(!pages.length)pages.push({id:'dashboard',icon:'📊',l:'Dashboard'});
+  var base=g('nr-base');
+  var perms=editId?(S.customRoles[editId].perms||{}):(base&&PERMS[base]?JSON.parse(JSON.stringify(PERMS[base])):{});
+  S.customRoles[id]={
+    id:id,label:label,labelAr:g('nr-ar'),labelFr:g('nr-fr'),icon:g('nr-icon')||'👔',
+    pages:pages,perms:perms,basedOn:base||null,
+    createdBy:editId?S.customRoles[editId].createdBy:(S.user?S.user.name:''),
+    createdAt:editId?S.customRoles[editId].createdAt:new Date().toLocaleString('en-GB')
+  };
+  _rolesSave();
+  // keep the live page-access map in step
+  if(S.rolePages){S.rolePages[id]=pages.slice();_saveRolePages();}
+  audit(editId?'ROLE_EDIT':'ROLE_CREATE',label+' · '+pages.length+' pages','');
+  closeM();rAdminRBAC();
+  toast('✅ Role "'+label+'" '+(editId?'updated':'created'),'ok');
+}
+function _roleDelete(id){
+  var r=(S.customRoles||{})[id];if(!r)return;
+  var n=_roleUserCount(id);
+  if(n>0){toast('Cannot delete — '+n+' user(s) still have this role','err');return;}
+  if(!confirm('Delete the role "'+r.label+'"?'))return;
+  delete S.customRoles[id];delete RL[id];delete PAGES[id];delete PERMS[id];
+  if(S.rolePages){delete S.rolePages[id];_saveRolePages();}
+  _rolesSave();audit('ROLE_DELETE',r.label,'');rAdminRBAC();
+  toast('Role deleted','ok');
+}
+function _rolesCardHTML(){
+  _rolesLoad();
+  var cr=S.customRoles||{};
+  var ids=Object.keys(cr);
+  return '<div class="card">'+
+    '<div class="card-hd"><div class="card-title">👔 Custom Roles</div>'+
+    '<button class="btn btn-primary btn-sm" onclick="openNewRole()">+ New Role</button></div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:'+(ids.length?'12px':'0')+'">Create roles beyond the built-in ones. They appear everywhere a role does — user assignment, the permission matrix below, page access and the sidebar.</div>'+
+    (ids.length?'<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Role</th><th>Pages</th><th>Users</th><th>Created</th><th>Actions</th></tr></thead><tbody>'+
+      ids.map(function(id){
+        var r=cr[id];var n=_roleUserCount(id);
+        return '<tr><td style="font-weight:700">'+r.icon+' '+r.label+
+          (r.labelAr?'<div style="font-size:10.5px;color:var(--t3);font-weight:500">'+r.labelAr+(r.labelFr?' · '+r.labelFr:'')+'</div>':'')+'</td>'+
+          '<td style="font-size:11px;color:var(--t2)">'+(r.pages||[]).length+' page(s)</td>'+
+          '<td style="text-align:center">'+n+'</td>'+
+          '<td style="font-size:10.5px;color:var(--t3)">'+(r.createdAt||'')+'</td>'+
+          '<td style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openNewRole(\''+id+'\')">Edit</button>'+
+          '<button class="btn btn-danger btn-sm" onclick="_roleDelete(\''+id+'\')"'+(n>0?' title="'+n+' user(s) assigned"':'')+'>Delete</button></td></tr>';
+      }).join('')+'</tbody></table></div>':'')+
+  '</div>';
 }
 
 </script>
