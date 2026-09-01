@@ -4721,7 +4721,7 @@ const PAGES={
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
-    {id:'trips',icon:'📋',l:'Trips'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'operation',icon:'📷',l:'Operations'},{id:'quality',icon:'🧪',l:'Quality'},
+    {id:'trips',icon:'📋',l:'Trips'},{id:'operation',icon:'📷',l:'Operations'},{id:'quality',icon:'🧪',l:'Quality'},
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
     {id:'validation',icon:'✅',l:'Validation'},{id:'ai',icon:'🤖',l:'AI'},
@@ -4731,7 +4731,7 @@ const PAGES={
     {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'},
     {id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -5768,7 +5768,11 @@ function verifyPwd(){
   var u=allUsers.find(function(x){return String(x.id)===String(S.user.id)&&String(x.pin)===String(pin);});
   if(!u){toast('Incorrect PIN — action rejected','err');audit('WRONG_PIN',S.user.name+' failed PIN verification','');return;}
   closeM();
-  if(window._pwdCallback)window._pwdCallback();
+  // Clear the callback before running it: a double submit (Enter + click, or an
+  // impatient double-tap) would otherwise approve or charge the action twice.
+  var cb=window._pwdCallback;
+  window._pwdCallback=null;
+  if(cb)cb();
 }
 
 // ══════════════════════════════════════════════════
@@ -5793,7 +5797,6 @@ const ALL_PAGES_MASTER=[
   {id:'dashboard',   icon:'📊',l:'Dashboard',        always:true},
   {id:'fleet',       icon:'🚛',l:'Fleet'},
   {id:'trips',       icon:'📋',l:'Trips'},
-  {id:'dispatch',    icon:'🚦',l:'Dispatch'},
   {id:'quality',     icon:'🧪',l:'Quality'},
   {id:'controlroom', icon:'🎛️',l:'Control Room'},
   {id:'security',    icon:'🔒',l:'Security Gate'},
@@ -5919,13 +5922,15 @@ function stB(s){
   // Inbound flow:  inbound_ctrl → inbound_security → inbound_quality → completed
   var m={
     awaiting_truck:   '<span class="tag tag-pend">&#9203; Awaiting Truck</span>',
-    awaiting_quality: '<span class="tag tag-blue">&#129514; OUT-1: Quality</span>',
-    awaiting_ctrl:    '<span class="tag tag-info">&#127775; OUT-2: Control Room</span>',
-    awaiting_security:'<span class="tag tag-pend">&#128274; OUT-3: Security Gate</span>',
+    awaiting_operation:'<span class="tag tag-pend">&#128247; OUT-1: Operations</span>',
+    awaiting_quality: '<span class="tag tag-blue">&#129514; OUT-2: Quality</span>',
+    awaiting_ctrl:    '<span class="tag tag-info">&#127775; OUT-3: Control Room</span>',
+    awaiting_security:'<span class="tag tag-pend">&#128274; OUT-4: Security Gate</span>',
     in_transit:       '<span class="tag tag-ok">&#128666; In Transit</span>',
-    inbound_ctrl:     '<span class="tag tag-info">&#128228; IN-1: Control Room</span>',
-    inbound_security: '<span class="tag tag-pend">&#128274; IN-2: Security Gate</span>',
-    inbound_quality:  '<span class="tag tag-blue">&#129514; IN-3: Quality Check</span>',
+    inbound_security: '<span class="tag tag-pend">&#128274; IN-1: Security Gate</span>',
+    inbound_operation:'<span class="tag tag-pend">&#128247; IN-2: Operations</span>',
+    inbound_ctrl:     '<span class="tag tag-info">&#128228; IN-3: Control Room</span>',
+    inbound_quality:  '<span class="tag tag-blue">&#129514; Quality Check</span>',
     completed:        '<span class="tag tag-ok">&#9989; Completed</span>',
     cancelled:        '<span class="tag tag-hold">&#10060; Cancelled</span>'
   };
@@ -6861,6 +6866,7 @@ function rQuality(){
   var inbQ=S.trips.filter(function(t){return t.status==='inbound_quality';});
   var intrans=S.trips.filter(function(t){return t.status==='in_transit';});
   var html='<div class="page-head"><div><h2>🧪 Quality Control</h2></div></div>';
+  html+='<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting quality approval (OUT-2)</div>'+wfQueueHTML('quality');
   if(pend.length===0&&inbQ.length===0&&intrans.length===0)html+=_emptyState('🧪','All Quality Checks Passed','No trips are currently awaiting quality inspection. Everything is cleared and on track.','');
   pend.concat(inbQ).forEach(function(t){
     var qa=S.qaAgr[t.customer]||{minTemp:2,maxTemp:8,checkReq:7};
@@ -6977,6 +6983,7 @@ function rCtrl(){
   // INBOUND CTRL: ctrl already confirmed return, driver heading back (waiting for driver arrival)
   var inbCtrl=S.trips.filter(function(t){return t.status==='inbound_ctrl';});
   c.innerHTML='<div class="page-head"><div><h2>&#127775; Control Room</h2></div></div>'+
+  '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting control room approval</div>'+wfQueueHTML('control_room')+'<div style="height:14px"></div>'+
   '<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px">'+
   // LEFT PANEL
   '<div>'+
@@ -7130,6 +7137,8 @@ function rSec(){
   var c=document.getElementById('content');
   var atGate=S.trips.filter(function(t){return t.status==='awaiting_security'||t.status==='inbound_security';});
   c.innerHTML='<div class="page-head"><div><h2>🔒 Gate Security</h2></div></div>'+
+  '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting gate approval</div>'+
+  wfQueueHTML('security')+'<div style="height:14px"></div>'+
   (atGate.length===0?_emptyState('🔒','Gate Is Clear','No vehicles are currently at the gate awaiting security clearance.',''):'')+
   atGate.map(function(t){var isInb=t.status==='inbound_security';return '<div class="card" style="border-left:4px solid '+(isInb?'var(--c3)':'var(--c1)')+'">'+
     '<div style="display:flex;justify-content:space-between;margin-bottom:14px"><div><div style="font-size:18px;font-weight:700">'+t.id+(isInb?' <span class="tag tag-blue" style="font-size:11px">INBOUND</span>':'')+'</div>'+
@@ -13822,6 +13831,9 @@ function rOperation(){
     '<div class="page-head"><div><h2>📷 Operations</h2>'+
     '<div class="page-head-sub">Scan, photograph &amp; verify shipments before departure</div></div>'+
     '<button class="btn btn-outline btn-sm" onclick="rOperation()">↻ Refresh</button></div>'+
+    '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting your approval</div>'+
+    wfQueueHTML('operation')+
+    '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px">Field processing</div>'+
     (trips.length===0
       ? _emptyState('✅','Nothing to process','All shipments have been verified. New shipments assigned to a truck will appear here.','')
       : '<div style="display:flex;flex-direction:column;gap:14px">'+trips.map(_opsCard).join('')+'</div>');
@@ -20547,10 +20559,10 @@ function openShipmentRequest(editId){
   '<div id="sr-contract"></div>'+
 
   // ── Truck / driver / condition
-  '<div class="frow"><div class="fg"><label>Truck Type *</label><select id="sr-ttype">'+
+  '<div class="frow"><div class="fg"><label>Truck Type *</label><select id="sr-ttype" onchange="_srTrucksForType()">'+
     opt(['Dababa','Jumbo','Actros','Trailer','Truck Head'],t?t.truckType:'')+'</select></div>'+
-  '<div class="fg"><label>Truck</label><select id="sr-truck"><option value="">— assign later —</option>'+
-    (TRUCKS||[]).map(function(x){return '<option'+(t&&t.truck===x.plate?' selected':'')+'>'+x.plate+'</option>';}).join('')+'</select></div>'+
+  '<div class="fg"><label>Truck <span style="font-weight:400;color:var(--t3)">(validated only)</span></label>'+
+    '<select id="sr-truck">'+_srTruckOptions(t?t.truckType:'',t?t.truck:'')+'</select></div>'+
   '<div class="fg"><label>Driver</label><select id="sr-driver"><option value="">— assign later —</option>'+
     drivers.map(function(u){return '<option'+(t&&t.driver===u.name?' selected':'')+'>'+u.name+'</option>';}).join('')+'</select></div></div>'+
 
@@ -20598,6 +20610,33 @@ function openShipmentRequest(editId){
   '<button class="btn btn-primary" onclick="_srSubmit()">'+(t?'Save changes':'Create Shipment')+'</button></div>');
   _srRenderDests();
   _srSyncContract(t?t.customer:'');
+}
+// Only trucks that passed validation, and only of the selected type, may be
+// assigned — a held or uncalibrated truck must never reach a shipment.
+function _srTruckOptions(type,current){
+  var today=new Date();
+  var list=(TRUCKS||[]).filter(function(x){
+    if(type&&x.type!==type)return false;
+    if(x.valid===false||x.status==='Hold')return false;
+    if(x.calExpiry&&new Date(x.calExpiry)<today)return false;
+    return true;
+  });
+  var opts='<option value="">— assign later —</option>'+
+    list.map(function(x){return '<option'+(current===x.plate?' selected':'')+'>'+x.plate+'</option>';}).join('');
+  if(current&&!list.some(function(x){return x.plate===current;})){
+    // keep an already-assigned truck visible even if it since went invalid
+    opts+='<option selected value="'+current+'">'+current+' (no longer validated)</option>';
+  }
+  return opts;
+}
+function _srTrucksForType(){
+  var ty=(document.getElementById('sr-ttype')||{}).value||'';
+  var sel=document.getElementById('sr-truck');if(!sel)return;
+  var cur=sel.value;
+  sel.innerHTML=_srTruckOptions(ty,cur);
+  var n=sel.options.length-1;
+  var lbl=sel.previousElementSibling;
+  if(lbl&&lbl.tagName==='LABEL')lbl.innerHTML='Truck <span style="font-weight:400;color:var(--t3)">('+n+' validated '+(ty||'')+')</span>';
 }
 function _srCustCode(){
   var n=((document.getElementById('sr-cust')||{}).value||'').trim();
@@ -20730,7 +20769,7 @@ function _srSubmit(){
     if(f[k]===undefined&&_keep[k]!==undefined)f[k]=_keep[k];
   });
   t.contract=f;
-  if(!editing)t.status='in_progress';
+  if(!editing)t.status='awaiting_operation';
   t.km=_shipTripKm(t);
   var res=shipCalc(t);
   if(res){t.cost=res.total;t.slaLines=res.lines;}
@@ -21031,14 +21070,17 @@ function drvEndTrip(id){
   var now=new Date();
   c.endKm=km;
   c.endTime=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-  t.status='completed';
   t.km=_shipTripKm(t);
+  // The driver arriving starts the inbound chain — Security, then Operations,
+  // then Control Room close it out. Only then is the trip complete.
+  t.status=(typeof _wfStage==='function'&&_wfStage('in_transit'))?_wfStage('in_transit').next:'completed';
   var res=shipCalc(t);if(res){t.cost=res.total;t.slaLines=res.lines;}
-  t.tl.push({ts:now.toLocaleString('en-GB'),user:S.user.name,action:'✅ Trip completed',
-    detail:'End KM '+km+' · total '+t.km+' km'+(res?' · EGP '+res.total:'')});
-  audit('DRV_COMPLETE','End KM '+km+' · '+t.km+' km',id);
+  t.tl.push({ts:now.toLocaleString('en-GB'),user:S.user.name,action:'🏭 Arrived at warehouse',
+    detail:'End KM '+km+' · total '+t.km+' km'});
+  audit('DRV_ARRIVED','End KM '+km+' · '+t.km+' km',id);
   _lcSave&&_lcSave();syncTrip&&syncTrip(t);
-  toast('✅ Trip completed — '+t.km+' km','ok');rDriverContract();
+  notif('🔒 '+t.id+' arrived — awaiting security gate in (IN-1)','info');
+  toast('✅ Arrival recorded — '+t.km+' km · sent to security','ok');rDriverContract();
 }
 
 
@@ -21661,6 +21703,109 @@ function invoiceApprovedSheets(){
   audit('INVOICE_FROM_SHEET',n+' invoice(s)','');
   if(S.page==='billing')rBilling();
   toast('📄 '+n+' invoice(s) generated from approved sheets','ok');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// SHIPMENT WORKFLOW — the approval chain after the transportation plan
+//
+//  OUTBOUND   Operation → Quality → Control Room → Security (gate out)
+//  IN TRANSIT driver on the road
+//  INBOUND    Driver arrives → Security (gate in) → Operation → Control Room
+//
+// Dispatch is gone: the truck and driver are assigned on the request itself.
+// ══════════════════════════════════════════════════════════════════
+var WF_CHAIN=[
+  {id:'awaiting_operation', leg:'out', step:'OUT-1', label:'Operations Check',   role:'operation',    icon:'📷', next:'awaiting_quality'},
+  {id:'awaiting_quality',   leg:'out', step:'OUT-2', label:'Quality Approval',   role:'quality',      icon:'🧪', next:'awaiting_ctrl'},
+  {id:'awaiting_ctrl',      leg:'out', step:'OUT-3', label:'Control Room',       role:'control_room', icon:'🎛️', next:'awaiting_security'},
+  {id:'awaiting_security',  leg:'out', step:'OUT-4', label:'Security Gate Out',  role:'security',     icon:'🔒', next:'in_transit'},
+  {id:'in_transit',         leg:'transit', step:'—', label:'In Transit',         role:'driver',       icon:'🚚', next:'inbound_security'},
+  {id:'inbound_security',   leg:'in',  step:'IN-1',  label:'Security Gate In',   role:'security',     icon:'🔒', next:'inbound_operation'},
+  {id:'inbound_operation',  leg:'in',  step:'IN-2',  label:'Operations Check In',role:'operation',    icon:'📷', next:'inbound_ctrl'},
+  {id:'inbound_ctrl',       leg:'in',  step:'IN-3',  label:'Control Room Final', role:'control_room', icon:'🎛️', next:'completed'}
+];
+function _wfStage(status){return WF_CHAIN.find(function(s){return s.id===status;})||null;}
+function _wfNext(status){var s=_wfStage(status);return s?s.next:null;}
+function _wfForRole(role){
+  return WF_CHAIN.filter(function(s){return s.role===role;}).map(function(s){return s.id;});
+}
+// Trips waiting on the signed-in user's role
+function _wfMyQueue(role){
+  var ids=_wfForRole(role||S.role);
+  return (S.trips||[]).filter(function(t){return ids.indexOf(t.status)>-1;});
+}
+// Advance a shipment one step, password-verified, with a timeline entry
+function wfAdvance(id,note){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var stage=_wfStage(t.status);
+  if(!stage){toast('This shipment is not in the approval chain','err');return;}
+  if(stage.role!==S.role&&!can('all')){
+    toast('Only '+(RL[stage.role]||stage.role)+' can approve this step','err');return;
+  }
+  requirePwd(stage.icon+' '+stage.label+' — '+id,function(){
+    var from=t.status;
+    t.status=stage.next;
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
+      action:stage.icon+' '+stage.step+': '+stage.label+' approved',
+      detail:note||''});
+    audit('WF_APPROVE',stage.step+' '+stage.label,id);
+    // Reaching the end settles the price and opens the final sheet for review
+    if(t.status==='completed'){
+      t.km=_shipTripKm(t);
+      var res=shipCalc(t);
+      if(res){t.cost=res.total;t.slaLines=res.lines;}
+      if(typeof _finalSheet==='function')_finalSheet(t,true);
+      notif('🧾 '+t.id+' completed — final sheet ready for approval','info');
+    }else{
+      var nx=_wfStage(t.status);
+      if(nx)notif(nx.icon+' '+t.id+' → '+nx.label,'info');
+    }
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    toast('✅ '+stage.label+' approved','ok');
+    try{nav(S.page);}catch(e){}
+  });
+}
+function wfReject(id,reason){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var stage=_wfStage(t.status);if(!stage)return;
+  var why=reason||prompt('Why is '+id+' rejected at '+stage.label+'?','');
+  if(why===null||!String(why).trim()){toast('A reason is required','err');return;}
+  t.status='cancelled_org';
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
+    action:'❌ Rejected at '+stage.label,detail:String(why).trim()});
+  audit('WF_REJECT',stage.label+': '+why,id);
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  toast('Shipment rejected','err');
+  try{nav(S.page);}catch(e){}
+}
+// A compact queue any role screen can drop in
+function wfQueueHTML(role,title){
+  var q=_wfMyQueue(role);
+  var stageIds=_wfForRole(role);
+  if(!q.length){
+    return _emptyState('✅','Nothing waiting on you',
+      'Shipments will appear here when they reach your step of the workflow.','');
+  }
+  return '<div style="display:flex;flex-direction:column;gap:10px">'+q.map(function(t){
+    var st=_wfStage(t.status);var ct=t.contract||{};
+    return '<div class="card" style="border-left:4px solid var(--c1);margin:0">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">'+
+        '<div><div style="font-size:15px;font-weight:800">'+t.id+'</div>'+
+        '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' · '+(ct.transactionType||t.dir||'')+' · '+(t.truck||'no truck')+' · '+(t.truckType||'')+'</div></div>'+
+        '<span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5;white-space:nowrap">'+st.step+' · '+st.label+'</span>'+
+      '</div>'+
+      '<div style="font-size:11.5px;color:var(--t2);margin-bottom:10px">'+
+        (ct.destinations||[]).length+' stop(s) · '+(t.condition||'')+
+        ((ct.reps||ct.labors)?' · '+(ct.reps||0)+' rep, '+(ct.labors||0)+' labor':'')+'</div>'+
+      '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+        '<button class="btn btn-success btn-sm" onclick="wfAdvance(\''+t.id+'\')">✓ Approve — '+st.step+'</button>'+
+        '<button class="btn btn-danger btn-sm" onclick="wfReject(\''+t.id+'\')">✕ Reject</button>'+
+        '<button class="btn btn-outline btn-sm" onclick="_openTripSPv2(\''+t.id+'\')">Details</button>'+
+      '</div></div>';
+  }).join('')+'</div>';
 }
 
 </script>
