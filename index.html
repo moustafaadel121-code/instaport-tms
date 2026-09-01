@@ -3004,6 +3004,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
+var IP_BUILD='2026-09-01 19:31';   // build stamp — shown in the sidebar so the running version is verifiable
 var _IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
 var _IS_LOCAL        = !_IS_GITHUB_PAGES;
 var INSTAPORT_API    = ''; // always relative on local; unused on GH Pages (Supabase handles auth)
@@ -4725,7 +4726,7 @@ const PAGES={
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
     {id:'validation',icon:'✅',l:'Validation'},{id:'ai',icon:'🤖',l:'AI'},
-    {id:'billing',icon:'📄',l:'Invoices'},{id:'fuel',icon:'⛽',l:'Fuel'},
+    {id:'final_sheet',icon:'🧾',l:'Final Sheets'},{id:'billing',icon:'📄',l:'Invoices'},{id:'fuel',icon:'⛽',l:'Fuel'},
     {id:'esg',icon:'🌿',l:'ESG Report'},
     {id:'admin_mgmt',icon:'⚙️',l:'Admin'},{id:'analytics',icon:'📈',l:'Analytics'},
     {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'},
@@ -4736,7 +4737,7 @@ const PAGES={
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
   security:     [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'security',icon:'🔒',l:'Gate & Workflow'}],
-  finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
+  finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'final_sheet',icon:'🧾',l:'Final Sheets'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
   maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'},{id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'}],
   validation:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'validation',icon:'✅',l:'Validation'}],
   driver:       [{id:'my_route',icon:'🚚',l:'My Assigned Trips'},{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}],
@@ -5816,6 +5817,7 @@ const ALL_PAGES_MASTER=[
   {id:'my_trips',    icon:'🚛',l:'My Trips (Driver)'},
   {id:'operation',   icon:'📷',l:'Operations'},
   {id:'my_route',    icon:'🚚',l:'My Assigned Trips (Driver)'},
+  {id:'final_sheet', icon:'🧾',l:'Final Sheets'},
   {id:'nr_trip',     icon:'🔄',l:'Non-Revenue Trip'},
   {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'},
   {id:'pm_schedule', icon:'📅', l:'PM Scheduler'},
@@ -5905,7 +5907,7 @@ function nav(page){
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,fleet_map:rFleetMap,client_portal:rClientPortal,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
-    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rTrips,my_route:rDriverContract,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
+    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rTrips,my_route:rDriverContract,final_sheet:rFinalSheet,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
@@ -6870,25 +6872,6 @@ function rQuality(){
   var html='<div class="page-head"><div><h2>🧪 Quality Control</h2></div></div>';
   html+='<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting your verification</div>'+_qcQueueHTML();
   if(pend.length===0&&inbQ.length===0&&intrans.length===0)html+=_emptyState('🧪','All Quality Checks Passed','No trips are currently awaiting quality inspection. Everything is cleared and on track.','');
-  pend.concat(inbQ).forEach(function(t){
-    var qa=S.qaAgr[t.customer]||{minTemp:2,maxTemp:8,checkReq:7};
-    var items=_chkItems();var res=_chkGet(t);
-    var done=items.filter(function(x){return res[x.id];}).length;var isInb=t.status==='inbound_quality';
-    html+='<div class="card"><div style="display:flex;justify-content:space-between;margin-bottom:14px"><div>'+
-      '<div style="font-size:17px;font-weight:700">'+t.id+(isInb?' <span class="tag tag-blue" style="font-size:11px">Inbound QA</span>':'')+'</div>'+
-      '<div style="color:var(--t2);font-size:13px;margin-top:3px">'+t.customer+' · '+t.truck+' · <span class="tag tag-blue">'+t.condition+'</span></div>'+
-      '<div style="font-size:12px;color:var(--t2);margin-top:2px">Agreement: '+qa.minTemp+'–'+qa.maxTemp+'°C</div></div>'+stB(t.status)+'</div>'+
-      '<div style="font-size:12px;font-weight:600;color:var(--t2);margin-bottom:10px">CHECKLIST — '+done+'/'+items.length+'</div>'+
-      items.map(function(item){var on=!!res[item.id];return '<div class="chk'+(on?' chk-on':'')+'" onclick="togC(\''+t.id+'\',\''+item.id+'\')"><div class="chk-box">'+(on?'✓':'')+'</div><div style="flex:1;font-size:13px">'+item.label+(item.req?' <span style="color:#EF4444">*</span>':'')+'</div></div>';}).join('')+
-      _opsQualityBlock(t)+
-      '<div style="margin-top:14px;padding:14px;background:var(--bg);border-radius:var(--r)"><div style="font-size:12px;font-weight:600;margin-bottom:6px">🌡️ Live Temperature</div>'+
-      '<div class="gauge" style="padding:6px 0"><div class="gauge-val g-ok" id="qt'+t.id+'">--</div><div class="gauge-bar"><div class="gauge-fill" id="qb'+t.id+'" style="width:50%;background:var(--c4)"></div></div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:11px;color:var(--t3)"><span>'+qa.minTemp+'°C</span><span>'+qa.maxTemp+'°C</span></div></div></div>'+
-      fileHTML('qa-file-'+t.id)+
-      '<div style="margin-top:12px;display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">'+
-      '<button class="btn btn-success" onclick="apQConfirm(\''+t.id+'\','+(isInb?'true':'false')+')">✅ Approve</button>'+
-      '<button class="btn btn-danger" onclick="rejQM(\''+t.id+'\')">❌ Reject</button></div></div>';
-  });
   if(intrans.length>0)html+='<div class="card"><div class="card-hd"><div class="card-title">🌡️ In-Transit Monitor</div><span class="live"><span class="live-dot"></span>Live</span></div>'+intrans.map(function(t){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:12px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:8px"><div><div style="font-weight:600">'+t.id+'</div><div style="font-size:12px;color:var(--t2)">'+t.truck+' · '+t.customer+'</div></div><div id="lt'+t.id+'" style="font-size:22px;font-weight:700;color:var(--c4)">--</div></div>';}).join('')+'</div>';
   c.innerHTML=html;
 }
@@ -13433,8 +13416,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',my_route:'My Assigned Trips',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',my_route:'&#128666;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',my_route:'My Assigned Trips',final_sheet:'Final Sheets',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',my_route:'&#128666;',final_sheet:'&#129534;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -13457,6 +13440,7 @@ buildSB = function() {
   '<div style="padding:12px 14px 6px;display:flex;align-items:center;justify-content:center;gap:7px">'+
     '<img src="logo.png" alt="" style="height:20px;width:auto;opacity:.85"/>'+
     '<span style="font-size:11.5px;color:rgba(255,255,255,.6);letter-spacing:.3px;line-height:1.2">Powered by <b style="color:rgba(255,255,255,.9);font-weight:800">InstaPort</b></span>'+
+  '</div><div id="ip-build-stamp" style="text-align:center;font-size:8.5px;color:rgba(255,255,255,.35);padding-bottom:6px">build '+IP_BUILD+'</div><div>'+
   '</div>';
 };
 
@@ -13829,82 +13813,99 @@ function _opsCard(t){
   var op=t.ops||{};
   var scans=op.scans||[];
   var photos=op.photos||[];
-  var chk=op.checklist||{};
-  var plateScanned=scans.some(function(s){return s.kind==='plate';});
-  var unitScans=scans.filter(function(s){return s.kind==='unit'||s.kind==='carton';});
-  var unitCount=unitScans.length;
+  var inbound=t.status==='inbound_operation';
+  var work=inbound?'Unloading':'Loading';
+  var stage=_wfStage(t.status);
+  var plate=scans.find(function(s){return s.kind==='plate';});
+  var unitCount=_opsUnitCount(t);
   var expected=op.expectedUnits||0;
-  var cartonScanned=unitCount>0;
-  var chkItems=cfg.checklist.filter(function(x){return x.on;});
-  var chkDone=chkItems.filter(function(x){return chk[x.id];}).length;
-  var reqChkDone=chkItems.filter(function(x){return x.req;}).every(function(x){return chk[x.id];});
+  // The controlled inspection form replaces the old ad-hoc truck checklist
+  var form=_formFor(t);
+  var fp=form?_formProgress(t,form):null;
+  var fsig=form?(_formState(t,form).signatures||{}):{};
+  var formDone=!!(fsig.officer&&fsig.supervisor);
+
   var photosOk=photos.length>=cfg.minPhotos;
-  var plateOk=!cfg.requirePlateScan||plateScanned;
-  var cartonOk=!cfg.requireCartonScan||cartonScanned;
-  var expectedOk=!expected||unitCount>=expected;
-  var ready=reqChkDone&&photosOk&&plateOk&&cartonOk&&expectedOk;
-  var badge=function(ok,txt){return '<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:'+(ok?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+(ok?'✓ ':'')+txt+'</span>';};
-  return '<div class="card" style="border-left:4px solid '+(ready?'#059669':'var(--c1)')+'">'+
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'+
+  var plateOk=!cfg.requirePlateScan||!!plate;
+  var unitsOk=(!cfg.requireCartonScan||unitCount>0)&&(!expected||unitCount>=expected);
+  var ready=formDone&&photosOk&&plateOk&&unitsOk;
+  var done=!!op.loadingComplete;
+
+  var chip=function(ok,txt){
+    return '<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:'+(ok?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+(ok?'✓ ':'')+txt+'</span>';
+  };
+  var row=function(label,state,body){
+    return '<div style="border:1.5px solid '+(state?'#A7F3D0':'var(--bd)')+';background:'+(state?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
+      '<div style="font-size:12px;font-weight:700;color:'+(state?'#065F46':'var(--t)')+';margin-bottom:7px">'+(state?'✓ ':'')+label+'</div>'+body+'</div>';
+  };
+
+  return '<div class="card" style="border-left:4px solid '+(done?'#059669':'var(--c1)')+'">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">'+
       '<div><div style="font-size:16px;font-weight:800">'+t.id+'</div>'+
-      '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' &bull; '+t.condition+' &bull; '+(t.truck||'<span style="color:#B45309">no truck yet</span>')+'</div></div>'+
-      stB(t.status)+
+      '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' &bull; '+(t.condition||'')+' &bull; '+(t.truck||'<span style="color:#B45309">no truck</span>')+'</div></div>'+
+      '<span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5;white-space:nowrap">'+(stage?stage.step+' · '+work:'')+'</span>'+
     '</div>'+
-    // Status chips
     '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+
-      (cfg.requirePlateScan?badge(plateScanned,'Plate'):'')+
-      badge(expected?unitCount>=expected:unitCount>0,'📦 '+unitCount+(expected?' / '+expected:'')+' units')+
-      badge(photosOk,photos.length+'/'+cfg.minPhotos+' photos')+
-      badge(reqChkDone,'Checklist '+chkDone+'/'+chkItems.length)+
+      (cfg.requirePlateScan?chip(!!plate,'Plate'):'')+
+      chip(unitsOk&&unitCount>0,unitCount+(expected?' / '+expected:'')+' units')+
+      chip(photosOk,photos.length+'/'+cfg.minPhotos+' photos')+
+      (form?chip(formDone,form.title+' '+(fp?fp.yes+'/'+fp.total:'')):'')+
     '</div>'+
-    // Scan buttons
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">'+
-      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'plate\')">🔖 Scan Plate</button>'+
-      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'unit\')">📦 Scan Pallets/Cartons</button>'+
-      '<button class="btn btn-outline btn-sm" onclick="opsSetExpected(\''+t.id+'\')">🔢 Expected'+(expected?': '+expected:'')+'</button>'+
-      (function(){
-        var f=_formFor(t);if(!f)return '';
-        var pr=_formProgress(t,f);var sg=_formState(t,f).signatures||{};
-        var both=sg.officer&&sg.supervisor;
-        return '<button class="btn '+(both?'btn-success':'btn-outline')+' btn-sm" onclick="openInspectionForm(\''+t.id+'\')">📋 '+f.title+' '+(both?'✓':pr.yes+'/'+pr.total)+'</button>';
-      })()+
-      '<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 Add Photo'+
+
+    // 1 — plate
+    row('1. Scan Plate',!!plate,
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'plate\')">🔖 '+(plate?'Rescan':'Scan plate')+'</button>'+
+      (plate?'<span style="font-size:12px;font-weight:700">'+plate.code+'</span>':'<span style="font-size:11.5px;color:var(--t3)">not scanned</span>')+
+      '</div>')+
+
+    // 2 — pallets / cartons, with the expected count folded in
+    row('2. Scan Pallets / Cartons',unitsOk&&unitCount>0,
+      '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">'+
+      '<button class="btn btn-outline btn-sm" onclick="opsScan(\''+t.id+'\',\'unit\')">📦 Scan units</button>'+
+      '<div><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:3px">Number of pallets / cartons</label>'+
+        '<input type="number" min="0" value="'+(expected||'')+'" placeholder="e.g. 33" onchange="_opsSetUnits(\''+t.id+'\',this.value)" style="width:120px;padding:7px 9px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+      '<span style="font-size:12px;font-weight:700;color:'+(expected&&unitCount<expected?'#B45309':'#059669')+'">'+unitCount+(expected?' / '+expected:'')+' scanned'+
+        (expected&&unitCount<expected?' ('+(expected-unitCount)+' left)':'')+'</span>'+
+      '</div>'+
+      (unitCount?'<div style="font-size:10.5px;color:var(--t2);margin-top:6px">'+scans.filter(function(s){return s.kind==='unit'||s.kind==='carton';}).slice(-5).map(function(s){return s.code;}).join(' · ')+(unitCount>5?' …':'')+'</div>':''))+
+
+    // 3 — the controlled inspection form
+    (form?row('3. '+form.title,formDone,
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<button class="btn '+(formDone?'btn-outline':'btn-primary')+' btn-sm" onclick="openInspectionForm(\''+t.id+'\')">📋 '+(formDone?'View form':'Open form')+' ('+fp.yes+'/'+fp.total+')</button>'+
+      '<span style="font-size:11px;color:var(--t2)">'+form.doc+'</span>'+
+      '<span style="font-size:11px;color:'+(fsig.officer?'#059669':'var(--t3)')+'">'+(fsig.officer?'✓ '+form.signatures[0].label+': '+fsig.officer.by:form.signatures[0].label+' — pending')+'</span>'+
+      '<span style="font-size:11px;color:'+(fsig.supervisor?'#059669':'var(--t3)')+'">'+(fsig.supervisor?'✓ '+form.signatures[1].label+': '+fsig.supervisor.by:form.signatures[1].label+' — pending')+'</span>'+
+      '</div>'):'')+
+
+    // 4 — photos
+    row('4. Photos',photosOk,
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 Add photo'+
         '<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+t.id+'\',this)"/></label>'+
-    '</div>'+
-    // Scans summary
-    (plateScanned?'<div style="font-size:11px;color:var(--t2);margin-bottom:4px">🔖 Plate: <b>'+(scans.find(function(s){return s.kind==='plate';})||{}).code+'</b></div>':'')+
-    (unitCount?'<div style="font-size:11px;color:var(--t2);margin-bottom:10px">📦 '+unitCount+' unit'+(unitCount>1?'s':'')+' scanned'+(expected&&unitCount<expected?' <span style="color:#B45309">('+(expected-unitCount)+' remaining)</span>':expected?' <span style="color:#059669">✓ all scanned</span>':'')+' — '+unitScans.slice(-4).map(function(s){return s.code;}).join(', ')+(unitCount>4?' …':'')+'</div>':'')+
-    // Photos thumbnails
-    (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">'+photos.map(function(p,i){return '<div style="position:relative"><img src="'+p.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/><span onclick="opsDelPhoto(\''+t.id+'\','+i+')" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span></div>';}).join('')+'</div>':'')+
-    // Checklist
-    '<div style="border-top:1px solid var(--bd);padding-top:10px;margin-bottom:12px">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Truck Checklist</div>'+
-      chkItems.map(function(x){
-        var on=!!chk[x.id];
-        return '<div onclick="opsToggleChk(\''+t.id+'\',\''+x.id+'\')" style="display:flex;align-items:center;gap:9px;padding:7px 0;cursor:pointer">'+
-          '<div style="width:20px;height:20px;border-radius:6px;border:2px solid '+(on?'#059669':'var(--bd)')+';background:'+(on?'#059669':'transparent')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">'+(on?'✓':'')+'</div>'+
-          '<span style="font-size:13px;color:var(--t)">'+x.label+(x.req?' <span style="color:#EF4444">*</span>':'')+'</span></div>';
-      }).join('')+
-    '</div>'+
-    // Submit
-    // Two deliberate steps: finish the physical work, then sign it off
-    (function(){
-      var done=!!op.loadingComplete;
-      var inbound=t.status==='inbound_operation';
-      var stage=_wfStage(t.status);
-      var work=inbound?'Unloading':'Loading';
-      return '<button class="btn '+(done?'btn-outline':(ready?'btn-success':'btn-outline'))+'" style="width:100%;margin-bottom:8px" '+
-          ((ready&&!done)?'':'disabled')+' onclick="opsCompleteLoading(\''+t.id+'\')">'+
-          (done?'✓ '+work+' completed — '+(op.loadingCompleteAt||''):(ready?'📦 Complete '+work:'Complete the required items (*) first'))+
-        '</button>'+
-        '<button class="btn '+(done?'btn-success':'btn-outline')+'" style="width:100%" '+(done?'':'disabled')+
-          ' onclick="wfAdvance(\''+t.id+'\')">'+
-          (done?'✅ Approve — '+(stage?stage.step:'')+'':'Approve after completing '+work.toLowerCase())+
-        '</button>';
-    })()+
+      '<span style="font-size:11.5px;color:var(--t2)">'+photos.length+' of '+cfg.minPhotos+' required</span></div>'+
+      (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+photos.map(function(p,i){
+        return '<div style="position:relative"><img src="'+p.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/>'+
+          '<span onclick="opsDelPhoto(\''+t.id+'\','+i+')" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span></div>';
+      }).join('')+'</div>':''))+
+
+    // complete, then approve
+    '<button class="btn '+(done?'btn-outline':(ready?'btn-success':'btn-outline'))+'" style="width:100%;margin-bottom:8px" '+
+      ((ready&&!done)?'':'disabled')+' onclick="opsCompleteLoading(\''+t.id+'\')">'+
+      (done?'✓ '+work+' completed — '+(op.loadingCompleteAt||''):(ready?'📦 Complete '+work:'Complete steps 1–4 first'))+
+    '</button>'+
+    '<button class="btn '+(done?'btn-success':'btn-outline')+'" style="width:100%" '+(done?'':'disabled')+
+      ' onclick="wfAdvance(\''+t.id+'\')">'+
+      (done?'✅ Approve — '+(stage?stage.step:''):'Approve after completing '+work.toLowerCase())+
+    '</button>'+
   '</div>';
 }
-
+function _opsSetUnits(id,v){
+  var t=_opsGet(id);if(!t)return;
+  t.ops.expectedUnits=Math.max(0,+v||0);
+  _lcSave&&_lcSave();rOperation();
+}
 function _opsGet(id){var t=S.trips.find(function(x){return x.id===id;});if(t&&!t.ops)t.ops={scans:[],photos:[],checklist:{}};return t;}
 
 // ── Unified configurable truck checklist (used by BOTH operation & quality) ──
@@ -14164,7 +14165,6 @@ function opsCompleteLoading(id){
   var work=inbound?'Unloading':'Loading';
   var _f=_formFor(t);
   if(_f){var _fs=_formState(t,_f);if(!(_fs.signatures&&_fs.signatures.officer&&_fs.signatures.supervisor)){toast('يجب استكمال وتوقيع نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}}
-  if(!_chkRequiredDone(t)){toast('Complete the required checklist items first','err');return;}
   if((t.ops.photos||[]).length<cfg.minPhotos){toast('At least '+cfg.minPhotos+' photo(s) required','err');return;}
   if(cfg.requirePlateScan&&!(t.ops.scans||[]).some(function(s){return s.kind==='plate';})){toast('Scan the truck plate first','err');return;}
   if(cfg.requireCartonScan&&!_opsUnitCount(t)){toast('Scan at least one pallet/carton','err');return;}
@@ -21500,11 +21500,17 @@ function _finalSheet(t,rebuild){
   (rv.lines||[]).forEach(function(l,i){prev[(l.scm||'')+'|'+l.desc]= l;});
   rv.lines=calc.map(function(l){
     var p=prev[(l.scm||'')+'|'+l.desc];
-    return Object.assign({},l,{
+    var n=Object.assign({},l,{
       excluded:p?!!p.excluded:false,
       justification:p?p.justification||'':'',
-      excludedBy:p?p.excludedBy||'':''
+      excludedBy:p?p.excludedBy||'':'',
+      editedBy:p?p.editedBy||'':''
     });
+    // a reviewer's manual qty/rate edit outranks the recalculated value
+    if(p&&p.qtyEdited){n.qty=p.qty;n.qtyEdited=true;}
+    if(p&&p.rateEdited){n.rate=p.rate;n.rateEdited=true;}
+    if(p&&(p.qtyEdited||p.rateEdited))n.amount=(+n.qty||0)*(+n.rate||0);
+    return n;
   });
   rv.expenses=res?res.expenses:0;
   rv.currency=res?res.currency:'EGP';
@@ -21530,57 +21536,6 @@ function _apvLocked(t){
   return _apvCfg().lockAfterApproval && _apvStatusOf(t).key==='approved';
 }
 
-// ── Final sheet review screen ──────────────────────────────────────
-function openFinalSheet(id){
-  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  var rv=_finalSheet(t,true);
-  var st=_apvStatusOf(t);
-  var locked=_apvLocked(t);
-  var ct=t.contract||{};
-  var steps=_apvSteps();
-  openM('<div class="m-title">🧾 Final Sheet — '+t.id+'</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
-      '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
-      '<span style="font-size:11.5px;color:var(--t2)">'+t.customer+' · '+(ct.transactionType||'')+' · '+(t.truckType||'')+' · '+_shipTripKm(t)+' km</span>'+
-      (locked?'<span style="font-size:10.5px;color:#059669;font-weight:700">🔒 locked</span>':'')+
-    '</div>'+
-    (rv.missingRates?'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:8px 11px;font-size:11px;color:#92400E;margin-bottom:10px">⚠️ '+rv.missingRates+' line(s) have no rate in the card — set them before approving.</div>':'')+
-    '<div style="max-height:300px;overflow:auto;border:1.5px solid var(--bd);border-radius:10px;margin-bottom:10px">'+
-    '<table class="tbl" style="font-size:11.5px"><thead><tr><th>Apply</th><th>Item</th><th>Service line</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+
-    (rv.lines.length?rv.lines.map(function(l,i){
-      return '<tr style="'+(l.excluded?'opacity:.5':'')+'">'+
-        '<td style="text-align:center"><input type="checkbox" '+(l.excluded?'':'checked')+(locked?' disabled':'')+' onchange="_apvToggle(\''+id+'\','+i+',this.checked)" style="width:16px;height:16px;cursor:'+(locked?'not-allowed':'pointer')+'"/></td>'+
-        '<td style="font-size:10.5px;font-weight:700;color:var(--c1)">'+(l.scm||'—')+'</td>'+
-        '<td>'+l.desc+(l.legKm!==''&&l.legKm!==undefined?'<div style="font-size:10px;color:var(--t3)">'+l.legFrom+' → '+l.legTo+' · '+l.legKm+' km</div>':'')+
-          (l.excluded&&l.justification?'<div style="font-size:10px;color:#B45309;margin-top:2px">✎ '+l.justification+(l.excludedBy?' — '+l.excludedBy:'')+'</div>':'')+
-          (l.missingRate?'<div style="font-size:10px;color:#B45309">⚠ no rate configured</div>':'')+'</td>'+
-        '<td style="text-align:center">'+l.qty+'</td>'+
-        '<td style="text-align:right">'+l.rate.toLocaleString()+'</td>'+
-        '<td style="text-align:right;font-weight:700;'+(l.excluded?'text-decoration:line-through':'')+'">'+l.amount.toLocaleString()+'</td></tr>';
-    }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--t3);padding:14px">No service lines — this customer is priced by formula ('+(rv.formulaCost||0).toLocaleString()+').</td></tr>')+
-    '</tbody></table></div>'+
-    '<div style="display:flex;flex-direction:column;gap:3px;font-size:12px;margin-bottom:12px">'+
-      '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">Services applied</span><b>'+rv.servicesTotal.toLocaleString()+'</b></div>'+
-      (rv.excludedTotal?'<div style="display:flex;justify-content:space-between;color:#B45309"><span>Not applied</span><b>−'+rv.excludedTotal.toLocaleString()+'</b></div>':'')+
-      '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">Reimbursed expenses</span><b>'+(rv.expenses||0).toLocaleString()+'</b></div>'+
-      '<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;padding-top:6px;border-top:1px solid var(--bd)"><span>Final total</span><span>'+rv.currency+' '+rv.total.toLocaleString()+'</span></div>'+
-    '</div>'+
-    // approval chain
-    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
-    steps.map(function(s){
-      var a=(rv.approvals||{})[s.id];
-      return '<div style="flex:1;min-width:150px;border:1.5px solid '+(a?'#A7F3D0':'var(--bd)')+';background:'+(a?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:9px 11px">'+
-        '<div style="font-size:11px;font-weight:800;color:'+(a?'#059669':'var(--t2)')+'">'+(a?'✓ ':'')+s.label+'</div>'+
-        (a?'<div style="font-size:10.5px;color:var(--t2);margin-top:2px">'+a.by+'<br>'+a.at+'</div>'
-          :(_apvCanApprove(s)
-            ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px" onclick="_apvApprove(\''+id+'\',\''+s.id+'\')">Approve</button>'
-            :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">'+(s.roles||[]).map(function(r){return RL[r]||r;}).join(' / ')+' only</div>'))+
-        '</div>';
-    }).join('')+'</div>'+
-    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Close</button>'+
-    (st.key==='approved'?'<button class="btn btn-outline" onclick="_apvReopen(\''+id+'\')">↺ Reopen</button>':'')+
-    '<button class="btn btn-primary" onclick="exportBillingSheet([S.trips.find(function(x){return x.id===\''+id+'\';})])">⬇ Export</button></div>');
-}
 function _apvToggle(id,i,applied){
   var t=S.trips.find(function(x){return x.id===id;});if(!t||!t.review)return;
   var l=t.review.lines[i];if(!l)return;
@@ -21916,35 +21871,65 @@ function _qcCard(t){
   var st=_wfStage(t.status)||{step:'',label:'Quality'};
   var ct=t.contract||{};
   var op=t.ops||{};
-  var items=_chkItems();var res=_chkGet(t);
-  var done=items.filter(function(x){return res[x.id];}).length;
-  var reqOk=_chkRequiredDone(t);
+  var scans=op.scans||[],photos=op.photos||[];
+  var plate=scans.find(function(s){return s.kind==='plate';});
+  var units=scans.filter(function(s){return s.kind==='unit'||s.kind==='carton';});
+  var expected=op.expectedUnits||0;
+  var form=_formFor(t);
+  var fp=form?_formProgress(t,form):null;
+  var fsig=form?(_formState(t,form).signatures||{}):{};
+  var formDone=!!(fsig.officer&&fsig.supervisor);
   var verified=!!t.qualityVerified;
   var qa=(S.qaAgr&&S.qaAgr[t.customer])||{minTemp:2,maxTemp:8};
+  // Quality signs off the same consolidated evidence operations produced
+  var canVerify=formDone;
+
+  var chip=function(ok,txt){
+    return '<span style="font-size:11px;font-weight:700;padding:2px 9px;border-radius:20px;background:'+(ok?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+(ok?'✓ ':'')+txt+'</span>';
+  };
+  var cell=function(label,value,ok){
+    return '<div style="background:var(--bg);border-radius:8px;padding:8px 10px">'+
+      '<div style="font-size:10px;font-weight:700;color:var(--t2);text-transform:uppercase;letter-spacing:.4px">'+label+'</div>'+
+      '<div style="font-size:12.5px;font-weight:700;color:'+(ok===false?'#B45309':'var(--t)')+';margin-top:2px">'+value+'</div></div>';
+  };
+
   return '<div class="card" style="border-left:4px solid '+(verified?'#059669':'var(--c1)')+';margin:0">'+
-    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:10px">'+
       '<div><div style="font-size:15px;font-weight:800">'+t.id+'</div>'+
       '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' · '+(t.truck||'—')+' · '+(t.condition||'')+'</div>'+
       '<div style="font-size:11px;color:var(--t3);margin-top:1px">Agreement '+qa.minTemp+'–'+qa.maxTemp+'°C</div></div>'+
       '<span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5;white-space:nowrap">'+st.step+' · '+st.label+'</span>'+
     '</div>'+
-    // what operations recorded
-    _opsQualityBlock(t)+
-    // the shared configurable checklist
-    '<div style="border-top:1px solid var(--bd);margin-top:12px;padding-top:10px">'+
-      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Checklist — '+done+'/'+items.length+'</div>'+
-      items.map(function(x){
-        var on=!!res[x.id];
-        return '<div onclick="'+(verified?'':'togC(\''+t.id+'\',\''+x.id+'\')')+'" style="display:flex;align-items:center;gap:9px;padding:7px 0;cursor:'+(verified?'default':'pointer')+';opacity:'+(verified?'.7':'1')+'">'+
-          '<div style="width:20px;height:20px;border-radius:6px;border:2px solid '+(on?'#059669':'var(--bd)')+';background:'+(on?'#059669':'transparent')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">'+(on?'✓':'')+'</div>'+
-          '<span style="font-size:13px;color:var(--t)">'+x.label+(x.req?' <span style="color:#EF4444">*</span>':'')+'</span></div>';
-      }).join('')+
+
+    // consolidated evidence, as operations recorded it
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+
+      chip(!!plate,'Plate')+chip(units.length>0&&(!expected||units.length>=expected),units.length+(expected?' / '+expected:'')+' units')+
+      chip(photos.length>0,photos.length+' photos')+(form?chip(formDone,form.title):'')+
     '</div>'+
-    // verify, then approve
-    '<div style="margin-top:12px">'+
-      '<button class="btn '+(verified?'btn-outline':(reqOk?'btn-success':'btn-outline'))+'" style="width:100%;margin-bottom:8px" '+
-        ((reqOk&&!verified)?'':'disabled')+' onclick="qcVerify(\''+t.id+'\')">'+
-        (verified?'✓ Verified — '+(t.qualityVerifiedBy||'')+' · '+(t.qualityVerifiedAt||''):(reqOk?'🧪 Verify checklist':'Complete the required items (*) to verify'))+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:7px;margin-bottom:10px">'+
+      cell('Plate scanned',plate?plate.code:'—',!!plate)+
+      cell('Pallets / cartons',units.length+(expected?' of '+expected:''),!expected||units.length>=expected)+
+      cell('Loading',op.loadingComplete?(op.loadingCompleteBy||'')+' · '+(op.loadingCompleteAt||''):'not completed',!!op.loadingComplete)+
+    '</div>'+
+    (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">'+photos.map(function(p){
+      return '<img src="'+p.data+'" onclick="window.open().document.write(\'<img src=\\\''+p.data+'\\\' style=max-width:100%>\')" style="width:54px;height:54px;object-fit:cover;border-radius:8px;border:1px solid var(--bd);cursor:pointer"/>';
+    }).join('')+'</div>':'')+
+
+    // the controlled form, with its two approvals
+    (form?'<div style="border:1.5px solid '+(formDone?'#A7F3D0':'var(--bd)')+';background:'+(formDone?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:10px 12px;margin-bottom:10px">'+
+      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+      '<button class="btn btn-outline btn-sm" onclick="openInspectionForm(\''+t.id+'\')">📋 '+form.title+' ('+fp.yes+'/'+fp.total+')</button>'+
+      '<span style="font-size:11px;color:var(--t2)">'+form.doc+'</span>'+
+      '<span style="font-size:11px;color:'+(fsig.officer?'#059669':'#B45309')+'">'+(fsig.officer?'✓ '+fsig.officer.by:form.signatures[0].label+' — pending')+'</span>'+
+      '<span style="font-size:11px;color:'+(fsig.supervisor?'#059669':'#B45309')+'">'+(fsig.supervisor?'✓ '+fsig.supervisor.by:form.signatures[1].label+' — pending')+'</span>'+
+      '</div></div>':'')+
+
+    // quality verify, then approve
+    '<div>'+
+      '<button class="btn '+(verified?'btn-outline':(canVerify?'btn-success':'btn-outline'))+'" style="width:100%;margin-bottom:8px" '+
+        ((canVerify&&!verified)?'':'disabled')+' onclick="qcVerify(\''+t.id+'\')">'+
+        (verified?'✓ Verified — '+(t.qualityVerifiedBy||'')+' · '+(t.qualityVerifiedAt||'')
+          :(canVerify?'🧪 Verify consolidated sheet':'Waiting for the inspection form to be approved'))+
       '</button>'+
       '<div style="display:flex;gap:8px">'+
         '<button class="btn '+(verified?'btn-success':'btn-outline')+'" style="flex:1" '+(verified?'':'disabled')+
@@ -21956,9 +21941,10 @@ function _qcCard(t){
 }
 function qcVerify(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  if(!_chkRequiredDone(t)){
-    var miss=_chkItems().filter(function(x){return x.req&&!_chkGet(t)[x.id];}).map(function(x){return x.label;});
-    toast('Complete required items: '+miss.join(', '),'err');return;
+  var _f=_formFor(t);
+  if(_f){
+    var _s=_formState(t,_f).signatures||{};
+    if(!(_s.officer&&_s.supervisor)){toast('نموذج '+_f.title+' لم يُعتمد بعد','err');return;}
   }
   requirePwd('🧪 Verify quality — '+id,function(){
     t.qualityVerified=true;
@@ -22273,7 +22259,7 @@ function openInspectionForm(id,formId){
         '<div style="font-size:11.5px;font-weight:800;color:'+(s?'#059669':'var(--t2)')+'">'+(s?'✓ ':'')+sg.label+'</div>'+
         (s?'<div style="font-size:10.5px;color:var(--t2);margin-top:3px">'+s.by+'<br>'+s.at+'</div>'
           :(mine
-            ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px" onclick="_formSign(\''+id+'\',\''+form.id+'\',\''+sg.id+'\')">توقيع</button>'
+            ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px" onclick="_formSign(\''+id+'\',\''+form.id+'\',\''+sg.id+'\')">اعتماد</button>'
             :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">'+(RL[sg.role]||sg.role)+' فقط</div>'))+
         '</div>';
     }).join('')+'</div>'+
@@ -22409,6 +22395,159 @@ function printInspectionForm(id,fid){
     '</body></html>');
   w.document.close();
   audit('FORM_PRINT',form.doc,id);
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// FINAL SHEET — the full working sheet: every priced line with all its
+// columns, editable (qty / rate / applied) with a written justification,
+// then Finance and Manager approve. Locked once fully approved.
+// ══════════════════════════════════════════════════════════════════
+function openFinalSheet(id){
+  S._sheetTrip=id;
+  nav('final_sheet');
+}
+function rFinalSheet(){
+  var c=document.getElementById('content');if(!c)return;
+  var id=S._sheetTrip;
+  var t=id?S.trips.find(function(x){return x.id===id;}):null;
+  if(!t){
+    // no trip picked: list everything waiting on a sheet
+    var pend=(S.trips||[]).filter(function(x){return x.contract&&(x.status==='completed'||x.review);});
+    c.innerHTML=ph('🧾 Final Sheets','Review, adjust and approve before billing','')+
+      (pend.length?'<div class="card"><div style="overflow-x:auto"><table class="tbl"><thead><tr>'+
+        '<th>Date</th><th>Trip</th><th>Customer</th><th>Truck</th><th>KM</th><th>Total</th><th>Approval</th><th></th></tr></thead><tbody>'+
+        pend.slice().reverse().map(function(x){
+          var st=_apvStatusOf(x);var rv=x.review||{};
+          return '<tr><td style="font-size:11px">'+((x.contract||{}).date||'')+'</td>'+
+            '<td style="font-weight:700">'+x.id+'</td><td>'+x.customer+'</td>'+
+            '<td style="font-size:11px">'+(x.truck||'—')+'</td>'+
+            '<td style="text-align:center">'+_shipTripKm(x)+'</td>'+
+            '<td style="font-weight:700">'+(+(rv.total||x.cost)||0).toLocaleString()+'</td>'+
+            '<td><span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></td>'+
+            '<td><button class="btn btn-primary btn-sm" onclick="openFinalSheet(\''+x.id+'\')">Open sheet ›</button></td></tr>';
+        }).join('')+'</tbody></table></div></div>'
+        :_emptyState('🧾','No sheets yet','Sheets appear when a shipment completes its workflow.',''));
+    return;
+  }
+  var rv=_finalSheet(t,true);
+  var st=_apvStatusOf(t);
+  var locked=_apvLocked(t);
+  var ct=t.contract||{};
+  var steps=_apvSteps();
+  var num=function(v){return (+v||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2});};
+
+  c.innerHTML=
+    ph('🧾 Final Sheet — '+t.id, t.customer+' · '+(ct.transactionType||t.dir||'')+' · '+(t.truckType||'')+' · '+_shipTripKm(t)+' km',
+      '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
+      '<button class="btn btn-outline btn-sm" onclick="S._sheetTrip=null;rFinalSheet()">‹ All sheets</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="exportBillingSheet([S.trips.find(function(x){return x.id===\''+t.id+'\';})])">⬇ Export</button>'+
+      (st.key==='approved'&&can('all')?'<button class="btn btn-outline btn-sm" onclick="_apvReopen(\''+t.id+'\')">↺ Reopen</button>':'')+
+      '</div>')+
+
+    // status + approval bar
+    '<div class="card" style="margin-bottom:14px">'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:'+(steps.length?'12px':'0')+'">'+
+        '<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+        (locked?'<span style="font-size:11.5px;color:#059669;font-weight:700">🔒 Locked — approved</span>':
+          '<span style="font-size:11.5px;color:var(--t2)">Adjust any line below, then approve</span>')+
+        (rv.missingRates?'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:#FEF2F2;color:#DC2626">⚠ '+rv.missingRates+' line(s) with no rate</span>':'')+
+      '</div>'+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
+      steps.map(function(s){
+        var a=(rv.approvals||{})[s.id];
+        return '<div style="flex:1;min-width:190px;border:1.5px solid '+(a?'#A7F3D0':'var(--bd)')+';background:'+(a?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:10px 12px">'+
+          '<div style="font-size:12px;font-weight:800;color:'+(a?'#059669':'var(--t2)')+'">'+(a?'✓ ':'')+s.label+'</div>'+
+          (a?'<div style="font-size:11px;color:var(--t2);margin-top:3px">'+a.by+' · '+a.at+'</div>'
+            :(_apvCanApprove(s)
+              ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:7px" onclick="_apvApprove(\''+t.id+'\',\''+s.id+'\')">Approve as '+s.label+'</button>'
+              :'<div style="font-size:11px;color:var(--t3);margin-top:5px">'+(s.roles||[]).map(function(r){return RL[r]||r;}).join(' / ')+' only</div>'))+
+          '</div>';
+      }).join('')+'</div></div>'+
+
+    // the sheet itself — every column
+    '<div class="card" style="padding:0;overflow:hidden">'+
+    '<div style="overflow-x:auto"><table class="tbl" style="font-size:11px;min-width:1500px">'+
+    '<thead><tr>'+
+      '<th style="width:52px">Apply</th><th>Date</th><th>Trip</th><th>Customer</th><th>Code</th>'+
+      '<th>Truck</th><th>Type</th><th>Driver</th><th>Tx</th>'+
+      '<th>Item</th><th>Service</th><th style="min-width:210px">Description</th>'+
+      '<th>From</th><th>To</th><th>Odo From</th><th>Odo To</th><th>Leg KM</th><th>Band</th>'+
+      '<th>UM</th><th style="width:70px">Qty</th><th style="width:90px">Rate</th><th style="width:100px">Amount</th>'+
+      '<th style="min-width:180px">Justification</th>'+
+    '</tr></thead><tbody>'+
+    (rv.lines.length?rv.lines.map(function(l,i){
+      var ex=l.excluded;
+      var edited=l.qtyEdited||l.rateEdited;
+      return '<tr style="'+(ex?'opacity:.55;background:#FEF2F2':(edited?'background:#FFFBEB':''))+'">'+
+        '<td style="text-align:center"><input type="checkbox" '+(ex?'':'checked')+(locked?' disabled':'')+
+          ' onchange="_apvToggle(\''+t.id+'\','+i+',this.checked)" style="width:16px;height:16px;cursor:'+(locked?'not-allowed':'pointer')+'"/></td>'+
+        '<td>'+(ct.date||'')+'</td><td style="font-weight:700">'+t.id+'</td>'+
+        '<td>'+t.customer+'</td><td>'+_custCode(t.customer)+'</td>'+
+        '<td>'+(t.truck||'—')+'</td><td>'+(t.truckType||'')+'</td><td>'+(t.driver||'—')+'</td>'+
+        '<td>'+(ct.transactionType||t.dir||'')+'</td>'+
+        '<td style="font-weight:700;color:var(--c1)">'+(l.scm||'—')+'</td>'+
+        '<td>'+l.service+'</td>'+
+        '<td>'+l.desc+(l.missingRate?'<div style="color:#DC2626;font-size:10px">⚠ no rate in card</div>':'')+'</td>'+
+        '<td>'+(l.legFrom||'—')+'</td><td>'+(l.legTo||'—')+'</td>'+
+        '<td style="text-align:center">'+(l.odoFrom!==''&&l.odoFrom!==undefined?l.odoFrom:'—')+'</td>'+
+        '<td style="text-align:center">'+(l.odoTo!==''&&l.odoTo!==undefined?l.odoTo:'—')+'</td>'+
+        '<td style="text-align:center;font-weight:700">'+(l.legKm!==''&&l.legKm!==undefined?l.legKm:'—')+'</td>'+
+        '<td>'+(l.band||'—')+'</td><td style="text-align:center">'+l.um+'</td>'+
+        '<td><input type="number" min="0" step="0.5" value="'+l.qty+'" '+(locked||ex?'disabled':'')+
+          ' onchange="_sheetEdit(\''+t.id+'\','+i+',\'qty\',this.value)" style="width:62px;padding:4px;border:1.5px solid '+(l.qtyEdited?'#F59E0B':'var(--bd)')+';border-radius:6px;font-size:11px;text-align:center;background:var(--bg);color:var(--t)"/></td>'+
+        '<td><input type="number" min="0" step="0.01" value="'+l.rate+'" '+(locked||ex?'disabled':'')+
+          ' onchange="_sheetEdit(\''+t.id+'\','+i+',\'rate\',this.value)" style="width:82px;padding:4px;border:1.5px solid '+(l.rateEdited?'#F59E0B':'var(--bd)')+';border-radius:6px;font-size:11px;text-align:center;background:var(--bg);color:var(--t)"/></td>'+
+        '<td style="text-align:right;font-weight:800;'+(ex?'text-decoration:line-through':'')+'">'+num(l.amount)+'</td>'+
+        '<td style="font-size:10.5px;color:'+(l.justification?'#B45309':'var(--t3)')+'">'+
+          (l.justification?'✎ '+l.justification+(l.excludedBy||l.editedBy?'<div style="color:var(--t3)">— '+(l.excludedBy||l.editedBy)+'</div>':''):'—')+'</td>'+
+      '</tr>';
+    }).join('')
+      :'<tr><td colspan="23" style="text-align:center;color:var(--t3);padding:18px">No contract lines — this customer is priced by formula ('+num(rv.formulaCost)+').</td></tr>')+
+    '</tbody>'+
+    '<tfoot><tr style="background:var(--bg);font-weight:800">'+
+      '<td colspan="21" style="text-align:right">Services applied</td>'+
+      '<td style="text-align:right">'+num(rv.servicesTotal)+'</td><td></td></tr>'+
+      (rv.excludedTotal?'<tr style="color:#B45309"><td colspan="21" style="text-align:right">Not applied</td>'+
+        '<td style="text-align:right">−'+num(rv.excludedTotal)+'</td><td></td></tr>':'')+
+      '<tr><td colspan="21" style="text-align:right">Reimbursed expenses</td>'+
+        '<td style="text-align:right">'+num(rv.expenses)+'</td><td></td></tr>'+
+      '<tr style="background:var(--c1l);font-size:13px;font-weight:900"><td colspan="21" style="text-align:right">FINAL TOTAL</td>'+
+        '<td style="text-align:right">'+rv.currency+' '+num(rv.total)+'</td><td></td></tr>'+
+    '</tfoot></table></div></div>';
+}
+// Editing a qty or rate always records who changed it and why
+function _sheetEdit(id,i,field,val){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t||!t.review)return;
+  var l=t.review.lines[i];if(!l)return;
+  var oldVal=+l[field]||0;
+  var newVal=+val||0;
+  if(newVal===oldVal)return;
+  var cfg=_apvCfg();
+  var why=cfg.requireJustification
+    ? prompt('Change '+field+' of "'+l.desc+'" from '+oldVal+' to '+newVal+'?\n\nA justification is required and stays on the sheet.','')
+    : '';
+  if(cfg.requireJustification&&(why===null||!String(why).trim())){
+    toast('A justification is required to change a line','err');rFinalSheet();return;
+  }
+  l[field]=newVal;
+  l[field+'Edited']=true;
+  l.amount=(+l.qty||0)*(+l.rate||0);
+  l.justification=String(why||'').trim();
+  l.editedBy=S.user?S.user.name:'';
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
+    action:'🧾 '+field+' adjusted — '+(l.scm||l.desc),
+    detail:oldVal+' → '+newVal+' · '+l.justification});
+  audit('SHEET_EDIT',(l.scm||l.desc)+' '+field+' '+oldVal+'→'+newVal,id);
+  // recompute totals without rebuilding (rebuilding would discard the edit)
+  var rv=t.review;
+  rv.servicesTotal=rv.lines.filter(function(x){return !x.excluded;}).reduce(function(s,x){return s+x.amount;},0);
+  rv.excludedTotal=rv.lines.filter(function(x){return x.excluded;}).reduce(function(s,x){return s+x.amount;},0);
+  rv.total=Math.round((rv.servicesTotal+(rv.expenses||0))*100)/100;
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  toast('Line adjusted','ok');
+  rFinalSheet();
 }
 
 </script>
