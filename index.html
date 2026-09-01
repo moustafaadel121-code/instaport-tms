@@ -4718,7 +4718,7 @@ const PAGES={
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
-    {id:'trips',icon:'📋',l:'Trips'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'contract',icon:'📋',l:'Contract'},{id:'operation',icon:'📷',l:'Operations'},{id:'quality',icon:'🧪',l:'Quality'},
+    {id:'trips',icon:'📋',l:'Trips'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'operation',icon:'📷',l:'Operations'},{id:'quality',icon:'🧪',l:'Quality'},
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
     {id:'validation',icon:'✅',l:'Validation'},{id:'ai',icon:'🤖',l:'AI'},
@@ -4728,7 +4728,7 @@ const PAGES={
     {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'},
     {id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'contract',icon:'📋',l:'Contract'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -5807,7 +5807,6 @@ const ALL_PAGES_MASTER=[
   {id:'ai',          icon:'🤖',l:'AI Assistant'},
   {id:'my_trips',    icon:'🚛',l:'My Trips (Driver)'},
   {id:'operation',   icon:'📷',l:'Operations'},
-  {id:'contract',    icon:'📋',l:'Contract Shipments'},
   {id:'my_route',    icon:'🚚',l:'My Assigned Trips (Driver)'},
   {id:'nr_trip',     icon:'🔄',l:'Non-Revenue Trip'},
   {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'},
@@ -5898,7 +5897,7 @@ function nav(page){
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,fleet_map:rFleetMap,client_portal:rClientPortal,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
-    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rContract,my_route:rDriverContract,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
+    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rTrips,my_route:rDriverContract,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
@@ -8593,6 +8592,8 @@ function rTrips(){
     '<button class="btn btn-outline btn-sm" onclick="_trExportCSV()">⬇ CSV</button>'+
     '<button class="btn btn-outline btn-sm" onclick="_trExportXLS()">⬇ Excel</button>'+
     '<button class="btn btn-outline btn-sm" onclick="_trExportPDF()">⬇ PDF</button>'+
+    (canFin?'<button class="btn btn-outline btn-sm" onclick="exportDataEntrySheet()">📋 Data Entry Sheet</button>':'')+
+    (canFin?'<button class="btn btn-outline btn-sm" onclick="exportBillingSheet()">💰 Billing Sheet</button>':'')+
     '<button class="btn btn-outline btn-sm" id="tr-col-btn" onclick="_trToggleCols()">⚙ Columns</button>'+
     (canAdd?'<button class="btn btn-primary" onclick="openTrip()">+ New Shipment</button>':'')+
     '</div></div>'+
@@ -13435,8 +13436,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',contract:'Contract',my_route:'My Assigned Trips',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',contract:'&#128203;',my_route:'&#128666;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',my_route:'My Assigned Trips',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',my_route:'&#128666;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -15436,6 +15437,7 @@ function rBilling(){
     '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
     (canCreate?'<button class="btn btn-primary" onclick="openNewInvoice()">+ New Invoice</button>':'')+
     (canCreate?'<button class="btn btn-outline btn-sm" onclick="autoGenerateInvoices()">⚡ Auto-Invoice</button>':'')+
+    (canCreate?'<button class="btn btn-outline btn-sm" onclick="invoiceApprovedSheets()">🧾 From Approved Sheets</button>':'')+
     (canCreate?'<button class="btn btn-outline btn-sm" onclick="openBulkInvoiceExport()">📥 Export All</button>':'')+
     (canCreate?'<button class="btn btn-outline btn-sm" onclick="exportVATBreakdown()">📊 VAT Breakdown</button>':'')+
     (canCreate?'<button class="btn btn-outline btn-sm" onclick="exportProfitMargins()">💹 Profit Margins</button>':'')+
@@ -16009,11 +16011,38 @@ function viewInvoiceSP(id){
     '<div class="ig" style="margin-bottom:14px">'+
     [['Bill To',inv.customer],['Period',inv.period],['Due Date',inv.dueDate||'—'],['Status',(stLabel[inv.status]||inv.status)],['Created',inv.createdAt],['Created By',inv.createdBy],(inv.sentAt?['Sent',inv.sentAt]:null),(inv.paidAt?['Paid On',inv.paidAt]:null),(inv.delayedAt?['Delayed On',inv.delayedAt]:null),(inv.overdueAt?['Overdue On',inv.overdueAt]:null),(inv.finishedAt?['Closed On',inv.finishedAt]:null)].filter(Boolean).map(function(x){return'<div class="ib"><div class="ib-l">'+x[0]+'</div><div class="ib-v">'+x[1]+'</div></div>';}).join('')+
     '</div>'+
-    '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Line Items ('+inv.tripIds.length+' trips)</div>'+
-    '<table class="tbl" style="margin-bottom:12px"><thead><tr><th>Trip</th><th>Description</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+
-    (inv.lineItems||[]).slice(0,12).map(function(li){return'<tr><td style="font-size:11px;color:var(--c1);font-weight:700">'+li.tripId+'</td><td style="font-size:11px">'+li.desc+'</td><td style="text-align:right;font-weight:700">EGP '+li.amount+'</td></tr>';}).join('')+
-    ((inv.lineItems||[]).length>12?'<tr><td colspan="3" style="font-size:11px;color:var(--t2)">+'+(inv.lineItems.length-12)+' more…</td></tr>':'')+
+    // Approval trail — these are the signatures that released the invoice
+    (inv.approvals&&Object.keys(inv.approvals).length
+      ?'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:10px;padding:9px 12px;margin-bottom:12px">'+
+       '<div style="font-size:11px;font-weight:800;color:#059669;margin-bottom:5px">✅ Approved final sheet</div>'+
+       Object.keys(inv.approvals).map(function(k){var a=inv.approvals[k];
+         return '<div style="font-size:11px;color:var(--t2)">'+k+': <b style="color:var(--t)">'+a.by+'</b> · '+a.at+'</div>';}).join('')+
+       '</div>':'')+
+    '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Line Items ('+inv.tripIds.length+' trip'+(inv.tripIds.length>1?'s':'')+')</div>'+
+    '<table class="tbl" style="margin-bottom:12px"><thead><tr>'+
+      (inv.fromSheet?'<th>Item</th>':'<th>Trip</th>')+'<th>Description</th>'+
+      (inv.fromSheet?'<th style="text-align:center">Qty</th><th style="text-align:right">Rate</th>':'')+
+      '<th style="text-align:right">Amount</th></tr></thead><tbody>'+
+    (inv.lineItems||[]).slice(0,20).map(function(li){
+      return '<tr>'+
+        (inv.fromSheet
+          ?'<td style="font-size:10.5px;color:var(--c1);font-weight:700">'+(li.scm||'—')+'</td>'
+          :'<td style="font-size:11px;color:var(--c1);font-weight:700">'+li.tripId+'</td>')+
+        '<td style="font-size:11px">'+li.desc+
+          (li.leg?'<div style="font-size:9.5px;color:var(--t3)">'+li.leg+'</div>':'')+'</td>'+
+        (inv.fromSheet?'<td style="text-align:center;font-size:11px">'+(li.qty||1)+'</td><td style="text-align:right;font-size:11px">'+(+li.rate||0).toLocaleString()+'</td>':'')+
+        '<td style="text-align:right;font-weight:700">EGP '+li.amount+'</td></tr>';
+    }).join('')+
+    ((inv.lineItems||[]).length>20?'<tr><td colspan="'+(inv.fromSheet?5:3)+'" style="font-size:11px;color:var(--t2)">+'+(inv.lineItems.length-20)+' more…</td></tr>':'')+
     '</tbody></table>'+
+    // Services the reviewer did not apply, with their justification
+    ((inv.notApplied||[]).length
+      ?'<div style="background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:9px 12px;margin-bottom:12px">'+
+       '<div style="font-size:11px;font-weight:800;color:#B45309;margin-bottom:5px">Not applied ('+inv.notApplied.length+')</div>'+
+       inv.notApplied.map(function(d){
+         return '<div style="font-size:11px;color:var(--t2);padding:2px 0"><b>'+(d.scm||'')+'</b> '+d.desc+' — <span style="text-decoration:line-through">'+d.amount.toLocaleString()+'</span>'+
+           (d.justification?'<div style="font-size:10px;color:#B45309">✎ '+d.justification+(d.by?' — '+d.by:'')+'</div>':'')+'</div>';}).join('')+
+       '</div>':'')+
     '<div style="background:var(--bg);border-radius:10px;padding:12px;margin-bottom:14px">'+
     '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px"><span style="color:var(--t2)">Subtotal</span><span style="font-weight:700">EGP '+(inv.subtotal||0).toLocaleString()+'</span></div>'+
     '<div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:8px"><span style="color:var(--t2)">VAT ('+inv.taxRate+'%)</span><span style="font-weight:700">EGP '+(inv.tax||0).toLocaleString()+'</span></div>'+
@@ -20542,9 +20571,8 @@ function openShipmentRequest(editId){
   // ── Origin
   '<div class="frow"><div class="fg"><label>From EPX Site</label><input id="sr-fromsite" value="'+(c.fromSite||'')+'" placeholder="e.g. Site 5 - Obour"/></div>'+
   '<div class="fg"><label>From Other Location</label><input id="sr-fromother" value="'+(c.fromOther||'')+'" placeholder="if not an EPX site"/></div></div>'+
-  '<div class="frow"><div class="fg"><label>Start Loading</label><select id="sr-startload">'+opt(LOADING_TYPES,c.startLoading)+'</select></div>'+
-  '<div class="fg"><label>Start KM</label><input type="number" id="sr-startkm" value="'+(c.startKm!==undefined?c.startKm:'')+'"/></div>'+
-  '<div class="fg"><label>Start Time</label><input type="time" id="sr-starttime" value="'+(c.startTime||'')+'"/></div></div>'+
+  '<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:8px 11px;font-size:11px;color:var(--t2);margin-bottom:12px">'+
+    '<span>🚚</span><span>Start KM, start time and each stop\'s odometer &amp; times are recorded by the driver on the road.</span></div>'+
 
   // ── Destinations (max 15)
   '<div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">'+
@@ -20615,22 +20643,23 @@ function _srRenderDests(){
   var el=document.getElementById('sr-dests');if(!el)return;
   var cnt=document.getElementById('sr-dcount');
   if(cnt)cnt.textContent='('+window._srDests.length+' of '+MAX_DESTINATIONS+')';
+  // Planning only: where to go and what happens there. Odometer readings and
+  // times are captured by the driver at each stop.
   el.innerHTML=window._srDests.map(function(d,i){
     return '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;flex-wrap:wrap">'+
       '<span style="font-size:11px;font-weight:800;color:var(--c1);width:22px;padding-bottom:9px">'+(i+1)+'</span>'+
-      '<div class="fg" style="flex:2;min-width:130px;margin:0"><input id="srd-n'+i+'" value="'+(d.name||'')+'" placeholder="Destination '+(i+1)+'" onchange="window._srDests['+i+'].name=this.value"/></div>'+
-      '<div class="fg" style="flex:1;min-width:96px;margin:0"><select id="srd-l'+i+'" onchange="window._srDests['+i+'].loading=this.value">'+
+      '<div class="fg" style="flex:2;min-width:150px;margin:0"><input id="srd-n'+i+'" value="'+(d.name||'')+'" placeholder="Destination '+(i+1)+'" onchange="window._srDests['+i+'].name=this.value"/></div>'+
+      '<div class="fg" style="flex:1;min-width:120px;margin:0"><select id="srd-l'+i+'" onchange="window._srDests['+i+'].loading=this.value">'+
         LOADING_TYPES.map(function(x){return '<option'+(d.loading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
-      '<div class="fg" style="width:84px;margin:0"><input type="number" id="srd-k'+i+'" value="'+(d.km!==undefined?d.km:'')+'" placeholder="KM" onchange="window._srDests['+i+'].km=this.value"/></div>'+
-      '<div class="fg" style="width:96px;margin:0"><input type="time" id="srd-t'+i+'" value="'+(d.departTime||'')+'" onchange="window._srDests['+i+'].departTime=this.value"/></div>'+
       '<span onclick="_srDelDest('+i+')" style="cursor:pointer;color:#EF4444;font-size:17px;padding:0 4px 8px">×</span></div>';
   }).join('');
 }
 function _srCollect(){
   var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
   var ck=function(id){var e=document.getElementById(id);return !!(e&&e.checked);};
+  // Keep any readings the driver already recorded; the form only sets the plan
   window._srDests.forEach(function(d,i){
-    d.name=g('srd-n'+i);d.loading=g('srd-l'+i);d.km=g('srd-k'+i);d.departTime=g('srd-t'+i);
+    d.name=g('srd-n'+i);d.loading=g('srd-l'+i)||d.loading||'Unloading';
   });
   return {
     date:g('sr-date'),supervisor:g('sr-sup'),
@@ -20642,7 +20671,7 @@ function _srCollect(){
     express:ck('sr-express'),emergency:ck('sr-emerg'),nonRevenue:ck('sr-nonrev'),
     tailLift:ck('sr-tail'),upaDelivery:ck('sr-upa'),truckBilling:g('sr-billing'),
     fromSite:g('sr-fromsite'),fromOther:g('sr-fromother'),
-    startLoading:g('sr-startload'),startKm:g('sr-startkm'),startTime:g('sr-starttime'),
+
     destinations:window._srDests.filter(function(d){return d.name;}),
     notes:g('sr-notes'),expenses:{}
   };
@@ -20690,6 +20719,10 @@ function _srSubmit(){
   t.from=f.fromSite||f.fromOther||'';
   t.dests=f.destinations.map(function(d){return d.name;}).join(' > ');
   t.destsArr=f.destinations.map(function(d){return d.name;});
+  var _keep=t.contract||{};
+  ['startKm','startTime','startLoading','actualStartTime','startLocation','endKm','endTime'].forEach(function(k){
+    if(f[k]===undefined&&_keep[k]!==undefined)f[k]=_keep[k];
+  });
   t.contract=f;
   if(!editing)t.status='in_progress';
   t.km=_shipTripKm(t);
@@ -20830,7 +20863,7 @@ function _drvTripCard(t){
         '</div></div>')+
     // Destinations
     '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Destinations</div>'+
-    ds.map(function(d,i){return _drvDestRow(t,d,i,started);}).join('')+
+    (function(){var act=ds.findIndex(function(x){return !x.completed;});return ds.map(function(d,i){return _drvDestRow(t,d,i,started,i===act);}).join('');})()+
     // Trip end
     (done===ds.length&&ds.length&&started
       ? '<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 12px;margin-top:10px">'+
@@ -20842,34 +20875,73 @@ function _drvTripCard(t){
       : '')+
   '</div>';
 }
-function _drvDestRow(t,d,i,started){
+function _drvDestRow(t,d,i,started,isActive){
   var ok=!!d.completed;
-  return '<div style="border:1.5px solid '+(ok?'#A7F3D0':'var(--bd)')+';background:'+(ok?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
-    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:'+(ok?'4px':'8px')+'">'+
-      '<div style="font-size:13px;font-weight:700">'+(ok?'✅ ':'')+(i+1)+'. '+(d.name||'—')+'</div>'+
-      (ok?'<span style="font-size:10.5px;color:#059669;font-weight:700">'+(d.loading||'')+'</span>':'')+
-    '</div>'+
-    (ok
-      ? '<div style="font-size:11px;color:var(--t2);line-height:1.7">'+
-        '🕒 Arrived '+(d.arriveTime||'—')+' · Departed '+(d.departTime||'—')+' &nbsp; 📏 KM <b>'+(d.km||'—')+'</b>'+
+  var big='width:100%;padding:12px;border:1.5px solid var(--bd);border-radius:10px;font-size:16px;font-weight:600;text-align:center;background:var(--bg);color:var(--t)';
+  // Completed stop — collapses to a summary so the screen stays readable
+  if(ok){
+    return '<div style="border:1.5px solid #A7F3D0;background:#F0FDF4;border-radius:12px;padding:10px 13px;margin-bottom:8px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px">'+
+        '<div style="font-size:13.5px;font-weight:700;color:#065F46">✅ '+(i+1)+'. '+(d.name||'—')+'</div>'+
+        '<span style="font-size:10.5px;font-weight:700;color:#059669;background:#DCFCE7;padding:2px 9px;border-radius:20px">'+(d.loading||'')+'</span>'+
+      '</div>'+
+      '<div style="font-size:11.5px;color:var(--t2);margin-top:5px;line-height:1.7">'+
+        '🕒 '+(d.arriveTime||'—')+' → '+(d.departTime||'—')+' &nbsp;·&nbsp; 📏 <b>'+(d.km||'—')+'</b> km'+
         (d.location?'<br>📍 '+d.location:'')+
-        (d.podPhoto?'<br><img src="'+d.podPhoto+'" style="height:52px;border-radius:6px;border:1px solid #A7F3D0;margin-top:4px"/>':'')+
-        (d.podNote?'<br>📝 '+d.podNote:'')+
-        '</div>'
-      : (started
-        ? '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">'+
-          '<div class="fg" style="width:100px;margin:0"><label style="font-size:10.5px">Loading</label><select id="dd-l-'+t.id+'-'+i+'">'+
-            LOADING_TYPES.map(function(x){return '<option'+(d.loading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
-          '<div class="fg" style="width:82px;margin:0"><label style="font-size:10.5px">KM *</label><input type="number" id="dd-k-'+t.id+'-'+i+'" value="'+(d.km||'')+'"/></div>'+
-          '<div class="fg" style="width:92px;margin:0"><label style="font-size:10.5px">Arrived</label><input type="time" id="dd-a-'+t.id+'-'+i+'" value="'+(d.arriveTime||'')+'"/></div>'+
-          '<div class="fg" style="width:92px;margin:0"><label style="font-size:10.5px">Departed</label><input type="time" id="dd-d-'+t.id+'-'+i+'" value="'+(d.departTime||'')+'"/></div>'+
-          '<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 POD'+
-            '<input type="file" accept="image/*" capture="environment" style="display:none" onchange="drvPOD(\''+t.id+'\','+i+',this)"/></label>'+
-          '<button class="btn btn-success btn-sm" onclick="drvCompleteDest(\''+t.id+'\','+i+')">✓ Complete</button>'+
-          '<div id="dd-pod-'+t.id+'-'+i+'" style="width:100%"></div>'+
-        '</div>'
-        : '<div style="font-size:11px;color:var(--t3)">Start the trip first</div>'))+
+        (d.podPhoto?'<br><img src="'+d.podPhoto+'" style="height:56px;border-radius:8px;border:1px solid #A7F3D0;margin-top:5px"/>':'')+
+      '</div></div>';
+  }
+  // Trip not started, or a later stop — shown waiting, no inputs to distract
+  if(!started||!isActive){
+    return '<div style="border:1.5px dashed var(--bd);border-radius:12px;padding:10px 13px;margin-bottom:8px;opacity:.55">'+
+      '<div style="font-size:13px;font-weight:600;color:var(--t2)">'+(i+1)+'. '+(d.name||'—')+'</div>'+
+      '<div style="font-size:11px;color:var(--t3);margin-top:2px">'+(started?'Up next':'Start the trip first')+'</div></div>';
+  }
+  // The stop the driver is on right now — one focus, big touch targets
+  return '<div style="border:2px solid var(--c1);background:var(--surf);border-radius:12px;padding:14px;margin-bottom:8px;box-shadow:0 4px 16px rgba(108,63,245,.12)">'+
+    '<div style="display:flex;align-items:center;gap:9px;margin-bottom:13px">'+
+      '<span style="background:var(--c1);color:#fff;width:27px;height:27px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:800;flex-shrink:0">'+(i+1)+'</span>'+
+      '<div style="font-size:16px;font-weight:800;color:var(--t)">'+(d.name||'—')+'</div></div>'+
+
+    '<label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Odometer reading *</label>'+
+    '<input type="number" inputmode="numeric" id="dd-k-'+t.id+'-'+i+'" value="'+(d.km||'')+'" placeholder="e.g. 12055" style="'+big+';margin-bottom:13px"/>'+
+
+    '<label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Loading type</label>'+
+    '<div class="drv-load-row" data-tid="'+t.id+'" data-idx="'+i+'" style="display:flex;gap:6px;margin-bottom:13px">'+
+      LOADING_TYPES.map(function(x){
+        var on=(d.loading||'Unloading')===x;
+        return '<div class="drv-load-opt" data-v="'+x+'" onclick="_drvPickLoad(this)" style="flex:1;text-align:center;padding:12px 4px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid '+(on?'var(--c1)':'var(--bd)')+';background:'+(on?'var(--c1)':'var(--bg)')+';color:'+(on?'#fff':'var(--t2)')+'">'+x+'</div>';
+      }).join('')+
+    '</div>'+
+
+    '<div style="display:flex;gap:8px;margin-bottom:13px">'+
+      '<div style="flex:1"><label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Arrived</label>'+
+        '<input type="time" id="dd-a-'+t.id+'-'+i+'" value="'+(d.arriveTime||'')+'" style="'+big+'"/>'+
+        '<button class="btn btn-outline btn-sm" style="width:100%;margin-top:5px" onclick="_drvNow(\'dd-a-'+t.id+'-'+i+'\')">now</button></div>'+
+      '<div style="flex:1"><label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Departed</label>'+
+        '<input type="time" id="dd-d-'+t.id+'-'+i+'" value="'+(d.departTime||'')+'" style="'+big+'"/>'+
+        '<button class="btn btn-outline btn-sm" style="width:100%;margin-top:5px" onclick="_drvNow(\'dd-d-'+t.id+'-'+i+'\')">now</button></div>'+
+    '</div>'+
+
+    '<div id="dd-pod-'+t.id+'-'+i+'" style="margin-bottom:8px">'+(d.podPhoto?'<img src="'+d.podPhoto+'" style="height:60px;border-radius:8px;border:1px solid var(--bd)"/>':'')+'</div>'+
+    '<label class="btn btn-outline" style="width:100%;cursor:pointer;margin-bottom:9px;padding:13px;display:block;text-align:center">📷 '+(d.podPhoto?'Retake POD photo':'Take POD photo')+
+      '<input type="file" accept="image/*" capture="environment" style="display:none" onchange="drvPOD(\''+t.id+'\','+i+',this)"/></label>'+
+    '<button class="btn btn-success" style="width:100%;padding:14px;font-size:15px" onclick="drvCompleteDest(\''+t.id+'\','+i+')">✓ Complete this stop</button>'+
   '</div>';
+}
+// Loading-type picker (radio-style tiles) and a one-tap "now" time filler
+function _drvPickLoad(el){
+  var row=el.parentNode;
+  row.querySelectorAll('.drv-load-opt').forEach(function(o){
+    o.style.border='1.5px solid var(--bd)';o.style.background='var(--bg)';o.style.color='var(--t2)';
+  });
+  el.style.border='1.5px solid var(--c1)';el.style.background='var(--c1)';el.style.color='#fff';
+  row.dataset.picked=el.dataset.v;
+}
+function _drvNow(id){
+  var e=document.getElementById(id);if(!e)return;
+  var d=new Date();
+  e.value=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
 }
 function drvStartTrip(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
@@ -20926,7 +20998,8 @@ function drvCompleteDest(id,i){
   var prevKm=i===0?(+c.startKm||0):(+((c.destinations[i-1]||{}).km)||0);
   if(km<prevKm){toast('KM ('+km+') cannot be less than the previous reading ('+prevKm+')','err');return;}
   var now=new Date();
-  d.loading=g('l')||'Unloading';
+  var _lr=document.querySelector('.drv-load-row[data-tid="'+id+'"][data-idx="'+i+'"]');
+  d.loading=(_lr&&_lr.dataset.picked)||d.loading||'Unloading';
   d.km=km;
   d.arriveTime=g('a')||now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
   d.departTime=g('d')||'';
@@ -21447,6 +21520,7 @@ function _apvApprove(id,stepId){
     var st=_apvStatusOf(t);
     t.review.status=st.key;
     if(st.key==='approved'){t.review.approvedTotal=rv.total;t.cost=rv.total;}
+    if(st.key==='approved'){try{_invFromSheet(t);toast('📄 Invoice created from the approved sheet','ok');}catch(e){console.warn('invoice',e);}}
     if(!t.tl)t.tl=[];
     t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
       action:'✅ '+step.label+' approved final sheet',detail:rv.currency+' '+rv.total.toLocaleString()});
@@ -21518,6 +21592,69 @@ function _apvStepDel(i){
   var c=_apvCfg();if(c.steps.length<2){toast('Keep at least one approval step','err');return;}
   if(!confirm('Remove the "'+c.steps[i].label+'" step?'))return;
   c.steps.splice(i,1);_apvSave();rAdminOperations();
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// APPROVED SHEET → INVOICE
+// Once every approval step signs off, the final sheet becomes an invoice
+// carrying its priced lines (item codes, legs, quantities) so Finance can
+// review the same numbers they approved.
+// ══════════════════════════════════════════════════════════════════
+function _invFromSheet(t){
+  if(!t||!t.review)return null;
+  if(_apvStatusOf(t).key!=='approved')return null;
+  if(!S.invoices)S.invoices=[];
+  var cfg=S.billingConfig||{};
+  var rv=t.review;
+  var applied=(rv.lines||[]).filter(function(l){return !l.excluded;});
+  var sub=+rv.total||0;
+  var tax=sub*(cfg.taxRate||14)/100;
+  var due=new Date();due.setDate(due.getDate()+(cfg.paymentTermsDays||30));
+  var lineItems=applied.map(function(l){
+    return {tripId:t.id,scm:l.scm||'',desc:l.desc,um:l.um,qty:l.qty,rate:l.rate,
+      amount:Math.round(l.amount*100)/100,
+      leg:(l.legFrom?l.legFrom+' → '+l.legTo+' · '+l.legKm+' km':''),band:l.band||''};
+  });
+  if(rv.expenses>0){
+    lineItems.push({tripId:t.id,scm:'',desc:'Reimbursed expenses (petty cash)',um:'EA',qty:1,
+      rate:rv.expenses,amount:rv.expenses,leg:'',band:''});
+  }
+  var dropped=(rv.lines||[]).filter(function(l){return l.excluded;}).map(function(l){
+    return {scm:l.scm||'',desc:l.desc,amount:l.amount,justification:l.justification||'',by:l.excludedBy||''};
+  });
+  var existing=S.invoices.find(function(i){return (i.tripIds||[]).indexOf(t.id)>-1;});
+  var payload={
+    customer:t.customer,customerCode:_custCode(t.customer),
+    period:new Date().toLocaleDateString('en-GB',{month:'short',year:'numeric'}),
+    tripIds:[t.id],lineItems:lineItems,notApplied:dropped,
+    subtotal:sub.toFixed(2),tax:tax.toFixed(2),total:+(sub+tax).toFixed(2),
+    dueDate:due.toISOString().slice(0,10),
+    approvals:JSON.parse(JSON.stringify(rv.approvals||{})),
+    fromSheet:true
+  };
+  if(existing){
+    Object.assign(existing,payload);
+    existing.updatedAt=new Date().toLocaleString('en-GB');
+  }else{
+    S.invoices.unshift(Object.assign({
+      id:(cfg.invoicePrefix||'INV')+'-'+t.id,status:'draft',
+      createdAt:new Date().toLocaleString('en-GB'),
+      createdBy:S.user?S.user.name:'System',autoGenerated:true
+    },payload));
+  }
+  try{localStorage.setItem('ip_invoices',JSON.stringify(S.invoices.slice(0,500)));}catch(e){}
+  _lcSave&&_lcSave();
+  return existing||S.invoices[0];
+}
+// Rebuild invoices for every approved sheet (used by the Invoices toolbar)
+function invoiceApprovedSheets(){
+  var done=(S.trips||[]).filter(function(t){return t.review&&_apvStatusOf(t).key==='approved';});
+  if(!done.length){toast('No approved final sheets yet','err');return;}
+  var n=0;done.forEach(function(t){if(_invFromSheet(t))n++;});
+  audit('INVOICE_FROM_SHEET',n+' invoice(s)','');
+  if(S.page==='billing')rBilling();
+  toast('📄 '+n+' invoice(s) generated from approved sheets','ok');
 }
 
 </script>
