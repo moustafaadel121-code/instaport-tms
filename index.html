@@ -5952,7 +5952,23 @@ function applyTheme(){
 // ══════════════════════════════════════════════════
 // TRIP COST CALCULATOR (Per Customer Modifiers)
 // ══════════════════════════════════════════════════
-function calcTripCost(customer,km,type,condition,stops,waitHours,truckType,cargoWeight,planId){
+function calcTripCost(customer,km,type,condition,stops,waitHours,truckType,cargoWeight,planId,tripRef){
+  // ── SLA contract customers are billed from their rate card, not the formula ──
+  if(typeof _slaActive==='function'&&_slaActive(customer)){
+    var _t=tripRef||{customer:customer,km:km,truckType:truckType,type:type};
+    var _r=calcSLA(_t);
+    if(_r){
+      var _bd={};
+      _r.lines.forEach(function(l){
+        var k=(l.scm?l.scm+' · ':'')+l.desc+(l.qty>1?' ×'+l.qty:'');
+        _bd[k]=Math.round(l.amount*100)/100;
+      });
+      if(_r.expenses>0)_bd['Reimbursed expenses (petty cash)']=Math.round(_r.expenses*100)/100;
+      return {cost:_r.total,co2:Math.round((+km||0)*(S.priceModifiers.co2Rate||0.258)*100)/100,
+              breakdown:_bd,effectiveRate:km>0?Math.round(_r.total/km*100)/100:0,
+              sla:_r,mode:'sla'};
+    }
+  }
   var m=S.custModifiers[customer];
   if(!m)return {cost:0,co2:0,breakdown:{},effectiveRate:8};
   // Use specific price list if planId given, else use active list
@@ -9421,6 +9437,7 @@ function rAdmin(){
   '<div class="tab'+(tab==='customers'?' on':'')+'" onclick="S.adminTab=\'customers\';rAdmin()">🏢 Customers</div>'+
   '<div class="tab'+(tab==='trucks'?' on':'')+'" onclick="S.adminTab=\'trucks\';rAdmin()">🚛 Trucks</div>'+
   '<div class="tab'+(tab==='pricing'?' on':'')+'" onclick="S.adminTab=\'pricing\';rAdmin()">💰 Pricing</div>'+
+  '<div class="tab'+(tab==='sla'?' on':'')+'" onclick="S.adminTab=\'sla\';rAdmin()">📑 SLA Rates</div>'+
   '<div class="tab'+(tab==='rbac'?' on':'')+'" onclick="S.adminTab=\'rbac\';rAdmin()">🔐 Role Access</div>'+
   '<div class="tab'+(tab==='pages'?' on':'')+'" onclick="S.adminTab=\'pages\';rAdmin()">📋 Page Access</div>'+
   '<div class="tab'+(tab==='dashboard'?' on':'')+'" onclick="S.adminTab=\'dashboard\';rAdmin()">📊 Dashboard</div>'+
@@ -9437,7 +9454,7 @@ function rAdmin(){
   '<div class="tab'+(tab==='operations'?' on':'')+'" onclick="S.adminTab=\'operations\';rAdmin()">📷 Operations</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity,workflow:rAdminWorkflow,operations:rAdminOperations};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity,workflow:rAdminWorkflow,operations:rAdminOperations,sla:rAdminSLA};
   (fn[tab]||rAdminUsers)();
 }
 
@@ -19791,6 +19808,340 @@ function _i18nAll(){
   setLang=function(l){_origSetLang(l);if(_lang!=='en')setTimeout(_i18nAll,30);};
   document.addEventListener('DOMContentLoaded',function(){if(_lang!=='en')setTimeout(_i18nAll,100);});
 })();
+
+
+// ══════════════════════════════════════════════════════════════════
+// SLA RATE CARDS — contract billing (Novartis-style banded rate cards)
+// Model: rate = f(service, truckType, kmBand). Every billable line
+// carries the customer's item code (e.g. SCM-2595) so exports match
+// the customer's own SLA sheet 1:1.
+// Works alongside the formula engine: each customer picks a mode.
+// ══════════════════════════════════════════════════════════════════
+var SLA_SERVICES=[
+  {id:'trip',           label:'Truck Trip',            um:'TR', perTruck:true},
+  {id:'overnight',      label:'Overnight',             um:'EA', perTruck:true},
+  {id:'extra_day',      label:'Extra Day',             um:'EA', perTruck:true},
+  {id:'cancellation',   label:'Cancellation',          um:'TR', perTruck:true},
+  {id:'manpower',       label:'Man Power',             um:'EA', perTruck:false},
+  {id:'representative', label:'Representative',        um:'EA', perTruck:false},
+  {id:'extra_hour_rep', label:'Extra Hour Representative', um:'Hr', perTruck:false, flat:true}
+];
+// Novartis contract bands (upper bounds are inclusive per the SLA notes)
+var SLA_DEFAULT_BANDS=[
+  {id:'b1',label:'Up To 75 KM',      min:0,   max:80},
+  {id:'b2',label:'75 KM To 150 KM',  min:80,  max:155},
+  {id:'b3',label:'150 KM To 300 KM', min:155, max:305},
+  {id:'b4',label:'300 KM To 500 KM', min:305, max:505},
+  {id:'b5',label:'500 KM To 700 KM', min:505, max:705},
+  {id:'b6',label:'700 KM To 1000 KM',min:705, max:1005}
+];
+var SLA_DEFAULT_TRUCKS=['Dababa','Jumbo','Actros','Trailer'];
+
+function _slaLoad(){
+  if(S.slaCards)return S.slaCards;
+  try{S.slaCards=JSON.parse(localStorage.getItem('ip_slacards')||'null');}catch(e){}
+  if(!S.slaCards)S.slaCards={};
+  return S.slaCards;
+}
+function _slaSave(){try{localStorage.setItem('ip_slacards',JSON.stringify(S.slaCards||{}));}catch(e){}}
+function _slaCard(customer){return (_slaLoad())[customer]||null;}
+function _slaActive(customer){var c=_slaCard(customer);return !!(c&&c.active);}
+
+function _slaNewCard(customer,code){
+  return {
+    customer:customer,code:code||'',currency:'EGP',active:true,
+    perLeg:true,          // price every loaded leg by its own distance band
+    emptyLegFree:true,    // empty/return legs free of charge
+    bands:SLA_DEFAULT_BANDS.map(function(b){return Object.assign({},b);}),
+    trucks:SLA_DEFAULT_TRUCKS.slice(),
+    rates:{},             // rates[service][truck||'*'][bandId||'*'] = {scm,rate}
+    notes:''
+  };
+}
+function _slaGetRate(card,service,truck,bandId){
+  var r=card.rates&&card.rates[service];if(!r)return null;
+  var byTruck=r[truck]||r['*'];if(!byTruck)return null;
+  return byTruck[bandId]||byTruck['*']||null;
+}
+function _slaSetRate(card,service,truck,bandId,scm,rate){
+  if(!card.rates)card.rates={};
+  if(!card.rates[service])card.rates[service]={};
+  if(!card.rates[service][truck])card.rates[service][truck]={};
+  card.rates[service][truck][bandId]={scm:scm||'',rate:+rate||0};
+}
+function _slaBandFor(card,km){
+  km=+km||0;
+  var bands=card.bands||SLA_DEFAULT_BANDS;
+  for(var i=0;i<bands.length;i++){if(km<=bands[i].max)return bands[i];}
+  return bands[bands.length-1];
+}
+
+// ── Core calculation ──────────────────────────────────────────────
+// trip fields used: customer, truck/truckType, legs[] (or km), reps, labors,
+// overnights, extraDays, extraRepHours, cancelled, expenses{}
+function calcSLA(trip){
+  var card=_slaCard(trip.customer);
+  if(!card||!card.active)return null;
+  var truck=trip.truckType||_slaTruckTypeOf(trip.truck)||card.trucks[0];
+  var lines=[];
+  var push=function(service,label,truckKey,band,qty,note){
+    var r=_slaGetRate(card,service,truckKey,band?band.id:'*');
+    if(!r)return;
+    qty=+qty||0;if(qty<=0)return;
+    lines.push({scm:r.scm||'',service:service,
+      desc:label+(band?' — '+band.label:''),
+      um:(SLA_SERVICES.find(function(s){return s.id===service;})||{}).um||'EA',
+      qty:qty,rate:+r.rate||0,amount:qty*(+r.rate||0),note:note||''});
+  };
+
+  // 1) Cancellation replaces the whole trip charge
+  if(trip.status==='cancelled_customer'){
+    push('cancellation',truck+' Cancellation',truck,null,1,'Cancelled by customer — all zones');
+  } else {
+    // 2) Trip legs
+    var legs=_slaLegs(trip);
+    if(card.perLeg&&legs.length){
+      legs.forEach(function(lg,i){
+        if(card.emptyLegFree&&lg.loading==='Empty')return; // free empty leg
+        push('trip',truck+' Trip (leg '+(i+1)+')',truck,_slaBandFor(card,lg.km),1,
+          lg.from+' → '+lg.to+' · '+lg.km+' km');
+      });
+    }else{
+      push('trip',truck+' Trip',truck,_slaBandFor(card,trip.km||0),1);
+    }
+  }
+
+  // 3) Crew — priced by the farthest band reached
+  var farBand=_slaBandFor(card,_slaFarthestKm(trip));
+  push('manpower','Man Power','*',farBand,trip.labors||0,'Per 8 hours');
+  push('representative','Representative','*',farBand,trip.reps||0,'Per 8 hours');
+  push('extra_hour_rep','Extra Hour Representative','*',null,trip.extraRepHours||0,'After 8 working hours');
+
+  // 4) Time-based extras
+  push('overnight',truck+' Overnight',truck,farBand,trip.overnights||0,'18:00 → 08:00');
+  push('extra_day',truck+' Extra Day',truck,farBand,trip.extraDays||0,'08:00 → 18:00 per day');
+
+  var services=lines.reduce(function(s,l){return s+l.amount;},0);
+  // 5) Reimbursed expenses (petty cash) — passed through at cost
+  var exp=_slaExpenseTotal(trip);
+  return {
+    mode:'sla',card:card.code||card.customer,currency:card.currency||'EGP',
+    lines:lines,servicesTotal:Math.round(services*100)/100,
+    expenses:exp,total:Math.round((services+exp)*100)/100,
+    truck:truck,farthestKm:_slaFarthestKm(trip)
+  };
+}
+// Legs from the destination list (start → d1 → d2 …)
+function _slaLegs(trip){
+  var ds=trip.destinations||[];
+  if(!ds.length)return [];
+  var out=[],prev=trip.from||trip.origin||'Origin',prevKm=+trip.startKm||0;
+  ds.forEach(function(d){
+    if(!d||!d.name)return;
+    var km=(d.km!==undefined&&d.km!=='')?Math.max(0,(+d.km)-prevKm):0;
+    out.push({from:prev,to:d.name,km:km,loading:d.loading||'Unloading'});
+    prev=d.name;if(d.km!==undefined&&d.km!=='')prevKm=+d.km;
+  });
+  return out;
+}
+function _slaFarthestKm(trip){
+  var legs=_slaLegs(trip);
+  if(!legs.length)return +trip.km||0;
+  return legs.reduce(function(m,l){return Math.max(m,l.km);},0);
+}
+var SLA_EXPENSE_KEYS=['cardFuel','fuel','kartat','hospitality','traffic','mashalat','parking','meal','maintenance','secondTrip','transport'];
+function _slaExpenseTotal(trip){
+  var e=trip.expenses||{};
+  return SLA_EXPENSE_KEYS.reduce(function(s,k){return s+(+e[k]||0);},0);
+}
+function _slaTruckTypeOf(plate){
+  if(!plate)return null;
+  var t=(TRUCKS||[]).find(function(x){return x.plate===plate;});
+  return t?t.type:null;
+}
+
+// ── Seed the Novartis contract (all SCM codes from the signed SLA) ──
+function _slaSeedNovartis(){
+  var cust='NOVARTIS - DISTRIBUTION';
+  var cards=_slaLoad();
+  var card=_slaNewCard(cust,'1705');
+  card.notes='Calculated per leg (stop→stop) for loaded trucks. Empty pallet trips free of charge when loaded from Site 5 en route to Novartis inbound.';
+  var B=['b1','b2','b3','b4','b5','b6'];
+  // trip rates — SCM codes exactly as in the SLA sheet
+  var tripCodes={
+    Dababa :['SCM-2595','SCM-2596','SCM-2597','SCM-2598','SCM-2599','SCM-2600'],
+    Jumbo  :['SCM-2601','SCM-2602','SCM-2603','SCM-2604','SCM-2605','SCM-2606'],
+    Actros :['SCM-2607','SCM-2608','SCM-2609','SCM-2610','SCM-2611','SCM-2612'],
+    Trailer:['SCM-2613','SCM-2614','SCM-2615','SCM-2616','SCM-2617','SCM-2618']
+  };
+  Object.keys(tripCodes).forEach(function(tk){
+    tripCodes[tk].forEach(function(scm,i){_slaSetRate(card,'trip',tk,B[i],scm,0);});
+  });
+  // cancellation (single code per truck, all zones)
+  var cancel={Dababa:'SCM-2619',Jumbo:'SCM-2625',Actros:'SCM-2631',Trailer:'SCM-2637'};
+  Object.keys(cancel).forEach(function(tk){_slaSetRate(card,'cancellation',tk,'*',cancel[tk],0);});
+  // man power / representative — per band
+  ['SCM-2669','SCM-2670','SCM-2671','SCM-2672','SCM-2673','SCM-2674']
+    .forEach(function(scm,i){_slaSetRate(card,'manpower','*',B[i],scm,0);});
+  ['SCM-2675','SCM-2676','SCM-2677','SCM-2678','SCM-2679','SCM-2680']
+    .forEach(function(scm,i){_slaSetRate(card,'representative','*',B[i],scm,0);});
+  _slaSetRate(card,'extra_hour_rep','*','*','SCM-18793',0);
+  // overnight
+  var on={
+    Dababa :['SCM-19232','SCM-19233','SCM-19234','SCM-19235','SCM-19236','SCM-19237'],
+    Jumbo  :['SCM-19238','SCM-19239','SCM-19240','SCM-19241','SCM-19242','SCM-19243'],
+    Actros :['SCM-19244','SCM-19245','SCM-19246','SCM-19247','SCM-19248','SCM-19249'],
+    Trailer:['SCM-19250','SCM-19251','SCM-19252','SCM-19253','SCM-19254','SCM-19255']
+  };
+  Object.keys(on).forEach(function(tk){on[tk].forEach(function(scm,i){_slaSetRate(card,'overnight',tk,B[i],scm,0);});});
+  // extra day
+  var ed={
+    Dababa :['SCM-19256','SCM-19257','SCM-19258','SCM-19259','SCM-19260','SCM-19261'],
+    Jumbo  :['SCM-19262','SCM-19263','SCM-19264','SCM-19265','SCM-19266','SCM-19267'],
+    Actros :['SCM-19268','SCM-19269','SCM-19270','SCM-19271','SCM-19272','SCM-19273'],
+    Trailer:['SCM-19274','SCM-19275','SCM-19276','SCM-19277','SCM-19278','SCM-19279']
+  };
+  Object.keys(ed).forEach(function(tk){ed[tk].forEach(function(scm,i){_slaSetRate(card,'extra_day',tk,B[i],scm,0);});});
+  cards[cust]=card;_slaSave();
+  return card;
+}
+
+// ══ ADMIN → Pricing: SLA rate card editor ═════════════════════════
+function rAdminSLA(){
+  var el=document.getElementById('admin-content');if(!el)return;
+  var cards=_slaLoad();
+  var sel=S._slaSel||Object.keys(cards)[0]||'';
+  // include customers that only exist as SLA cards (not yet in the customer master)
+  var allCust=(CUSTOMERS||[]).slice();
+  Object.keys(cards).forEach(function(c){if(allCust.indexOf(c)<0)allCust.push(c);});
+  allCust.sort();
+  var custOpts=allCust.map(function(c){return '<option value="'+c+'"'+(c===sel?' selected':'')+'>'+c+(cards[c]?' ✓ ('+(cards[c].code||'—')+')':'')+'</option>';}).join('');
+  var card=cards[sel];
+  el.innerHTML='<div class="card">'+
+    '<div class="card-hd"><div class="card-title">📑 SLA Rate Cards (contract billing)</div>'+
+    '<button class="btn btn-outline btn-sm" onclick="_slaSeedNovartisUI()">⚡ Load Novartis SLA</button></div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Customers on an SLA contract are billed from a rate table — <b>service × truck type × distance band</b> — each line carrying the customer\'s own item code (SCM). Customers without a card keep using the formula engine.</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'+
+      '<div class="fg" style="flex:1;min-width:220px;margin:0"><label>Customer</label>'+
+        '<select onchange="S._slaSel=this.value;rAdminSLA()"><option value="">— select —</option>'+custOpts+'</select></div>'+
+      (sel&&!card?'<button class="btn btn-primary btn-sm" onclick="_slaCreateUI()">+ Create rate card</button>':'')+
+    '</div>'+
+    (card?_slaCardEditorHTML(card):(sel?'<div style="font-size:12px;color:var(--t3)">No SLA card for this customer — they use the formula engine.</div>':''))+
+  '</div>';
+}
+function _slaCreateUI(){
+  var c=S._slaSel;if(!c)return;
+  var code=prompt('Customer code for '+c+' (e.g. 1705):','');
+  if(code===null)return;
+  _slaLoad()[c]=_slaNewCard(c,code.trim());_slaSave();rAdminSLA();
+  toast('Rate card created','ok');
+}
+function _slaSeedNovartisUI(){
+  if(!confirm('Load the Novartis SLA structure (all SCM codes, 6 distance bands, 4 truck types)?\n\nRates start at 0 — enter your contracted prices after loading.'))return;
+  var card=_slaSeedNovartis();
+  if((CUSTOMERS||[]).indexOf(card.customer)<0)CUSTOMERS.push(card.customer);
+  S._slaSel=card.customer;rAdminSLA();
+  toast('✅ Novartis SLA loaded — now enter the rates','ok');
+}
+function _slaCardEditorHTML(card){
+  var svc=S._slaSvc||'trip';
+  var s=SLA_SERVICES.find(function(x){return x.id===svc;})||SLA_SERVICES[0];
+  var rows=s.perTruck?card.trucks:['*'];
+  var bands=s.flat?[{id:'*',label:'Flat rate'}]:(svc==='cancellation'?[{id:'*',label:'All zones'}]:card.bands);
+  var filled=0,total=0;
+  SLA_SERVICES.forEach(function(sv){
+    var rr=card.rates[sv.id]||{};
+    Object.keys(rr).forEach(function(tk){Object.keys(rr[tk]).forEach(function(b){total++;if(+rr[tk][b].rate>0)filled++;});});
+  });
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
+    '<span style="font-size:12px;color:var(--t2)">Code <b style="color:var(--t)">'+(card.code||'—')+'</b></span>'+
+    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+(card.active?'checked':'')+' onchange="_slaFlag(\'active\',this.checked)"/> Active</label>'+
+    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+(card.perLeg?'checked':'')+' onchange="_slaFlag(\'perLeg\',this.checked)"/> Price per leg</label>'+
+    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+(card.emptyLegFree?'checked':'')+' onchange="_slaFlag(\'emptyLegFree\',this.checked)"/> Empty legs free</label>'+
+    '<span style="margin-left:auto;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:'+(filled===total&&total?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+filled+'/'+total+' rates set</span>'+
+  '</div>'+
+  '<div class="tabs" style="flex-wrap:wrap;gap:4px;margin-bottom:12px">'+
+    SLA_SERVICES.map(function(x){return '<div class="tab'+(x.id===svc?' on':'')+'" onclick="S._slaSvc=\''+x.id+'\';rAdminSLA()">'+x.label+'</div>';}).join('')+
+  '</div>'+
+  '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th style="min-width:120px">'+(s.perTruck?'Truck':'Service')+'</th>'+
+    bands.map(function(b){return '<th style="text-align:center;font-size:11px">'+b.label+'</th>';}).join('')+'</tr></thead><tbody>'+
+    rows.map(function(tk){
+      return '<tr><td style="font-weight:700">'+(tk==='*'?s.label:tk)+'</td>'+
+        bands.map(function(b){
+          var r=_slaGetRate(card,svc,tk,b.id)||{scm:'',rate:0};
+          return '<td style="text-align:center;padding:4px">'+
+            '<input value="'+(r.scm||'')+'" placeholder="SCM code" onchange="_slaEdit(\''+svc+'\',\''+tk+'\',\''+b.id+'\',\'scm\',this.value)" style="width:96px;padding:4px 6px;border:1px solid var(--bd);border-radius:6px;font-size:10.5px;text-align:center;margin-bottom:3px"/><br>'+
+            '<input type="number" step="0.01" value="'+(r.rate||0)+'" onchange="_slaEdit(\''+svc+'\',\''+tk+'\',\''+b.id+'\',\'rate\',this.value)" style="width:96px;padding:5px 6px;border:1.5px solid '+(+r.rate>0?'#059669':'var(--bd)')+';border-radius:6px;font-size:12px;text-align:center;font-weight:700"/></td>';
+        }).join('')+'</tr>';
+    }).join('')+
+  '</tbody></table></div>'+
+  '<div style="font-size:11px;color:var(--t3);margin-top:10px">Unit: <b>'+s.um+'</b>'+(card.notes?' · '+card.notes:'')+'</div>'+
+  '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
+    '<button class="btn btn-outline btn-sm" onclick="_slaExportCard()">⬇ Export rate card (CSV)</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="_slaImportPrompt()">⬆ Import rates (CSV)</button>'+
+    '<button class="btn btn-danger btn-sm" onclick="_slaDeleteCard()">Delete card</button></div>';
+}
+function _slaFlag(k,v){var c=_slaCard(S._slaSel);if(!c)return;c[k]=v;_slaSave();rAdminSLA();}
+function _slaEdit(svc,truck,band,field,val){
+  var c=_slaCard(S._slaSel);if(!c)return;
+  var cur=_slaGetRate(c,svc,truck,band)||{scm:'',rate:0};
+  _slaSetRate(c,svc,truck,band,field==='scm'?val:cur.scm,field==='rate'?val:cur.rate);
+  _slaSave();
+  if(field==='rate')rAdminSLA();
+}
+function _slaDeleteCard(){
+  var c=S._slaSel;if(!c)return;
+  if(!confirm('Delete the SLA rate card for '+c+'? They will fall back to the formula engine.'))return;
+  delete _slaLoad()[c];_slaSave();rAdminSLA();toast('Rate card deleted','ok');
+}
+function _slaExportCard(){
+  var c=_slaCard(S._slaSel);if(!c)return;
+  var rows=[['Customer Code','Customer','Item Number','Service','Truck Type','Distance Band','UM','Rate']];
+  SLA_SERVICES.forEach(function(s){
+    var r=c.rates[s.id]||{};
+    Object.keys(r).forEach(function(tk){Object.keys(r[tk]).forEach(function(b){
+      var bandObj=c.bands.find(function(x){return x.id===b;});
+      var band=bandObj?bandObj.label:(b==='*'?'All':b);
+      rows.push([c.code,c.customer,r[tk][b].scm,s.label,tk==='*'?'—':tk,band,s.um,r[tk][b].rate]);
+    });});
+  });
+  _csvDownload(rows,'SLA-'+(c.code||c.customer)+'.csv');
+}
+function _slaImportPrompt(){
+  openM('<div class="m-title">⬆ Import SLA rates</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Paste rows as <code>Item Number,Rate</code> (one per line). Item numbers must already exist in this card — only the rate is updated.</div>'+
+    '<div class="fg"><textarea id="sla-imp" rows="8" placeholder="SCM-2595,1250&#10;SCM-2596,1900" style="font-family:monospace;font-size:12px"></textarea></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_slaImportRun()">Import</button></div>');
+}
+function _slaImportRun(){
+  var c=_slaCard(S._slaSel);if(!c)return;
+  var txt=(document.getElementById('sla-imp')||{}).value||'';
+  var map={};txt.split(/\r?\n/).forEach(function(l){
+    var p=l.split(/[,\t;]/);if(p.length<2)return;
+    var k=(p[0]||'').trim();var v=parseFloat((p[1]||'').replace(/[^\d.\-]/g,''));
+    if(k&&!isNaN(v))map[k.toUpperCase()]=v;
+  });
+  var n=0;
+  SLA_SERVICES.forEach(function(s){
+    var r=c.rates[s.id]||{};
+    Object.keys(r).forEach(function(tk){Object.keys(r[tk]).forEach(function(b){
+      var scm=(r[tk][b].scm||'').toUpperCase();
+      if(map[scm]!==undefined){r[tk][b].rate=map[scm];n++;}
+    });});
+  });
+  _slaSave();closeM();rAdminSLA();
+  toast(n?('✅ '+n+' rates updated'):'No matching item numbers found',n?'ok':'err');
+}
+function _csvDownload(rows,filename){
+  var csv='﻿'+rows.map(function(r){return r.map(function(c){
+    c=(c===null||c===undefined)?'':String(c);
+    return /[",\n]/.test(c)?'"'+c.replace(/"/g,'""')+'"':c;
+  }).join(',');}).join('\r\n');
+  var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
+  var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
+  setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+}
 
 </script>
 </body>
