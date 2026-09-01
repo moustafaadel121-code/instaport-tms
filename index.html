@@ -3635,7 +3635,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_approval'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -4900,6 +4900,8 @@ async function doLogin(){
       if(u.pin&&!u.pin.startsWith('[')&&_pinIsWeak(u.pin))setTimeout(function(){toast('⚠️ Your PIN is too simple — change it in Admin → Users for better security','err');},3000);
       try{_lcLoad();}catch(e){console.warn('local restore',e);}
       try{_rolesLoad();}catch(e){console.warn('custom roles',e);}
+      try{_wfLoadChain();}catch(e){}
+      try{_wfMigrate();}catch(e){console.warn('wf migrate',e);}
       try{buildSB();}catch(e){console.error('buildSB',e);}
       try{_loadFeatureGates();}catch(e){}
       try{_applyBranding();}catch(e){}
@@ -6866,7 +6868,7 @@ function rQuality(){
   var inbQ=S.trips.filter(function(t){return t.status==='inbound_quality';});
   var intrans=S.trips.filter(function(t){return t.status==='in_transit';});
   var html='<div class="page-head"><div><h2>🧪 Quality Control</h2></div></div>';
-  html+='<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting quality approval (OUT-2)</div>'+wfQueueHTML('quality');
+  html+='<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting your verification</div>'+_qcQueueHTML();
   if(pend.length===0&&inbQ.length===0&&intrans.length===0)html+=_emptyState('🧪','All Quality Checks Passed','No trips are currently awaiting quality inspection. Everything is cleared and on track.','');
   pend.concat(inbQ).forEach(function(t){
     var qa=S.qaAgr[t.customer]||{minTemp:2,maxTemp:8,checkReq:7};
@@ -6976,38 +6978,13 @@ function rejQConfirm(id){
 // ══════════════════════════════════════════════════
 function rCtrl(){
   var c=document.getElementById('content');
-  // OUTBOUND: waiting for ctrl approval before gate
-  var pending=S.trips.filter(function(t){return t.status==='awaiting_ctrl';});
-  // IN TRANSIT: ctrl can confirm return from destination (IN-1)
-  var inTransit=S.trips.filter(function(t){return t.status==='in_transit';});
-  // INBOUND CTRL: ctrl already confirmed return, driver heading back (waiting for driver arrival)
-  var inbCtrl=S.trips.filter(function(t){return t.status==='inbound_ctrl';});
   c.innerHTML='<div class="page-head"><div><h2>&#127775; Control Room</h2></div></div>'+
-  '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting control room approval</div>'+wfQueueHTML('control_room')+'<div style="height:14px"></div>'+
-  '<div style="display:grid;grid-template-columns:1fr 1.3fr;gap:16px">'+
-  // LEFT PANEL
-  '<div>'+
-  // OUTBOUND SECTION: trips waiting ctrl approval (OUT-2)
-  '<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:var(--c1);margin-bottom:8px">&#128228; Outbound — Awaiting Ctrl (OUT-2)</div>'+
-  (pending.length>0?pending.map(function(t){return '<div class="card" style="border-left:4px solid var(--c1)"><div style="display:flex;justify-content:space-between;margin-bottom:10px"><div style="font-size:15px;font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:13px;color:var(--t2);margin-bottom:12px">'+t.customer+' &bull; '+t.truck+' &bull; '+t.condition+'</div><div style="display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="ctOkConfirm(\''+t.id+'\')">&#10003; Approve Gate Pass (OUT-3)</button><button class="btn btn-danger btn-sm" onclick="ctNoM(\''+t.id+'\')">&#10006; Reject</button></div></div>';}).join(''):'<div class="card" style="padding:14px;color:var(--t2);font-size:13px;text-align:center">&#9989; No outbound trips awaiting approval</div>')+
-  // IN-TRANSIT SECTION: ctrl confirms return from destination (IN-1)
-  (inTransit.length>0?'<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#059669;margin:14px 0 8px">&#128666; In Transit — Confirm Return (IN-1)</div>'+
-  inTransit.map(function(t){return '<div class="card" style="border-left:4px solid #059669"><div style="display:flex;justify-content:space-between;margin-bottom:8px"><div style="font-size:14px;font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:12px;color:var(--t2);margin-bottom:10px">'+t.customer+' &bull; '+(t.truck||'—')+' &bull; Driver: '+(t.driver||'—')+'<br><span style="font-size:11px">'+t.from+' &#8594; '+t.dests+'</span></div><div style="display:flex;gap:8px"><button class="btn btn-success btn-sm" onclick="ctrlConfirmReturn(\''+t.id+'\')">&#9989; Confirm Return from Destination</button><button class="btn btn-outline btn-sm" onclick="ctrlTripDetail(\''+t.id+'\')">&#128065; Detail</button></div></div>';}).join(''):'')+
-  // RETURNING: ctrl confirmed, driver heading back
-  (inbCtrl.length>0?'<div style="font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;color:#D97706;margin:14px 0 8px">&#128338; Returning to Warehouse</div>'+
-  inbCtrl.map(function(t){return '<div class="card" style="border-left:4px solid #D97706"><div style="display:flex;justify-content:space-between;margin-bottom:6px"><div style="font-weight:700">'+t.id+'</div>'+stB(t.status)+'</div><div style="font-size:12px;color:var(--t2)">'+t.customer+' &bull; '+(t.truck||'—')+' &bull; Driver heading back...</div></div>';}).join(''):'')+
-  '</div>'+
-  // RIGHT PANEL: temp monitor unchanged
-  '<div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">&#127777;&#65039; Live Fleet Temperature'+_tempSimBadge(10)+'</div>'+(_tempIsReal()?'<span class="live"><span class="live-dot"></span>Live</span>':'<span style="font-size:11px;color:#B45309;font-weight:700">Demo mode</span>')+'</div>'+
-  (_tempIsReal()?'':'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;font-size:11.5px;color:#92400E;margin-bottom:10px">&#9888;&#65039; No live sensors connected — temperatures below are <b>simulated for demonstration</b>. Connect sensors in Admin &#8594; Integrations to see real data. Excursion alerts are disabled while in demo mode.</div>')+
+  '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting your approval</div>'+
+  wfQueueHTML('control_room')+
+  '<div class="card" style="margin-top:16px"><div class="card-hd"><div class="card-title">&#127777;&#65039; Live Fleet Temperature'+_tempSimBadge(10)+'</div>'+(_tempIsReal()?'<span class="live"><span class="live-dot"></span>Live</span>':'<span style="font-size:11px;color:#B45309;font-weight:700">Demo mode</span>')+'</div>'+
+  (_tempIsReal()?'':'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:8px 12px;font-size:11.5px;color:#92400E;margin-bottom:10px">&#9888;&#65039; No live sensors connected — temperatures are simulated. Excursion alerts are disabled.</div>')+
   '<div style="margin-bottom:10px"><input placeholder="Search truck/trip/driver..." id="ctrl-s" oninput="rCtrlTrucks()" style="width:100%;padding:8px 12px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;outline:none"/></div>'+
-  '<div id="ctrl-trucks"></div></div>'+
-  '<div class="card"><div class="card-hd"><div class="card-title">&#128202; Temperature Graph</div>'+
-  '<div style="display:flex;gap:6px"><button class="btn btn-outline btn-sm" onclick="expGraph()">&#11015; CSV</button><button class="btn btn-outline btn-sm" onclick="expGraphExcel()">&#11015; Excel</button></div></div>'+
-  '<div style="background:var(--bg);border-radius:var(--r);border:1px solid var(--border);padding:8px;margin-bottom:10px"><canvas id="tg-canvas" style="width:100%;height:140px"></canvas></div>'+
-  '<div style="display:flex;gap:12px;font-size:11px;flex-wrap:wrap"><span style="color:var(--c4)">&#9679; In Range (2&#8211;8&#176;C)</span><span style="color:var(--c2)">&#9679; Warning</span><span style="color:var(--c5)">&#9679; Excursion</span></div></div>'+
-  '</div></div>';
+  '<div id="ctrl-trucks"></div></div>';
   rCtrlTrucks();setTimeout(drawGraph,100);
 }
 // Control Room: confirm truck return from destination → driver heads back to warehouse
@@ -7264,6 +7241,12 @@ function autoCreateMaintTicket(trip){
 // ══════════════════════════════════════════════════
 // FINANCE
 // ══════════════════════════════════════════════════
+// Customers shown in Finance: the master list plus anyone with a rate card
+function _finCustomers(){
+  var all=(CUSTOMERS||[]).slice();
+  try{Object.keys(_slaLoad()).forEach(function(c){if(all.indexOf(c)<0)all.push(c);});}catch(e){}
+  return all.sort();
+}
 function rFin(){
   if(!can('finance_view')&&!can('all')){
     document.getElementById('content').innerHTML='<div style="text-align:center;padding:60px;color:var(--t2)"><div style="font-size:48px;margin-bottom:12px">&#128274;</div><div>Access restricted</div></div>';
@@ -7357,7 +7340,7 @@ function rFin(){
   }).join('')+
   '<th style="min-width:160px">Truck Multipliers (editable)</th>'+
   '</tr></thead><tbody>'+
-  CUSTOMERS.map(function(cu){
+  _finCustomers().map(function(cu){
     var lists=S.priceLists[cu]||[];
     var active=lists.find(function(l){return l.active;})||lists[0]||{};
     var inp='width:58px;padding:3px 5px;border:1.5px solid var(--bd);border-radius:6px;font-size:11px;font-weight:700;text-align:center;color:var(--t);background:var(--bg);outline:none;font-family:inherit';
@@ -7375,8 +7358,10 @@ function rFin(){
           '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
           '<span style="font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5">📑 Contract '+(_c.code?'#'+_c.code:'')+'</span>'+
           '<span style="font-size:11px;color:var(--t2)">'+(_c.bands||[]).length+' distance bands · '+(_c.trucks||[]).length+' truck types · '+_n+' rates set'+(_c.perLeg?' · per-leg':'')+'</span>'+
-          '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="S.adminTab=\'pricing\';S._slaSel=\''+cu.replace(/'/g,"\\'")+'\';nav(\'admin_mgmt\')">Open rate card ›</button>'+
-          '</div></td></tr>';
+          '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="_finToggleCard(\''+cu.replace(/'/g,"\\'")+'\')">'+(S._finCard===cu?'Hide rates ▲':'Show rates ▼')+'</button>'+
+          '</div></td></tr>'+
+        (S._finCard===cu?'<tr><td colspan="'+(CRITERIA_FIELDS.length+2)+'" style="padding:0;background:var(--bg)">'+
+          '<div style="padding:12px">'+_finRateCardHTML(_c)+'</div></td></tr>':'');
     }
     return '<tr data-cu="'+cu+'">'+
       '<td style="font-weight:800;color:var(--t);position:sticky;left:0;background:var(--surf);z-index:1;border-right:1px solid var(--bd)">'+
@@ -7420,7 +7405,7 @@ function rFin(){
   (isAdmin?'<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="openAddCriteria()">+ Add Criteria Field</button></div>':'')+
   '</div>'+
   '<div style="display:flex;flex-direction:column;gap:16px">'+
-  CUSTOMERS.map(function(cu){
+  _finCustomers().map(function(cu){
     var lists=S.priceLists[cu]||[];
     var compCu=comp.filter(function(t){return t.customer===cu;});
     var cuRev=compCu.reduce(function(s,t){return s+(+t.cost||0);},0);
@@ -7495,7 +7480,7 @@ function rFin(){
   '<button class="btn btn-outline btn-sm" onclick="_showCO2ExportModal(\'pdf\')">&#128444;&#65039; PDF</button>'+
   '</div></div>'+
   '<div style="padding:16px 20px">'+
-  CUSTOMERS.map(function(cu){
+  _finCustomers().map(function(cu){
     var cuTrips=comp.filter(function(t){return t.customer===cu;});
     var cuCo2=cuTrips.reduce(function(s,t){return s+(+t.co2||0);},0);
     var cuRev2=cuTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
@@ -10591,7 +10576,7 @@ function rAdminCustomers(){
   var el=document.getElementById('admin-content');if(!el)return;
   el.innerHTML='<div class="card"><div class="card-hd"><div class="card-title">Customer Management</div><button class="btn btn-primary btn-sm" onclick="openAddCust()">+ Add</button></div>'+
   '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th>Customer</th><th>Rate (EGP/km)</th><th>Temp Range</th><th>Checklist</th><th>Modifiers</th><th>Actions</th></tr></thead><tbody>'+
-  CUSTOMERS.map(function(cu){var m=S.custModifiers[cu]||{};var qa=S.qaAgr[cu]||{minTemp:2,maxTemp:8,checkReq:7};return '<tr>'+
+  _finCustomers().map(function(cu){var m=S.custModifiers[cu]||{};var qa=S.qaAgr[cu]||{minTemp:2,maxTemp:8,checkReq:7};return '<tr>'+
   '<td style="font-weight:600">'+cu+'</td>'+
   '<td><input type="number" step="0.1" value="'+(m.baseRate||8).toFixed(1)+'" style="width:70px;padding:5px;border:1px solid var(--border);border-radius:6px;font-size:12px;text-align:center" onchange="if(S.custModifiers[\''+cu+'\'])S.custModifiers[\''+cu+'\'].baseRate=+this.value;audit(\'RATE\',\''+cu+'\',\'\')"/></td>'+
   '<td style="font-size:12px">'+qa.minTemp+'–'+qa.maxTemp+'°C</td>'+
@@ -12098,7 +12083,7 @@ function openCustomerAssignment(){
     '<div style="font-size:12px;color:var(--t2);margin-bottom:16px">Assign customers to account managers. Each AM sees only their assigned customers.</div>'+
     (ams.length===0?'<div style="text-align:center;padding:24px;background:var(--bg);border-radius:12px;color:var(--t2)">No Account Manager users found. Add users with role "acct_mgr".</div>':
     '<div style="overflow-y:auto;max-height:440px">'+
-    CUSTOMERS.map(function(cu){
+    _finCustomers().map(function(cu){
       var assignedUid=S.customerAssignments[cu]||'';
       var assignedUser=_findUser(assignedUid);
       var cuTrips=S.trips.filter(function(t){return t.customer===cu;});
@@ -13817,9 +13802,10 @@ function _opsCfg(){
 function _opsSaveCfg(){try{localStorage.setItem('ip_opsconfig',JSON.stringify(S.opsConfig));}catch(e){}}
 
 // Trips this operator should process: assigned & pre-departure
+// Operations owns the field process at both ends of the journey
 function _opsTrips(){
   return (S.trips||[]).filter(function(t){
-    return ['awaiting_truck','awaiting_quality'].indexOf(t.status)>-1 && t.type!=='Non-Revenue';
+    return ['awaiting_operation','inbound_operation'].indexOf(t.status)>-1 && t.type!=='Non-Revenue';
   });
 }
 
@@ -13831,11 +13817,8 @@ function rOperation(){
     '<div class="page-head"><div><h2>📷 Operations</h2>'+
     '<div class="page-head-sub">Scan, photograph &amp; verify shipments before departure</div></div>'+
     '<button class="btn btn-outline btn-sm" onclick="rOperation()">↻ Refresh</button></div>'+
-    '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">Awaiting your approval</div>'+
-    wfQueueHTML('operation')+
-    '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:18px 0 8px">Field processing</div>'+
     (trips.length===0
-      ? _emptyState('✅','Nothing to process','All shipments have been verified. New shipments assigned to a truck will appear here.','')
+      ? _emptyState('✅','Nothing to process','Shipments reach you at OUT-1 (loading) and IN-2 (unloading).','')
       : '<div style="display:flex;flex-direction:column;gap:14px">'+trips.map(_opsCard).join('')+'</div>');
 }
 
@@ -13896,9 +13879,21 @@ function _opsCard(t){
       }).join('')+
     '</div>'+
     // Submit
-    '<button class="btn '+(ready?'btn-success':'btn-outline')+'" style="width:100%" '+(ready?'':'disabled')+' onclick="opsSubmit(\''+t.id+'\')">'+
-      (ready?(cfg.requireQualityApproval?'✅ Submit for Quality Review':'✅ Verified — Ready to Dispatch'):'Complete required items (*) to submit')+
-    '</button>'+
+    // Two deliberate steps: finish the physical work, then sign it off
+    (function(){
+      var done=!!op.loadingComplete;
+      var inbound=t.status==='inbound_operation';
+      var stage=_wfStage(t.status);
+      var work=inbound?'Unloading':'Loading';
+      return '<button class="btn '+(done?'btn-outline':(ready?'btn-success':'btn-outline'))+'" style="width:100%;margin-bottom:8px" '+
+          ((ready&&!done)?'':'disabled')+' onclick="opsCompleteLoading(\''+t.id+'\')">'+
+          (done?'✓ '+work+' completed — '+(op.loadingCompleteAt||''):(ready?'📦 Complete '+work:'Complete the required items (*) first'))+
+        '</button>'+
+        '<button class="btn '+(done?'btn-success':'btn-outline')+'" style="width:100%" '+(done?'':'disabled')+
+          ' onclick="wfAdvance(\''+t.id+'\')">'+
+          (done?'✅ Approve — '+(stage?stage.step:'')+'':'Approve after completing '+work.toLowerCase())+
+        '</button>';
+    })()+
   '</div>';
 }
 
@@ -13958,6 +13953,7 @@ function rAdminOperations(){
       '<input id="ops-new-chk" placeholder="Add a new checklist item…" style="flex:1;padding:8px 12px;border:1.5px solid var(--bd);border-radius:8px"/>'+
       '<button class="btn btn-primary btn-sm" onclick="_opsAddChk()">+ Add</button></div>'+
     '</div>'+
+    _wfChainHTML()+
     _apvConfigHTML()+
     '<div style="font-size:11px;color:var(--t3);text-align:center">Changes apply immediately to the Operations screen. Existing shipments keep their recorded data.</div>'+
     '</div>';
@@ -14152,6 +14148,32 @@ function _opsStopScan(){
   if(_opsScanStream){_opsScanStream.getTracks().forEach(function(tr){tr.stop();});_opsScanStream=null;}
 }
 
+// Step 1 — the physical work is finished and evidenced
+function opsCompleteLoading(id){
+  var t=_opsGet(id);if(!t)return;
+  var cfg=_opsCfg();
+  var inbound=t.status==='inbound_operation';
+  var work=inbound?'Unloading':'Loading';
+  if(!_chkRequiredDone(t)){toast('Complete the required checklist items first','err');return;}
+  if((t.ops.photos||[]).length<cfg.minPhotos){toast('At least '+cfg.minPhotos+' photo(s) required','err');return;}
+  if(cfg.requirePlateScan&&!(t.ops.scans||[]).some(function(s){return s.kind==='plate';})){toast('Scan the truck plate first','err');return;}
+  if(cfg.requireCartonScan&&!_opsUnitCount(t)){toast('Scan at least one pallet/carton','err');return;}
+  var exp=t.ops.expectedUnits||0;
+  if(exp&&_opsUnitCount(t)<exp){
+    if(!confirm(_opsUnitCount(t)+' of '+exp+' units scanned. Complete '+work.toLowerCase()+' anyway?'))return;
+  }
+  t.ops.loadingComplete=true;
+  t.ops.loadingCompleteAt=new Date().toLocaleString('en-GB');
+  t.ops.loadingCompleteBy=S.user.name;
+  _syncTripChecklist(t);
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:t.ops.loadingCompleteAt,user:S.user.name,action:'📦 '+work+' completed',
+    detail:(t.ops.photos||[]).length+' photos · '+_opsUnitCount(t)+' units · checklist done'});
+  audit('OPS_LOADING',work+' completed',id);
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  toast('📦 '+work+' completed — now approve to release','ok');
+  rOperation();
+}
 function opsSubmit(id){
   var t=_opsGet(id);if(!t)return;
   var cfg=_opsCfg();
@@ -15466,6 +15488,7 @@ function rBilling(){
   }).join('')+
   '</div><div id="billing-content"></div>';
   tab==='invoices'?_renderInvoiceList():_renderBillingConfig();
+  try{_pendingSheetsBanner();}catch(e){}
 }
 
 function _renderInvoiceList(){
@@ -20865,12 +20888,20 @@ function _ctSetStatus(id,st){
 // DRIVER — contract trip execution: complete each destination with
 // timestamp, GPS location, KM, arrival/departure times and POD photo
 // ══════════════════════════════════════════════════════════════════
+// The driver only holds the trip while it is on the road. Once they approve
+// their arrival it moves to the inbound chain and is no longer theirs to edit.
 function _drvContractTrips(){
   var me=S.user?S.user.name:'';
   return (S.trips||[]).filter(function(t){
-    return t.contract && t.driver===me && t.status!=='completed'
-      && t.status!=='cancelled_customer' && t.status!=='cancelled_org';
+    return t.contract && t.driver===me && t.status==='in_transit';
   });
+}
+// Trips this driver has already closed — read-only, for their own reference
+function _drvClosedTrips(){
+  var me=S.user?S.user.name:'';
+  return (S.trips||[]).filter(function(t){
+    return t.contract && t.driver===me && t.contract.driverApproved;
+  }).slice(-5);
 }
 function rDriverContract(){
   var c=document.getElementById('content');if(!c)return;
@@ -20878,6 +20909,7 @@ function rDriverContract(){
   c.innerHTML='<div class="page-head"><div><h2>🚚 My Assigned Trips</h2>'+
     '<div class="page-head-sub">Complete each stop — time, KM, location and proof of delivery</div></div>'+
     '<button class="btn btn-outline btn-sm" onclick="rDriverContract()">↻ Refresh</button></div>'+
+    (function(){var cl=_drvClosedTrips();return cl.length?'<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 8px">Closed by you (read-only)</div>'+cl.map(function(x){var cx=x.contract||{};return '<div style="border:1.5px solid var(--bd);background:var(--bg);border-radius:10px;padding:9px 12px;margin-bottom:6px;opacity:.8"><div style="font-size:13px;font-weight:700">🔒 '+x.id+'</div><div style="font-size:11px;color:var(--t2);margin-top:2px">'+x.customer+' · '+(cx.destinations||[]).length+' stops · '+(x.km||0)+' km · approved '+(cx.driverApprovedAt||'')+'</div></div>';}).join(''):'';})()+
     (trips.length?trips.map(_drvTripCard).join(''):
       _emptyState('✅','No assigned trips','Trips assigned to you will appear here.',''));
 }
@@ -21065,6 +21097,8 @@ function drvEndTrip(id){
   var c=_shipNormalize(t);
   var km=+((document.getElementById('drv-ekm-'+id)||{}).value||0);
   if(!km){toast('Enter the end KM','err');return;}
+  var pend=(c.destinations||[]).filter(function(d){return !d.completed;});
+  if(pend.length){toast(pend.length+' stop(s) still open','err');return;}
   var lastKm=(c.destinations||[]).reduce(function(m,d){return Math.max(m,+d.km||0);},+c.startKm||0);
   if(km<lastKm){toast('End KM cannot be less than the last reading ('+lastKm+')','err');return;}
   var now=new Date();
@@ -21073,6 +21107,7 @@ function drvEndTrip(id){
   t.km=_shipTripKm(t);
   // The driver arriving starts the inbound chain — Security, then Operations,
   // then Control Room close it out. Only then is the trip complete.
+  c.driverApproved=true;c.driverApprovedAt=now.toLocaleString('en-GB');c.driverApprovedBy=S.user.name;
   t.status=(typeof _wfStage==='function'&&_wfStage('in_transit'))?_wfStage('in_transit').next:'completed';
   var res=shipCalc(t);if(res){t.cost=res.total;t.slaLines=res.lines;}
   t.tl.push({ts:now.toLocaleString('en-GB'),user:S.user.name,action:'🏭 Arrived at warehouse',
@@ -21715,16 +21750,61 @@ function invoiceApprovedSheets(){
 //
 // Dispatch is gone: the truck and driver are assigned on the request itself.
 // ══════════════════════════════════════════════════════════════════
-var WF_CHAIN=[
+var WF_DEFAULT=[
   {id:'awaiting_operation', leg:'out', step:'OUT-1', label:'Operations Check',   role:'operation',    icon:'📷', next:'awaiting_quality'},
   {id:'awaiting_quality',   leg:'out', step:'OUT-2', label:'Quality Approval',   role:'quality',      icon:'🧪', next:'awaiting_ctrl'},
   {id:'awaiting_ctrl',      leg:'out', step:'OUT-3', label:'Control Room',       role:'control_room', icon:'🎛️', next:'awaiting_security'},
   {id:'awaiting_security',  leg:'out', step:'OUT-4', label:'Security Gate Out',  role:'security',     icon:'🔒', next:'in_transit'},
   {id:'in_transit',         leg:'transit', step:'—', label:'In Transit',         role:'driver',       icon:'🚚', next:'inbound_security'},
   {id:'inbound_security',   leg:'in',  step:'IN-1',  label:'Security Gate In',   role:'security',     icon:'🔒', next:'inbound_operation'},
-  {id:'inbound_operation',  leg:'in',  step:'IN-2',  label:'Operations Check In',role:'operation',    icon:'📷', next:'inbound_ctrl'},
-  {id:'inbound_ctrl',       leg:'in',  step:'IN-3',  label:'Control Room Final', role:'control_room', icon:'🎛️', next:'completed'}
+  {id:'inbound_operation',  leg:'in',  step:'IN-2',  label:'Operations Unloading',role:'operation',   icon:'📷', next:'inbound_quality'},
+  {id:'inbound_quality',    leg:'in',  step:'IN-3',  label:'Quality Final Approval',role:'quality',   icon:'🧪', next:'completed'}
 ];
+// The chain is per-organisation: enable/disable steps in Admin → Operations
+var WF_CHAIN=WF_DEFAULT.map(function(s){return Object.assign({},s);});
+function _wfLoadChain(){
+  var off={};
+  try{off=JSON.parse(localStorage.getItem('ip_wfsteps')||'{}');}catch(e){}
+  var active=WF_DEFAULT.filter(function(s){
+    return s.leg==='transit'||off[s.id]!==false;   // transit is always part of it
+  }).map(function(s){return Object.assign({},s);});
+  // relink each step to the next active one, and renumber
+  var oN=0,iN=0;
+  active.forEach(function(s,i){
+    s.next=active[i+1]?active[i+1].id:'completed';
+    if(s.leg==='out')s.step='OUT-'+(++oN);
+    else if(s.leg==='in')s.step='IN-'+(++iN);
+  });
+  WF_CHAIN=active;
+  return WF_CHAIN;
+}
+function _wfStepEnabled(id){
+  try{var o=JSON.parse(localStorage.getItem('ip_wfsteps')||'{}');return o[id]!==false;}catch(e){return true;}
+}
+function _wfToggleStep(id,on){
+  var o={};try{o=JSON.parse(localStorage.getItem('ip_wfsteps')||'{}');}catch(e){}
+  o[id]=on;
+  try{localStorage.setItem('ip_wfsteps',JSON.stringify(o));}catch(e){}
+  _wfLoadChain();
+  if(typeof rAdminOperations==='function')rAdminOperations();
+  toast('Workflow updated','ok');
+}
+function _wfChainHTML(){
+  _wfLoadChain();
+  return '<div class="card">'+
+    '<div style="font-size:14px;font-weight:800;margin-bottom:4px">🔄 Approval Chain</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Turn a step off and the chain relinks around it. Steps are renumbered automatically.</div>'+
+    WF_DEFAULT.filter(function(s){return s.leg!=='transit';}).map(function(s){
+      var on=_wfStepEnabled(s.id);
+      var live=WF_CHAIN.find(function(x){return x.id===s.id;});
+      return '<div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--bd)">'+
+        '<label class="fg-toggle" style="flex-shrink:0"><input type="checkbox" '+(on?'checked':'')+' onchange="_wfToggleStep(\''+s.id+'\',this.checked)"/><span class="fg-slider"></span></label>'+
+        '<span style="font-size:10.5px;font-weight:800;color:'+(on?'#6C3FF5':'var(--t3)')+';min-width:46px">'+(live?live.step:'—')+'</span>'+
+        '<span style="flex:1;font-size:13px;color:var(--t)'+(on?'':';opacity:.45;text-decoration:line-through')+'">'+s.icon+' '+s.label+'</span>'+
+        '<span style="font-size:10.5px;color:var(--t3)">'+(RL[s.role]||s.role)+'</span></div>';
+    }).join('')+
+  '</div>';
+}
 function _wfStage(status){return WF_CHAIN.find(function(s){return s.id===status;})||null;}
 function _wfNext(status){var s=_wfStage(status);return s?s.next:null;}
 function _wfForRole(role){
@@ -21806,6 +21886,183 @@ function wfQueueHTML(role,title){
         '<button class="btn btn-outline btn-sm" onclick="_openTripSPv2(\''+t.id+'\')">Details</button>'+
       '</div></div>';
   }).join('')+'</div>';
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// QUALITY — verify first, then approve. Same two-step shape as Operations:
+// the checklist and the operator's evidence must be verified before the
+// approval button unlocks.
+// ══════════════════════════════════════════════════════════════════
+function _qcQueueHTML(){
+  var q=_wfMyQueue('quality');
+  if(!q.length){
+    return _emptyState('✅','Nothing awaiting quality',
+      'Shipments appear here when they reach a quality step of the workflow.','');
+  }
+  return '<div style="display:flex;flex-direction:column;gap:12px">'+q.map(_qcCard).join('')+'</div>';
+}
+function _qcCard(t){
+  var st=_wfStage(t.status)||{step:'',label:'Quality'};
+  var ct=t.contract||{};
+  var op=t.ops||{};
+  var items=_chkItems();var res=_chkGet(t);
+  var done=items.filter(function(x){return res[x.id];}).length;
+  var reqOk=_chkRequiredDone(t);
+  var verified=!!t.qualityVerified;
+  var qa=(S.qaAgr&&S.qaAgr[t.customer])||{minTemp:2,maxTemp:8};
+  return '<div class="card" style="border-left:4px solid '+(verified?'#059669':'var(--c1)')+';margin:0">'+
+    '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">'+
+      '<div><div style="font-size:15px;font-weight:800">'+t.id+'</div>'+
+      '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' · '+(t.truck||'—')+' · '+(t.condition||'')+'</div>'+
+      '<div style="font-size:11px;color:var(--t3);margin-top:1px">Agreement '+qa.minTemp+'–'+qa.maxTemp+'°C</div></div>'+
+      '<span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5;white-space:nowrap">'+st.step+' · '+st.label+'</span>'+
+    '</div>'+
+    // what operations recorded
+    _opsQualityBlock(t)+
+    // the shared configurable checklist
+    '<div style="border-top:1px solid var(--bd);margin-top:12px;padding-top:10px">'+
+      '<div style="font-size:12px;font-weight:700;color:var(--t2);margin-bottom:6px">Checklist — '+done+'/'+items.length+'</div>'+
+      items.map(function(x){
+        var on=!!res[x.id];
+        return '<div onclick="'+(verified?'':'togC(\''+t.id+'\',\''+x.id+'\')')+'" style="display:flex;align-items:center;gap:9px;padding:7px 0;cursor:'+(verified?'default':'pointer')+';opacity:'+(verified?'.7':'1')+'">'+
+          '<div style="width:20px;height:20px;border-radius:6px;border:2px solid '+(on?'#059669':'var(--bd)')+';background:'+(on?'#059669':'transparent')+';color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">'+(on?'✓':'')+'</div>'+
+          '<span style="font-size:13px;color:var(--t)">'+x.label+(x.req?' <span style="color:#EF4444">*</span>':'')+'</span></div>';
+      }).join('')+
+    '</div>'+
+    // verify, then approve
+    '<div style="margin-top:12px">'+
+      '<button class="btn '+(verified?'btn-outline':(reqOk?'btn-success':'btn-outline'))+'" style="width:100%;margin-bottom:8px" '+
+        ((reqOk&&!verified)?'':'disabled')+' onclick="qcVerify(\''+t.id+'\')">'+
+        (verified?'✓ Verified — '+(t.qualityVerifiedBy||'')+' · '+(t.qualityVerifiedAt||''):(reqOk?'🧪 Verify checklist':'Complete the required items (*) to verify'))+
+      '</button>'+
+      '<div style="display:flex;gap:8px">'+
+        '<button class="btn '+(verified?'btn-success':'btn-outline')+'" style="flex:1" '+(verified?'':'disabled')+
+          ' onclick="wfAdvance(\''+t.id+'\')">'+(verified?'✅ Approve — '+st.step:'Approve after verifying')+'</button>'+
+        '<button class="btn btn-danger" onclick="wfReject(\''+t.id+'\')">✕ Reject</button>'+
+      '</div>'+
+    '</div>'+
+  '</div>';
+}
+function qcVerify(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(!_chkRequiredDone(t)){
+    var miss=_chkItems().filter(function(x){return x.req&&!_chkGet(t)[x.id];}).map(function(x){return x.label;});
+    toast('Complete required items: '+miss.join(', '),'err');return;
+  }
+  requirePwd('🧪 Verify quality — '+id,function(){
+    t.qualityVerified=true;
+    t.qualityVerifiedBy=S.user.name;
+    t.qualityVerifiedAt=new Date().toLocaleString('en-GB');
+    t.qualityPin=true;
+    _syncTripChecklist(t);
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:t.qualityVerifiedAt,user:S.user.name,action:'🧪 Quality verified',
+      detail:_chkItems().filter(function(x){return _chkGet(t)[x.id];}).length+'/'+_chkItems().length+' checks'});
+    audit('QC_VERIFY','checklist verified',id);
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    toast('🧪 Verified — now approve to release','ok');
+    rQuality();
+  });
+}
+
+// ══ Invoices: never let a completed shipment go unnoticed ══════════
+function _pendingSheetsBanner(){
+  var host=document.getElementById('billing-content');if(!host)return;
+  var pend=(S.trips||[]).filter(function(t){
+    return t.contract && t.status==='completed' && _apvStatusOf(t).key!=='approved';
+  });
+  if(!pend.length)return;
+  var total=pend.reduce(function(s,t){return s+(+((t.review&&t.review.total)||t.cost)||0);},0);
+  var el=document.createElement('div');
+  el.innerHTML='<div class="card" style="border:1.5px solid #F59E0B;background:#FFFBEB;margin-bottom:14px">'+
+    '<div style="font-size:14px;font-weight:800;color:#B45309;margin-bottom:4px">🧾 '+pend.length+' completed shipment(s) not invoiced yet</div>'+
+    '<div style="font-size:12px;color:#92400E;margin-bottom:10px">An invoice is created once the final sheet is approved. These are worth EGP '+Math.round(total).toLocaleString()+'.</div>'+
+    pend.slice(0,6).map(function(t){
+      var st=_apvStatusOf(t);
+      return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid #FDE68A">'+
+        '<div style="font-size:12px"><b>'+t.id+'</b> · '+t.customer+
+        '<div style="font-size:10.5px;color:#92400E">'+st.label+'</div></div>'+
+        '<button class="btn btn-primary btn-sm" onclick="openFinalSheet(\''+t.id+'\')">🧾 Review sheet</button></div>';
+    }).join('')+
+  '</div>';
+  host.insertBefore(el.firstChild,host.firstChild);
+}
+
+
+// ══ Finance → Rate Table: the contract card, read-only, inline ══════
+function _finToggleCard(cu){
+  S._finCard=(S._finCard===cu)?null:cu;
+  rFin();
+}
+function _finRateCardHTML(card){
+  if(!card)return '';
+  var out='<div style="font-size:12px;font-weight:800;color:#6C3FF5;margin-bottom:8px">📑 Contract Rate Card — '+card.customer+' (code '+(card.code||'—')+')</div>';
+  SLA_SERVICES.forEach(function(s){
+    var rates=(card.rates||{})[s.id];if(!rates)return;
+    var trucks=Object.keys(rates);
+    var anySet=trucks.some(function(tk){return Object.keys(rates[tk]).some(function(b){return +rates[tk][b].rate>0;});});
+    if(!anySet)return;
+    var bands=s.flat||s.id==='cancellation'?[{id:'*',label:'All zones'}]:(card.bands||[]);
+    out+='<div style="font-size:11px;font-weight:700;color:var(--t2);margin:10px 0 5px">'+s.label+' <span style="font-weight:400;color:var(--t3)">('+s.um+')</span></div>'+
+      '<div style="overflow-x:auto"><table class="tbl" style="font-size:11px"><thead><tr><th>'+(s.perTruck?'Truck':'Service')+'</th>'+
+      bands.map(function(b){return '<th style="text-align:center">'+b.label+'</th>';}).join('')+'</tr></thead><tbody>'+
+      trucks.map(function(tk){
+        return '<tr><td style="font-weight:700">'+(tk==='*'?s.label:tk)+'</td>'+
+          bands.map(function(b){
+            var r=rates[tk]&&rates[tk][b.id];
+            if(!r||!+r.rate)return '<td style="text-align:center;color:var(--t3)">—</td>';
+            return '<td style="text-align:center"><div style="font-size:9.5px;color:var(--c1);font-weight:700">'+(r.scm||'')+'</div>'+
+              '<div style="font-weight:800">'+(+r.rate).toLocaleString()+'</div></td>';
+          }).join('')+'</tr>';
+      }).join('')+'</tbody></table></div>';
+  });
+  out+='<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
+    '<button class="btn btn-outline btn-sm" onclick="S.adminTab=\'pricing\';S._slaSel=\''+card.customer.replace(/'/g,"\'")+'\';nav(\'admin_mgmt\')">✎ Edit in Pricing</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="S._slaSel=\''+card.customer.replace(/'/g,"\'")+'\';_slaExportCard()">⬇ Export</button></div>';
+  return out;
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// Migrate shipments created before the current approval chain, so nothing
+// is stranded in a status no screen looks for any more.
+// ══════════════════════════════════════════════════════════════════
+var WF_LEGACY_MAP={
+  in_progress:      'awaiting_operation',
+  awaiting_truck:   'awaiting_operation',
+  awaiting_ops:     'awaiting_operation',
+  inbound_ctrl:     'inbound_quality',   // control room left the inbound chain
+  inbound_operation:'inbound_operation'
+};
+function _wfMigrate(){
+  var chain={};(WF_CHAIN||[]).forEach(function(s){chain[s.id]=1;});
+  var terminal={completed:1,cancelled_customer:1,cancelled_org:1,cancelled:1};
+  var moved=0;
+  (S.trips||[]).forEach(function(t){
+    if(!t||!t.status)return;
+    if(chain[t.status]||terminal[t.status])return;      // already valid
+    var to=WF_LEGACY_MAP[t.status];
+    if(!to||!chain[to]){
+      // unknown status: put it at the start of whichever leg it belongs to
+      to=/inbound/.test(t.status)?
+        ((WF_CHAIN.find(function(s){return s.leg==='in';})||{}).id):
+        ((WF_CHAIN.find(function(s){return s.leg==='out';})||{}).id);
+    }
+    if(!to)return;
+    var from=t.status;
+    t.status=to;
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:'System',
+      action:'🔄 Moved into the current workflow',detail:from+' → '+to});
+    moved++;
+  });
+  if(moved){
+    _lcSave&&_lcSave();
+    setTimeout(function(){toast('🔄 '+moved+' shipment(s) moved into the current workflow','info');},900);
+    audit('WF_MIGRATE',moved+' shipments','');
+  }
+  return moved;
 }
 
 </script>
