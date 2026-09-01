@@ -4740,7 +4740,7 @@ const PAGES={
   finance:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'final_sheet',icon:'🧾',l:'Final Sheets'},{id:'finance',icon:'💰',l:'Finance'},{id:'billing',icon:'📄',l:'Invoices'},{id:'esg',icon:'🌿',l:'ESG'},{id:'trips',icon:'📋',l:'Trips'}],
   maintenance:  [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'maintenance',icon:'🔧',l:'Maintenance'},{id:'spare_parts',icon:'🔩',l:'Spare Parts'},{id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'}],
   validation:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'validation',icon:'✅',l:'Validation'}],
-  driver:       [{id:'my_route',icon:'🚚',l:'My Assigned Trips'},{id:'my_trips',icon:'🚛',l:'My Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}],
+  driver:       [{id:'my_route',icon:'🚚',l:'My Assigned Trips'},{id:'fuel',icon:'⛽',l:'Fuel Entry'}],
   operation:    [{id:'operation',icon:'📷',l:'Operations'},{id:'trips',icon:'📋',l:'Trips'}],
   client:       [{id:'client_portal',icon:'📦',l:'My Shipments'},{id:'billing',icon:'📄',l:'My Invoices'}]
 };
@@ -5907,7 +5907,7 @@ function nav(page){
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,fleet_map:rFleetMap,client_portal:rClientPortal,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
-    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rTrips,my_route:rDriverContract,final_sheet:rFinalSheet,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
+    nr_trip:rNR,my_trips:rDriverContract,operation:rOperation,contract:rTrips,my_route:rDriverContract,final_sheet:rFinalSheet,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
@@ -8577,6 +8577,7 @@ function rTrips(){
     '<button class="btn btn-outline btn-sm" id="tr-col-btn" onclick="_trToggleCols()">⚙ Columns</button>'+
     (canAdd?'<button class="btn btn-primary" onclick="openTrip()">+ New Shipment</button>':'')+
     '</div></div>'+
+    ((S.role==='supervisor'||can('all'))?wfRevisionHTML():'')+
 
     // Column configurator (hidden by default)
     '<div id="tr-col-panel" style="display:none;background:var(--surf);border:1px solid var(--bd);border-radius:var(--r);padding:14px;margin-bottom:10px">'+
@@ -13847,10 +13848,10 @@ function _opsCard(t){
       '</div>'+
       (approved?'<button class="btn btn-outline btn-sm" style="width:100%;margin-top:8px" onclick="printInspectionForm(\''+t.id+'\',\''+form.id+'\')">📄 PDF بالصور</button>':'')+
     '</div>':'')+
-    '<button class="btn '+(approved?'btn-success':'btn-outline')+'" style="width:100%" '+(approved?'':'disabled')+
-      ' onclick="wfAdvance(\''+t.id+'\')">'+
-      (approved?'✅ اعتماد وإرسال — '+(stage?stage.step:''):'يجب اعتماد النموذج أولاً')+
-    '</button>'+
+    // Approving the form is the step approval — nothing to sign twice
+    (approved
+      ?'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:9px 11px;font-size:11.5px;color:#065F46;text-align:center">✅ اعتُمد النموذج وأُرسلت الشحنة للخطوة التالية</div>'
+      :'<div style="background:var(--bg);border-radius:8px;padding:9px 11px;font-size:11.5px;color:var(--t2);text-align:center">اعتماد النموذج (المسئول ثم المشرف) يُرسل الشحنة تلقائياً</div>')+
   '</div>';
 }
 function _opsSetUnits(id,v){
@@ -13962,7 +13963,8 @@ function opsAddPhoto(id,input){
         var cv=document.createElement('canvas');cv.width=img.width*scale;cv.height=img.height*scale;
         cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height);
         t.ops.photos.push({data:cv.toDataURL('image/jpeg',0.7),ts:new Date().toLocaleString('en-GB'),by:S.user.name});
-        if(--pending===0){_lcSave();toast('📷 Photo added','ok');rOperation();}
+        if(--pending===0){_lcSave();toast('📷 Photo added','ok');
+          if(!(typeof _formReturn==='function'&&_formReturn()))rOperation();}
       };
       img.onerror=function(){if(--pending===0)rOperation();};
       img.src=rd.result;
@@ -13976,11 +13978,11 @@ function opsAddPhoto(id,input){
 function opsScan(id,kind){
   var t=_opsGet(id);if(!t)return;
   var multi=(kind==='unit'||kind==='carton');
-  if('BarcodeDetector' in window){
-    _opsCameraScan(id,kind,multi);
-  }else{
-    _opsManualScan(id,kind,multi);
-  }
+  // Open the camera whenever the device has one. Automatic decoding needs
+  // BarcodeDetector; without it the preview stays up and the code is typed.
+  var hasCam=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia);
+  if(hasCam){_opsCameraScan(id,kind,multi);}
+  else{_opsManualScan(id,kind,multi);}
 }
 function _opsUnitCount(t){return (t.ops&&t.ops.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';}).length;}
 function _opsRecordScan(id,kind,code,silent){
@@ -14000,7 +14002,8 @@ function _opsRecordScan(id,kind,code,silent){
   t.tl.push({ts:entry.ts,user:S.user.name,action:(kind==='plate'?'🔖 Plate scanned':'📦 Unit scanned'),detail:code});
   audit('OPS_SCAN',kind+' '+code,id);
   _lcSave();
-  if(!silent){syncTrip&&syncTrip(t);toast('✓ '+(kind==='plate'?'Plate':'Unit')+': '+code,'ok');rOperation();}
+  if(!silent){syncTrip&&syncTrip(t);toast('✓ '+(kind==='plate'?'Plate':'Unit')+': '+code,'ok');
+    if(!(typeof _formReturn==='function'&&_formReturn()))rOperation();}
   return true;
 }
 // Set expected pallet/carton count for a trip
@@ -14055,6 +14058,7 @@ function _opsDelScan(id,code){
 var _opsScanStream=null;
 function _opsCameraScan(id,kind,multi){
   var t=_opsGet(id);
+  _opsScanCtx={id:id,kind:kind,multi:!!multi};
   openM('<div class="m-title">'+(kind==='plate'?'🔖 Scan Plate':'📦 Scan Pallets / Cartons')+'</div>'+
     '<div style="position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3">'+
       '<video id="ops-video" playsinline style="width:100%;height:100%;object-fit:cover"></video>'+
@@ -14068,7 +14072,18 @@ function _opsCameraScan(id,kind,multi){
       :'<button class="btn btn-outline" onclick="_opsStopScan();closeM()">Cancel</button>')+'</div>');
   if(multi){var cc=document.getElementById('ops-scan-count');if(cc)cc.textContent=_opsUnitCount(t)+(t.ops.expectedUnits?' / '+t.ops.expectedUnits:'')+' scanned';}
   var formats=kind==='plate'?['code_39','code_128','qr_code']:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code','data_matrix'];
-  var detector;try{detector=new BarcodeDetector({formats:formats});}catch(e){detector=new BarcodeDetector();}
+  var detector=null;
+  if('BarcodeDetector' in window){
+    try{detector=new BarcodeDetector({formats:formats});}catch(e){try{detector=new BarcodeDetector();}catch(e2){detector=null;}}
+  }
+  if(!detector){
+    var st0=document.getElementById('ops-scan-status');
+    if(st0)st0.innerHTML='هذا المتصفح لا يقرأ الأكواد تلقائياً — صوّب الكاميرا واكتب الكود بالأسفل'+
+      '<div style="display:flex;gap:6px;margin-top:8px">'+
+      '<input id="ops-livecode" placeholder="اكتب أو امسح بالماسح" style="flex:1;padding:10px;border:1.5px solid var(--bd);border-radius:8px;font-size:15px;text-align:center" '+
+      'onkeydown="if(event.key===\'Enter\')_opsLiveCode()"/>'+
+      '<button class="btn btn-primary btn-sm" onclick="_opsLiveCode()">إضافة</button></div>';
+  }
   var lastCode='',lastAt=0;
   navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}}).then(function(stream){
     _opsScanStream=stream;
@@ -14077,6 +14092,7 @@ function _opsCameraScan(id,kind,multi){
     var scanning=true;
     var tick=function(){
       if(!scanning||!document.getElementById('ops-video'))return;
+      if(!detector){requestAnimationFrame(tick);return;}
       detector.detect(v).then(function(codes){
         if(codes&&codes.length){
           var code=codes[0].rawValue;
@@ -14104,6 +14120,20 @@ function _opsCameraScan(id,kind,multi){
     toast('Camera unavailable — enter code manually','info');
     _opsManualScan(id,kind,multi);
   });
+}
+// Code typed while the camera preview is open (browsers without automatic
+// decoding, or a handheld scanner gun aimed at the field).
+var _opsScanCtx=null;
+function _opsLiveCode(){
+  var el=document.getElementById('ops-livecode');if(!el||!_opsScanCtx)return;
+  var v=(el.value||'').trim();if(!v)return;
+  var added=_opsRecordScan(_opsScanCtx.id,_opsScanCtx.kind,v,true);
+  el.value='';el.focus();
+  var cc=document.getElementById('ops-scan-count');
+  var t=_opsGet(_opsScanCtx.id);
+  if(cc&&t)cc.textContent=_opsUnitCount(t)+(t.ops.expectedUnits?' / '+t.ops.expectedUnits:'')+' scanned';
+  toast(added?('✓ '+v):('مكرر: '+v),added?'ok':'info');
+  if(!_opsScanCtx.multi){_opsStopScan();closeM();if(!(typeof _formReturn==='function'&&_formReturn()))rOperation();}
 }
 function _opsStopScan(){
   if(_opsScanStream){_opsScanStream.getTracks().forEach(function(tr){tr.stop();});_opsScanStream=null;}
@@ -20537,7 +20567,8 @@ function openShipmentRequest(editId){
   '<div class="frow"><div class="fg"><label>Customer *</label>'+
     '<input id="sr-cust" list="sr-cust-list" value="'+(t?t.customer||'':'')+'" placeholder="Select or type…" oninput="_srCustCode()"/>'+
     '<datalist id="sr-cust-list">'+allCust.map(function(x){return '<option value="'+x+'">'+(_custCode(x)||'')+'</option>';}).join('')+'</datalist></div>'+
-  '<div class="fg"><label>Customer Code</label><input id="sr-code" value="'+(t?_custCode(t.customer):'')+'" placeholder="auto"/></div>'+
+  '<div class="fg"><label>Customer Code <span style="font-weight:400;color:var(--t3)">(auto)</span></label>'+
+    '<input id="sr-code" value="'+(t?_custCode(t.customer):'')+'" placeholder="—" readonly style="background:var(--bg);color:var(--t2);cursor:not-allowed"/></div>'+
   '<div class="fg"><label>Transaction *</label><select id="sr-tx">'+opt(TRANSACTION_TYPES,c.transactionType)+'</select></div></div>'+
 
   // ── Pricing mode banner + contract-billable extras (driven by the rate card)
@@ -21745,7 +21776,14 @@ function wfAdvance(id,note){
     if(_f){var _s=_formState(t,_f).signatures||{};
       if(!(_s.officer&&_s.supervisor)){toast('يجب اعتماد نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}}
   }
-  requirePwd(stage.icon+' '+stage.label+' — '+id,function(){
+  requirePwd(stage.icon+' '+stage.label+' — '+id,function(){_wfAdvanceNow(id,note);});
+}
+// The move itself — used directly when the person has just been verified
+// by another gate (approving the inspection form, verifying quality).
+function _wfAdvanceNow(id,note){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var stage=_wfStage(t.status);if(!stage)return;
+  (function(){
     var from=t.status;
     t.status=stage.next;
     if(!t.tl)t.tl=[];
@@ -21767,21 +21805,7 @@ function wfAdvance(id,note){
     _lcSave&&_lcSave();syncTrip&&syncTrip(t);
     toast('✅ '+stage.label+' approved','ok');
     try{nav(S.page);}catch(e){}
-  });
-}
-function wfReject(id,reason){
-  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  var stage=_wfStage(t.status);if(!stage)return;
-  var why=reason||prompt('Why is '+id+' rejected at '+stage.label+'?','');
-  if(why===null||!String(why).trim()){toast('A reason is required','err');return;}
-  t.status='cancelled_org';
-  if(!t.tl)t.tl=[];
-  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
-    action:'❌ Rejected at '+stage.label,detail:String(why).trim()});
-  audit('WF_REJECT',stage.label+': '+why,id);
-  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
-  toast('Shipment rejected','err');
-  try{nav(S.page);}catch(e){}
+  })();
 }
 // A compact queue any role screen can drop in
 function wfQueueHTML(role,title){
@@ -21888,11 +21912,8 @@ function _qcCard(t){
         (verified?'✓ Verified — '+(t.qualityVerifiedBy||'')+' · '+(t.qualityVerifiedAt||'')
           :(canVerify?'🧪 Verify consolidated sheet':'Waiting for the inspection form to be approved'))+
       '</button>'+
-      '<div style="display:flex;gap:8px">'+
-        '<button class="btn '+(verified?'btn-success':'btn-outline')+'" style="flex:1" '+(verified?'':'disabled')+
-          ' onclick="wfAdvance(\''+t.id+'\')">'+(verified?'✅ Approve — '+st.step:'Approve after verifying')+'</button>'+
-        '<button class="btn btn-danger" onclick="wfReject(\''+t.id+'\')">✕ Reject</button>'+
-      '</div>'+
+      // Verifying is the approval — rejection is the only other action
+      '<button class="btn btn-danger" style="width:100%" onclick="wfReject(\''+t.id+'\')">✕ رفض وإعادة للمشرف</button>'+
     '</div>'+
   '</div>';
 }
@@ -21914,7 +21935,8 @@ function qcVerify(id){
       detail:_chkItems().filter(function(x){return _chkGet(t)[x.id];}).length+'/'+_chkItems().length+' checks'});
     audit('QC_VERIFY','checklist verified',id);
     _lcSave&&_lcSave();syncTrip&&syncTrip(t);
-    toast('🧪 Verified — now approve to release','ok');
+    toast('🧪 تم التحقق — أُرسلت الشحنة للخطوة التالية','ok');
+    _wfAdvanceNow(id,'تحقق الجودة');
     rQuality();
   });
 }
@@ -21990,7 +22012,8 @@ var WF_LEGACY_MAP={
 };
 function _wfMigrate(){
   var chain={};(WF_CHAIN||[]).forEach(function(s){chain[s.id]=1;});
-  var terminal={completed:1,cancelled_customer:1,cancelled_org:1,cancelled:1};
+  // plan_revision sits outside the chain on purpose — it must survive
+  var terminal={completed:1,cancelled_customer:1,cancelled_org:1,cancelled:1,plan_revision:1};
   var moved=0;
   (S.trips||[]).forEach(function(t){
     if(!t||!t.status)return;
@@ -22171,10 +22194,11 @@ function openInspectionForm(id,formId){
       '<div style="font-size:12px;font-weight:800;color:'+(ok?'#065F46':'var(--t)')+';margin-bottom:7px">'+(ok?'✓ ':'')+title+'</div>'+body+'</div>';
   };
 
+  _formCtx={id:id,fid:form.id};
   openM('<div class="m-title" style="direction:rtl;text-align:right">'+form.title+'</div>'+
     '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:11px;color:var(--t2);margin-bottom:12px">'+
       '<span>'+form.doc+'</span>'+
-      '<span style="font-weight:700;padding:3px 10px;border-radius:20px;background:'+(p.passed?'#ECFDF5;color:#059669':(p.no?'#FEF2F2;color:#DC2626':'#FFFBEB;color:#B45309'))+'">'+p.yes+'/'+p.total+' · '+p.pct+'%</span>'+
+      '<span id="form-progress" style="font-weight:700;padding:3px 10px;border-radius:20px;background:'+(p.passed?'#ECFDF5':(p.no?'#FEF2F2':'#FFFBEB'))+';color:'+(p.passed?'#059669':(p.no?'#DC2626':'#B45309'))+'">'+p.yes+'/'+p.total+' · '+p.pct+'%</span>'+
       '<span>'+t.id+'</span></div>'+
     (locked?'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:7px 11px;font-size:11.5px;color:#065F46;margin-bottom:10px">🔒 معتمد — للعرض فقط</div>':'')+
 
@@ -22186,7 +22210,7 @@ function openInspectionForm(id,formId){
         return '<div style="grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:8px;padding:7px 10px">'+
           '<span style="font-size:11.5px">'+f.label+'</span><div style="display:flex;gap:5px">'+
             ['نعم','لا'].map(function(o){var on=v===o;
-              return '<span onclick="'+(locked?'':'_formHdr(\''+id+'\',\''+form.id+'\',\''+f.id+'\',\''+o+'\')')+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;border:1.5px solid '+(on?'#6C3FF5':'var(--bd)')+';background:'+(on?'#6C3FF5':'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o+'</span>';
+              return '<span id="fh-'+f.id+'-'+(o==='نعم'?'y':'n')+'" onclick="'+(locked?'':'_formHdr(\''+id+'\',\''+form.id+'\',\''+f.id+'\',\''+o+'\')')+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11px;font-weight:700;padding:3px 12px;border-radius:20px;border:1.5px solid '+(on?'#6C3FF5':'var(--bd)')+';background:'+(on?'#6C3FF5':'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o+'</span>';
             }).join('')+'</div></div>';
       }
       return '<div><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:3px">'+f.label+'</label>'+
@@ -22234,7 +22258,7 @@ function openInspectionForm(id,formId){
             '<span style="flex:1;font-size:12px;line-height:1.6;color:var(--t)">'+it.text+'</span>'+
             '<div style="display:flex;gap:4px;flex-shrink:0">'+
               [['yes','نعم','#059669'],['no','لا','#DC2626']].map(function(o){var on=a===o[0];
-                return '<span onclick="'+(locked?'':'_formAns(\''+id+'\',\''+form.id+'\',\''+it.n+'\',\''+o[0]+'\')')+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11px;font-weight:700;padding:4px 11px;border-radius:8px;border:1.5px solid '+(on?o[2]:'var(--bd)')+';background:'+(on?o[2]:'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o[1]+'</span>';
+                return '<span id="fa-'+String(it.n).replace(/\./g,'_')+'-'+o[0]+'" onclick="'+(locked?'':'_formAns(\''+id+'\',\''+form.id+'\',\''+it.n+'\',\''+o[0]+'\')')+'" style="cursor:'+(locked?'default':'pointer')+';font-size:11px;font-weight:700;padding:4px 11px;border-radius:8px;border:1.5px solid '+(on?o[2]:'var(--bd)')+';background:'+(on?o[2]:'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o[1]+'</span>';
               }).join('')+'</div></div>';
         }).join('');
     }).join('')+'</div>'+
@@ -22259,26 +22283,69 @@ function openInspectionForm(id,formId){
         '</div>';
     }).join('')+'</div>'+
 
-    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">إغلاق</button>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="_formCtx=null;closeM()">إغلاق</button>'+
     '<button class="btn btn-outline" onclick="exportInspectionForm(\''+id+'\',\''+form.id+'\')">⬇ CSV</button>'+
     '<button class="btn btn-primary" onclick="printInspectionForm(\''+id+'\',\''+form.id+'\')">📄 PDF بالصور</button></div>');
 }
+// ── Keep the operator inside the form ──────────────────────────────
+// Scanning and photo capture used to re-render the Operations screen, which
+// closed the document mid-inspection. While the form is open we remember it
+// and come straight back to it instead.
+var _formCtx=null;
+function _formReturn(){
+  if(_formCtx&&_formCtx.id){ openInspectionForm(_formCtx.id,_formCtx.fid); return true; }
+  return false;
+}
+// Answering an item updates just that row and the counter — no rebuild, so
+// the scroll position and the operator's place in the list are kept.
+function _formAns(id,fid,n,val){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS[fid];
+  var st=_formState(t,form);
+  st.answers[n]=(st.answers[n]===val)?'':val;
+  if(!st.startedAt){st.startedAt=new Date().toLocaleString('en-GB');st.startedBy=S.user?S.user.name:'';}
+  st.lastEditAt=new Date().toLocaleString('en-GB');
+  _lcSave&&_lcSave();
+  var now=st.answers[n];
+  var key=String(n).replace(/\./g,'_');
+  ['yes','no'].forEach(function(o){
+    var el=document.getElementById('fa-'+key+'-'+o);
+    if(!el)return;
+    var on=now===o;
+    var col=o==='yes'?'#059669':'#DC2626';
+    el.style.border='1.5px solid '+(on?col:'var(--bd)');
+    el.style.background=on?col:'var(--surf)';
+    el.style.color=on?'#fff':'var(--t2)';
+  });
+  // refresh the progress chip in place
+  var p=_formProgress(t,form);
+  var badge=document.getElementById('form-progress');
+  if(badge){
+    badge.textContent=p.yes+'/'+p.total+' · '+p.pct+'%';
+    badge.style.background=p.passed?'#ECFDF5':(p.no?'#FEF2F2':'#FFFBEB');
+    badge.style.color=p.passed?'#059669':(p.no?'#DC2626':'#B45309');
+  }
+}
 function _formHdr(id,fid,k,v){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  _formState(t,INSPECTION_FORMS[fid]).header[k]=v;
+  var form=INSPECTION_FORMS[fid];
+  _formState(t,form).header[k]=v;
   _lcSave&&_lcSave();
-  if(k&&INSPECTION_FORMS[fid].header.find(function(f){return f.id===k&&f.type==='yesno';}))openInspectionForm(id,fid);
+  var f=form.header.find(function(x){return x.id===k;});
+  if(f&&f.type==='yesno'){
+    ['نعم','لا'].forEach(function(o){
+      var el=document.getElementById('fh-'+k+'-'+(o==='نعم'?'y':'n'));
+      if(!el)return;
+      var on=v===o;
+      el.style.border='1.5px solid '+(on?'#6C3FF5':'var(--bd)');
+      el.style.background=on?'#6C3FF5':'var(--surf)';
+      el.style.color=on?'#fff':'var(--t2)';
+    });
+  }
 }
 function _formNote(id,fid,v){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   _formState(t,INSPECTION_FORMS[fid]).notes=v;_lcSave&&_lcSave();
-}
-function _formAns(id,fid,n,val){
-  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
-  var st=_formState(t,INSPECTION_FORMS[fid]);
-  st.answers[n]=(st.answers[n]===val)?'':val;
-  _lcSave&&_lcSave();
-  openInspectionForm(id,fid);
 }
 function _formSign(id,fid,sigId){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
@@ -22318,7 +22385,16 @@ function _formSign(id,fid,sigId){
         officer:st.signatures.officer.by,supervisor:st.signatures.supervisor.by,at:st.signatures.supervisor.at};
     }
     _lcSave&&_lcSave();syncTrip&&syncTrip(t);
-    toast('✅ تم التوقيع','ok');
+    // Both approvals on the form release the step — no second approval to give
+    var _both=st.signatures.officer&&st.signatures.supervisor;
+    var _stg=_wfStage(t.status);
+    if(_both&&_stg&&_stg.role==='operation'){
+      _formCtx=null;closeM();
+      toast('✅ اعتمد النموذج — أُرسلت الشحنة للخطوة التالية','ok');
+      _wfAdvanceNow(id,'اعتماد نموذج '+form.doc);
+      return;
+    }
+    toast('✅ تم الاعتماد','ok');
     openInspectionForm(id,fid);
   });
 }
@@ -22575,6 +22651,150 @@ function _sheetEdit(id,i,field,val){
   _lcSave&&_lcSave();syncTrip&&syncTrip(t);
   toast('Line adjusted','ok');
   rFinalSheet();
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// PLAN REVISION — a rejection is not a cancellation. The shipment goes
+// back to the transportation supervisor with the reason, they change what
+// was wrong (usually the truck), and resubmit it into the chain.
+// ══════════════════════════════════════════════════════════════════
+var WF_REVISION='plan_revision';
+function _revisionTrips(){
+  return (S.trips||[]).filter(function(t){return t.status===WF_REVISION;});
+}
+// The supervisor owns the plan until operations has approved its form
+function _canEditPlan(t){
+  if(!t)return false;
+  if(can('all'))return true;
+  if(S.role!=='supervisor')return false;
+  return ['awaiting_operation','awaiting_quality',WF_REVISION].indexOf(t.status)>-1;
+}
+function wfReject(id,reason){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var stage=_wfStage(t.status);if(!stage)return;
+  var why=reason||prompt('سبب الرفض — سيعود إلى مشرف النقل للتعديل:','');
+  if(why===null||!String(why).trim()){toast('يجب كتابة سبب الرفض','err');return;}
+  why=String(why).trim();
+  requirePwd('✕ رفض — '+id,function(){
+    t.status=WF_REVISION;
+    t.revision={reason:why,by:S.user.name,role:S.role,at:new Date().toLocaleString('en-GB'),
+      rejectedAt:stage.step+' '+stage.label,truck:t.truck,
+      count:((t.revision&&t.revision.count)||0)+1};
+    // the inspection must be redone against the corrected plan
+    if(t.forms)t.forms={};
+    if(t.ops){t.ops.loadingComplete=false;t.ops.loadingCompleteAt='';t.ops.loadingCompleteBy='';}
+    t.qualityVerified=false;t.qualityVerifiedBy='';t.qualityVerifiedAt='';
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:t.revision.at,user:S.user.name,
+      action:'✕ رفض في '+stage.step+' — أُعيد لمشرف النقل',detail:why});
+    audit('WF_REJECT',stage.label+': '+why,id);
+    notif('✕ '+t.id+' مرفوض في '+stage.step+' — بانتظار تعديل المشرف','alert');
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    toast('أُعيد إلى مشرف النقل للتعديل','err');
+    try{nav(S.page);}catch(e){}
+  });
+}
+// Supervisor fixes the plan and sends it back into the chain
+function wfResubmit(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(!_canEditPlan(t)){toast('مشرف النقل فقط يمكنه إعادة الإرسال','err');return;}
+  var note=prompt('ما الذي تم تعديله؟','');
+  if(note===null||!String(note).trim()){toast('اكتب ما تم تعديله','err');return;}
+  requirePwd('↻ إعادة إرسال — '+id,function(){
+    var first=(WF_CHAIN.find(function(s){return s.leg==='out';})||{}).id||'awaiting_operation';
+    t.status=first;
+    if(t.revision){
+      t.revision.resolved=String(note).trim();
+      t.revision.resolvedBy=S.user.name;
+      t.revision.resolvedAt=new Date().toLocaleString('en-GB');
+    }
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
+      action:'↻ أُعيد الإرسال بعد التعديل',
+      detail:String(note).trim()+(t.truck?' · السيارة: '+t.truck:'')});
+    audit('WF_RESUBMIT',note,id);
+    notif('↻ '+t.id+' أُعيد إرساله بعد تعديل المشرف','info');
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    toast('↻ أُعيد الإرسال — بانتظار العمليات','ok');
+    try{nav(S.page);}catch(e){}
+  });
+}
+// Supervisor's queue: what needs correcting, and what they can still change
+function wfRevisionHTML(){
+  var q=_revisionTrips();
+  var editable=(S.trips||[]).filter(function(t){
+    return t.contract&&t.status!==WF_REVISION&&_canEditPlan(t);
+  });
+  var out='';
+  if(q.length){
+    out+='<div style="font-size:11px;font-weight:800;color:#DC2626;text-transform:uppercase;letter-spacing:.6px;margin:4px 0 8px">مرفوضة — بانتظار تعديلك ('+q.length+')</div>'+
+    q.map(function(t){
+      var r=t.revision||{};
+      return '<div class="card" style="border-left:4px solid #DC2626;margin-bottom:10px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">'+
+          '<div><div style="font-size:15px;font-weight:800">'+t.id+'</div>'+
+          '<div style="font-size:12px;color:var(--t2);margin-top:2px">'+t.customer+' · '+(t.truck||'—')+' · '+(t.truckType||'')+'</div></div>'+
+          '<span style="font-size:10.5px;font-weight:700;padding:3px 10px;border-radius:20px;background:#FEF2F2;color:#DC2626;white-space:nowrap">مرفوض ×'+(r.count||1)+'</span>'+
+        '</div>'+
+        '<div style="background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:9px 11px;margin-bottom:10px">'+
+          '<div style="font-size:11px;font-weight:800;color:#B91C1C;margin-bottom:3px">سبب الرفض — '+(r.rejectedAt||'')+'</div>'+
+          '<div style="font-size:12.5px;color:#7F1D1D">'+(r.reason||'')+'</div>'+
+          '<div style="font-size:10.5px;color:var(--t2);margin-top:4px">'+(r.by||'')+' · '+(r.at||'')+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+          '<button class="btn btn-outline btn-sm" onclick="openShipmentRequest(\''+t.id+'\')">✎ تعديل الخطة</button>'+
+          '<button class="btn btn-outline btn-sm" onclick="_srQuickTruck(\''+t.id+'\')">🚛 تغيير السيارة</button>'+
+          '<button class="btn btn-success btn-sm" onclick="wfResubmit(\''+t.id+'\')">↻ إعادة الإرسال</button>'+
+        '</div></div>';
+    }).join('');
+  }
+  if(editable.length){
+    out+='<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin:14px 0 8px">قابلة للتعديل قبل الفحص ('+editable.length+')</div>'+
+    '<div class="card"><div style="overflow-x:auto"><table class="tbl" style="font-size:11.5px"><thead><tr>'+
+    '<th>Trip</th><th>Customer</th><th>Truck</th><th>Type</th><th>Driver</th><th>Status</th><th></th></tr></thead><tbody>'+
+    editable.map(function(t){
+      var s=_wfStage(t.status);
+      return '<tr><td style="font-weight:700">'+t.id+'</td><td>'+t.customer+'</td>'+
+        '<td>'+(t.truck||'—')+'</td><td>'+(t.truckType||'')+'</td><td>'+(t.driver||'—')+'</td>'+
+        '<td><span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:#EEF2FF;color:#6C3FF5">'+(s?s.step:t.status)+'</span></td>'+
+        '<td style="display:flex;gap:4px"><button class="btn btn-outline btn-sm" onclick="openShipmentRequest(\''+t.id+'\')">✎ تعديل</button>'+
+        '<button class="btn btn-outline btn-sm" onclick="_srQuickTruck(\''+t.id+'\')">🚛 السيارة</button></td></tr>';
+    }).join('')+'</tbody></table></div></div>';
+  }
+  return out;
+}
+// Change just the truck — the usual fix after a quality rejection
+function _srQuickTruck(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  if(!_canEditPlan(t)){toast('لا يمكن تعديل الخطة في هذه المرحلة','err');return;}
+  openM('<div class="m-title">🚛 تغيير السيارة — '+id+'</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">السيارات المعتمدة فقط، حسب النوع المختار.</div>'+
+    '<div class="fg"><label>نوع السيارة</label><select id="qt-type" onchange="_qtRefresh()">'+
+      ['Dababa','Jumbo','Actros','Trailer','Truck Head'].map(function(x){return '<option'+(t.truckType===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
+    '<div class="fg"><label>السيارة</label><select id="qt-truck">'+_srTruckOptions(t.truckType,t.truck)+'</select></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">إلغاء</button>'+
+    '<button class="btn btn-primary" onclick="_qtSave(\''+id+'\')">حفظ</button></div>');
+}
+function _qtRefresh(){
+  var ty=(document.getElementById('qt-type')||{}).value||'';
+  var sel=document.getElementById('qt-truck');if(!sel)return;
+  sel.innerHTML=_srTruckOptions(ty,sel.value);
+}
+function _qtSave(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var ty=(document.getElementById('qt-type')||{}).value||t.truckType;
+  var tr=(document.getElementById('qt-truck')||{}).value||'';
+  var old=t.truck||'—';
+  t.truckType=ty;t.truck=tr||null;
+  if(t.contract){t.contract.truckType=ty;t.contract.truck=tr;}
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
+    action:'🚛 تغيير السيارة',detail:old+' → '+(tr||'—')+' ('+ty+')'});
+  audit('PLAN_TRUCK',old+' → '+tr,id);
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  closeM();toast('تم تغيير السيارة','ok');
+  try{nav(S.page);}catch(e){}
 }
 
 </script>
