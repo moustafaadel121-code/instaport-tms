@@ -307,6 +307,14 @@ app.post('/api/auth/verify', (req, res) => {
 const apiRouter = require('./integrations/api');
 app.use('/api/v1', apiRouter);
 
+// Authoritative clock. Every operational timestamp — inspection start/end,
+// driver arrival and departure — is stamped from here, so changing the clock
+// on a phone or a PC cannot move a recorded time.
+app.get('/api/time', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  res.json({ now: Date.now(), iso: new Date().toISOString(), tz: 'server' });
+});
+
 // Sensor + GPS snapshot endpoints
 app.get('/api/sensors', (req, res) => res.json(sensors.getSnapshot()));
 app.get('/api/gps',     (req, res) => res.json(gps.getSnapshot()));

@@ -3004,7 +3004,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-01 19:31';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · trusted clock';   // build stamp — shown in the sidebar so the running version is verifiable
 var _IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
 var _IS_LOCAL        = !_IS_GITHUB_PAGES;
 var INSTAPORT_API    = ''; // always relative on local; unused on GH Pages (Supabase handles auth)
@@ -5779,6 +5779,71 @@ function verifyPwd(){
 }
 
 // ══════════════════════════════════════════════════
+// TRUSTED CLOCK
+// Operational times — inspection start/end, driver arrival and departure —
+// must survive somebody changing the clock on their phone or PC. So they are
+// never read from the device clock. The server's time is fetched once, and
+// from then on the time is carried forward with performance.now(), which is
+// monotonic: it counts elapsed time and is not affected when the system clock
+// is moved. A stamp records where it came from and how far the device clock
+// had drifted, so a tampered device is visible on the record itself.
+// ══════════════════════════════════════════════════
+var _TC={base:0,perf:0,ok:false,at:0,drift:0,syncing:false};
+function _tcSync(cb){
+  if(_TC.syncing){cb&&cb();return;}
+  _TC.syncing=true;
+  var t0=(performance&&performance.now)?performance.now():0;
+  fetch('/api/time',{cache:'no-store'}).then(function(r){return r.json();}).then(function(j){
+    var t1=(performance&&performance.now)?performance.now():0;
+    var lag=(t1-t0)/2;                       // half the round trip
+    _TC.base=(+j.now||0)+lag;
+    _TC.perf=t1;
+    _TC.ok=true;
+    _TC.at=Date.now();
+    _TC.drift=Date.now()-_TC.base;           // how wrong this device is
+    _TC.syncing=false;
+    if(Math.abs(_TC.drift)>_TC_TOLERANCE)
+      console.warn('Device clock is off by '+Math.round(_TC.drift/1000)+'s — timestamps use server time.');
+    cb&&cb();
+  }).catch(function(){
+    _TC.syncing=false;_TC.ok=false;cb&&cb();
+  });
+}
+var _TC_TOLERANCE=120000;   // 2 minutes of tolerable device drift
+// Milliseconds, from the trusted source when we have one
+function _tcMs(){
+  if(_TC.ok&&performance&&performance.now)
+    return Math.round(_TC.base+(performance.now()-_TC.perf));
+  return Date.now();
+}
+// A stamp: the value, the display string, and its provenance.
+function _tc(){
+  var ms=_tcMs(),d=new Date(ms);
+  var dev=Date.now()-ms;
+  return {
+    ms:ms,
+    at:d.toLocaleString('en-GB'),
+    time:d.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'}),
+    iso:d.toISOString(),
+    src:_TC.ok?'server':'device',
+    drift:Math.round(dev/1000),
+    trusted:_TC.ok&&Math.abs(dev)<=_TC_TOLERANCE
+  };
+}
+// Short marker shown next to a stamp
+function _tcMark(s){
+  if(!s)return '';
+  if(s.src==='server'&&Math.abs(s.drift||0)<=_TC_TOLERANCE/1000)
+    return '<span title="Server time" style="font-size:9.5px;color:#059669;font-weight:800">🔒</span>';
+  if(s.src==='server')
+    return '<span title="Server time — this device\'s clock is off by '+s.drift+'s" style="font-size:9.5px;color:#B45309;font-weight:800">🔒⚠</span>';
+  return '<span title="Device time — server unreachable, unverified" style="font-size:9.5px;color:#B45309;font-weight:800">⚠</span>';
+}
+_tcSync();
+setInterval(function(){_tcSync();},300000);
+document.addEventListener('visibilitychange',function(){if(!document.hidden)_tcSync();});
+
+// ══════════════════════════════════════════════════
 // AUDIT
 // ══════════════════════════════════════════════════
 function audit(action,detail,tripId){
@@ -6414,23 +6479,19 @@ function _doUExport(fmt){
     var _b=_pdfBrand();
     var trs=d.rows.map(function(r,i){return '<tr'+(i%2?' style="background:#f8fafc"':'')+'>'
       +r.map(function(v){return '<td>'+String(v).replace(/</g,'&lt;')+'</td>';}).join('')+'</tr>';}).join('');
-    var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+d.title+'</title>'
-      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10px;padding:24px;color:#1e293b}'
-      +'table{width:100%;border-collapse:collapse;margin-top:4px}'
-      +'th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;font-weight:700}'
-      +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}'
-      +'.foot{margin-top:14px;font-size:8px;color:#94a3b8;border-top:2px solid '+_b.primary+'22;padding-top:8px;display:flex;justify-content:space-between}'
-      +'@media print{.no-print{display:none}@page{margin:10mm}}</style></head><body>'
-      +_b.header('Report: '+d.title,'Generated: '+ts)
-      +'<div style="font-size:9px;color:#64748b;padding:8px 10px;background:#f8fafc;border-left:3px solid '+_b.primary+';border-radius:4px;margin-bottom:12px">User: <strong>'+user+'</strong> &nbsp;|&nbsp; Role: '+role+' &nbsp;|&nbsp; Records: '+d.rows.length+'</div>'
+    var w=_docOpen({
+      title:d.title, sub:'Report', docNo:d.title.replace(/\s+/g,'-').toUpperCase(),
+      status:d.rows.length+' records', width:1050, height:780,
+      css:'table{width:100%;border-collapse:collapse;margin-top:4px}'
+        +'th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;font-weight:700}'
+        +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}'
+        +'@page{margin:10mm}'
+    },
+      '<div style="font-size:9px;color:#64748b;padding:8px 10px;background:#f8fafc;border-left:3px solid '+_b.primary+';border-radius:4px;margin-bottom:12px">User: <strong>'+user+'</strong> &nbsp;|&nbsp; Role: '+role+' &nbsp;|&nbsp; Records: '+d.rows.length+'</div>'
       +'<table><thead><tr>'+d.headers.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead>'
-      +'<tbody>'+trs+'</tbody></table>'
-      +'<div class="foot"><span>'+_b.footer+'</span><span>'+user+' / '+role+' &bull; '+ts+'</span></div>'
-      +'<br><button class="no-print" onclick="window.print()" style="margin-top:8px;padding:8px 22px;background:'+_b.primary+';color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700">&#128424; Print / Save PDF</button>'
-      +'</body></html>';
-    var w=window.open('','_blank','width=1050,height=780');
-    if(!w){toast('Allow popups for PDF','err');return;}
-    w.document.write(html);w.document.close();toast('PDF ready — use Print button','ok');
+      +'<tbody>'+trs+'</tbody></table>');
+    if(!w)return;
+    toast('PDF ready — use Print button','ok');
   }
 }
 
@@ -8535,9 +8596,10 @@ function rTrips(){
     var _b=_pdfBrand();
     var ts2=new Date().toLocaleString('en-GB');
     var rows=trips.map(function(t,i){return '<tr style="'+(i%2?'background:#f8fafc':'')+'"><td>'+t.id+'</td><td>'+t.customer+'</td><td style="font-size:9px">'+t.ts+'</td><td>'+t.type+'</td><td>'+(t.truck||'—')+'</td><td>'+t.km+'</td>'+(canFin?'<td style="color:#059669;font-weight:600">'+(t.cost||'—')+'</td>':'')+'<td style="font-size:9px">'+t.status.replace(/_/g,' ')+'</td></tr>';}).join('');
-    var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>Trips Report</title>'
-      +'<style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:Arial,sans-serif;font-size:10px;color:#1e293b;background:#fff}'
-      +'table{width:100%;border-collapse:collapse;margin-top:8px}'
+    var w=_docOpen({
+      title:'Trips Report', docNo:'TRIPS-'+new Date().toISOString().slice(0,10).replace(/-/g,''),
+      status:trips.length+' trips',
+      css:'table{width:100%;border-collapse:collapse;margin-top:8px}'
       +'th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;font-weight:700}'
       +'td{padding:5px 8px;border-bottom:1px solid #e5e7eb;font-size:9px}'
       +'.tot-row td{background:#F4F5FA;font-weight:700}'
@@ -8545,10 +8607,9 @@ function rTrips(){
       +'.kpi{flex:1;border:1px solid #e2e8f0;border-radius:8px;padding:10px 12px;background:#fafafa}'
       +'.kpi-lbl{font-size:8px;text-transform:uppercase;letter-spacing:.5px;color:#94a3b8;margin-bottom:2px}'
       +'.kpi-val{font-size:16px;font-weight:900}'
-      +'.foot{margin-top:14px;font-size:8px;color:#94a3b8;border-top:2px solid '+_b.primary+'22;padding-top:6px;display:flex;justify-content:space-between}'
-      +'@media print{button{display:none}@page{margin:10mm}}</style></head><body>'
-      +_b.header('&#128203; Trips Report',ts2)
-      +'<div class="kpis">'
+      +'@page{margin:10mm}'
+    },
+      '<div class="kpis">'
       +'<div class="kpi"><div class="kpi-lbl">Total Trips</div><div class="kpi-val" style="color:'+_b.primary+'">'+trips.length+'</div></div>'
       +(canFin?'<div class="kpi"><div class="kpi-lbl">Total Cost</div><div class="kpi-val" style="color:#059669">EGP '+tot.cost.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})+'</div></div>':'')
       +'<div class="kpi"><div class="kpi-lbl">Total KM</div><div class="kpi-val" style="color:#06B6D4">'+tot.km.toLocaleString()+'</div></div>'
@@ -8556,12 +8617,9 @@ function rTrips(){
       +'<table><thead><tr><th>ID</th><th>Customer</th><th>Date</th><th>Type</th><th>Truck</th><th>KM</th>'+(canFin?'<th>Cost (EGP)</th>':'')+'<th>Status</th></tr></thead><tbody>'
       +rows
       +'<tr class="tot-row"><td colspan="5">Totals</td><td>'+tot.km.toLocaleString()+'</td>'+(canFin?'<td style="color:#059669">EGP '+tot.cost.toFixed(2)+'</td>':'')+'<td></td></tr>'
-      +'</tbody></table>'
-      +'<div class="foot"><span>'+_b.footer+'</span><span>'+S.user.name+' &bull; '+ts2+'</span></div>'
-      +'<div style="margin-top:14px;text-align:center"><button onclick="window.print()" style="background:'+_b.primary+';color:#fff;border:none;padding:9px 28px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">&#128424; Print / Save as PDF</button></div>'
-      +'</body></html>';
-    var w=window.open('','_blank','width=900,height=700');if(!w){toast('Allow popups for PDF export','err');return;}
-    w.document.write(html);w.document.close();w.focus();
+      +'</tbody></table>');
+    if(!w)return;
+    w.focus();
     toast('PDF preview opened — click Print','ok');
   }
 
@@ -14308,6 +14366,100 @@ function _sigSave(id){
   openSignCapture(id); // refresh chips
 }
 
+// ══════════════════════════════════════════════════════════════════
+// PRINTED DOCUMENT SHELL
+// Every document that leaves this system — proof of delivery, inspection
+// form, invoice, rate card, report — is printed on the same letterhead:
+// the organisation's own logo and name at the top, a document number and
+// a stamped generation time, and the product signature at the foot. One
+// place to change, so every export looks like it came from one company.
+// ══════════════════════════════════════════════════════════════════
+// One branding source for every document. Reads the live branding record,
+// falling back to what is on disk when the app state has not loaded yet.
+function _docBrand(){
+  var br=(S&&S.branding)||{};
+  if(!br.companyName){try{br=JSON.parse(localStorage.getItem('ip_branding')||'{}');}catch(e){}}
+  return {
+    co:br.companyName||(typeof _tenantName!=='undefined'&&_tenantName)||'InstaPort Logistics',
+    logo:br.logoUrl||br.logo||'',
+    color:br.primaryColor||'#6C3FF5',
+    sidebar:br.sidebarColor||'#1E1453',
+    tagline:br.tagline||''
+  };
+}
+// Stylesheet shared by every printed document
+function _docCSS(c){
+  c=c||'#4F1FD4';
+  return '*{margin:0;padding:0;box-sizing:border-box}'+
+  'body{font-family:Segoe UI,Tahoma,Arial,sans-serif;color:#1a1a2e;padding:30px 38px 74px;font-size:12.5px;line-height:1.5}'+
+  '.ip-hd{display:flex;justify-content:space-between;align-items:center;gap:16px;border-bottom:3px solid '+c+';padding-bottom:12px;margin-bottom:4px}'+
+  '.ip-hd .ip-co{font-size:15px;font-weight:800;color:'+c+';letter-spacing:.3px}'+
+  '.ip-hd h1{font-size:19px;color:#1a1a2e;font-weight:800;margin-top:2px}'+
+  '.ip-hd .ip-sub{font-size:10.5px;color:#777;margin-top:2px}'+
+  '.ip-hd img{height:46px;max-width:170px;object-fit:contain}'+
+  '.ip-meta{display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;font-size:10.5px;color:#555;margin-bottom:16px;padding:7px 0;border-bottom:1px solid #e5e5ef}'+
+  '.ip-ft{position:fixed;left:0;right:0;bottom:0;padding:8px 38px;border-top:1px solid #e5e5ef;background:#fff;'+
+    'font-size:9.5px;color:#8a8a9a;display:flex;justify-content:space-between;align-items:center;gap:10px}'+
+  '.ip-ft b{color:'+c+';font-weight:800}'+
+  '.ip-print{position:fixed;top:12px;right:14px}'+
+  '.ip-print button{padding:10px 22px;background:'+c+';color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer}'+
+  '@media print{body{padding:16px 22px 58px}.noprint,.ip-print{display:none}.ip-ft{position:fixed}}';
+}
+// Letterhead. `o`: {title, sub, docNo, status, rtl}
+function _docHead(o){
+  o=o||{};
+  var b=_docBrand();
+  var esc=function(s){return String(s==null?'':s).replace(/</g,'&lt;');};
+  var stamp=_tc();
+  var brandBlock='<div><div class="ip-co">'+esc(b.co)+'</div>'+
+    '<h1>'+esc(o.title||'')+'</h1>'+
+    (o.sub?'<div class="ip-sub">'+esc(o.sub)+'</div>':(b.tagline?'<div class="ip-sub">'+esc(b.tagline)+'</div>':''))+
+    '</div>';
+  var logoBlock=b.logo?'<img src="'+b.logo+'" alt=""/>':'';
+  return '<div class="ip-hd"'+(o.rtl?' style="direction:rtl"':'')+'>'+
+      (o.rtl?logoBlock+brandBlock:brandBlock+logoBlock)+
+    '</div>'+
+    '<div class="ip-meta"'+(o.rtl?' style="direction:rtl"':'')+'>'+
+      (o.docNo?'<span>'+(o.rtl?'رقم المستند':'Document No')+': <b>'+esc(o.docNo)+'</b></span>':'')+
+      '<span>'+(o.rtl?'تاريخ الإصدار':'Generated')+': '+esc(stamp.at)+
+        (stamp.src==='server'?' 🔒':' ⚠')+'</span>'+
+      '<span>'+(o.rtl?'بواسطة':'By')+': '+esc(S.user?S.user.name:'—')+'</span>'+
+      (o.status?'<span><b>'+esc(o.status)+'</b></span>':'')+
+    '</div>';
+}
+// Footer — the product signature is fixed and always present
+function _docFoot(o){
+  o=o||{};
+  var b=_docBrand();
+  var esc=function(s){return String(s==null?'':s).replace(/</g,'&lt;');};
+  return '<div class="ip-ft">'+
+      '<span>'+esc(b.co)+(o.docNo?' &nbsp;·&nbsp; '+esc(o.docNo):'')+'</span>'+
+      '<span>⚡ Powered by <b>InstaPort TMS</b></span>'+
+    '</div>';
+}
+// The complete document, letterhead and all — used both for the print
+// window and for the file we hand over when pop-ups are blocked.
+function _docHTML(o,bodyHTML){
+  o=o||{};
+  var b=_docBrand();
+  return '<!DOCTYPE html><html'+(o.rtl?' dir="rtl" lang="ar"':'')+'><head><meta charset="utf-8">'+
+    '<title>'+String(o.docNo||o.title||'InstaPort').replace(/</g,'')+'</title>'+
+    '<style>'+_docCSS(b.color)+(o.css||'')+'</style></head><body>'+
+    _docHead(o)+bodyHTML+_docFoot(o)+
+    '<div class="ip-print"><button onclick="window.print()">🖨 '+(o.rtl?'طباعة / حفظ PDF':'Print / Save as PDF')+'</button></div>'+
+    '</body></html>';
+}
+// Open a print window already wearing the letterhead
+function _docOpen(o,bodyHTML){
+  o=o||{};
+  var w=null;
+  try{w=window.open('','_blank','width='+(o.width||1000)+',height='+(o.height||800));}catch(e){}
+  if(!w){toast(o.rtl?'اسمح بالنوافذ المنبثقة':'Allow pop-ups to export the PDF','err');return null;}
+  w.document.write(_docHTML(o,bodyHTML));
+  w.document.close();
+  return w;
+}
+
 // ══ TRIP PDF REPORT — Proof of Delivery ══════════════════════
 function tripPDF(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t){toast('Trip not found','err');return;}
@@ -14334,11 +14486,7 @@ function tripPDF(id){
     if(cks.length)checklist='<div class="sec">Quality Checklist</div><table class="tb">'+cks.map(function(k){
       return '<tr><td class="lb">'+esc(k.replace(/_/g,' '))+'</td><td class="vl">'+(t.checklist[k]?'✔ Pass':'✘ Fail')+'</td></tr>';}).join('')+'</table>';
   }
-  var html='<!DOCTYPE html><html><head><meta charset="utf-8"><title>'+docNo+'</title><style>'+
-    '*{margin:0;padding:0;box-sizing:border-box}body{font-family:Segoe UI,Arial,sans-serif;color:#1a1a2e;padding:34px 42px;font-size:12.5px;line-height:1.5}'+
-    '.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:3px solid #4F1FD4;padding-bottom:14px;margin-bottom:6px}'+
-    '.hd h1{font-size:21px;color:#2a1a66}.hd .sub{font-size:11px;color:#777}'+
-    '.meta{display:flex;justify-content:space-between;font-size:11px;color:#555;margin-bottom:18px;padding:7px 0;border-bottom:1px solid #e5e5ef}'+
+  var _css=
     '.badge{display:inline-block;padding:3px 14px;border-radius:20px;font-weight:700;font-size:11px;'+(isDone?'background:#e7f8ef;color:#0a7a45;border:1px solid #0a7a45':'background:#fff4e0;color:#b26a00;border:1px solid #b26a00')+'}'+
     '.sec{font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:1.2px;color:#4F1FD4;margin:20px 0 8px;padding-bottom:4px;border-bottom:1.5px solid #ded6f7}'+
     'table.tb{width:100%;border-collapse:collapse}table.tb td{padding:6px 10px;border:1px solid #e8e6f2;vertical-align:top}'+
@@ -14347,12 +14495,8 @@ function tripPDF(id){
     'tr.tot td{font-weight:800;font-size:13.5px;background:#f0ecfb;border-top:2px solid #4F1FD4}'+
     '.sigs{display:flex;gap:18px;margin-top:26px}.sig{flex:1;border:1px solid #d8d4ec;border-radius:8px;padding:12px 14px 8px}'+
     '.sig .who{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.8px;color:#4F1FD4;margin-bottom:34px}'+
-    '.sig .ln{border-top:1.3px solid #999;padding-top:5px;font-size:10px;color:#888}'+
-    '.ft{margin-top:26px;padding-top:10px;border-top:1px solid #e5e5ef;font-size:10px;color:#999;display:flex;justify-content:space-between}'+
-    '@media print{body{padding:18px 24px}.noprint{display:none}}'+
-    '</style></head><body>'+
-    '<div class="hd"><div><h1>'+(isDone?'PROOF OF DELIVERY':'TRIP REPORT')+'</h1><div class="sub">'+esc(co)+' — Temperature-Controlled Transport &bull; &#9889; Powered by InstaPort TMS</div></div>'+logo+'</div>'+
-    '<div class="meta"><span>Document No: <b>'+docNo+'</b></span><span>Generated: '+now+'</span><span class="badge">'+(isDone?'✔ COMPLETED':esc(t.status).replace(/_/g,' ').toUpperCase())+'</span></div>'+
+    '.sig .ln{border-top:1.3px solid #999;padding-top:5px;font-size:10px;color:#888}';
+  var body=
     '<div class="sec">Shipment Details</div><table class="tb">'+
     row('Trip ID','<b>'+esc(t.id)+'</b>')+row('Customer',esc(t.customer))+
     row('Service Type',esc(t.type))+row('Temperature Condition','<b>'+esc(t.condition)+'</b>')+
@@ -14374,13 +14518,15 @@ function tripPDF(id){
         ? '<img src="'+sg.img+'" style="max-height:44px;max-width:100%;object-fit:contain;margin-bottom:2px"/><div class="ln">'+esc(sg.name||'')+(sg.ts?' · '+esc(sg.ts):'')+'</div>'
         : '<div class="ln">Name / Signature / Date</div>';
       return '<div class="sig"><div class="who">'+w[0]+'</div>'+inner+'</div>';}).join('')+
-    '</div>'+
-    '<div class="ft"><span>Generated by InstaPort TMS — '+esc(S.user?S.user.name:'')+'</span><span>'+docNo+' • Page 1 of 1</span></div>'+
-    '<div class="noprint" style="position:fixed;top:12px;right:14px"><button onclick="window.print()" style="padding:10px 22px;background:#4F1FD4;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button></div>'+
-    '</body></html>';
-  var w=window.open('','_blank');
-  if(!w){toast('Popup blocked — allow popups to generate the PDF','err');return;}
-  w.document.write(html);w.document.close();
+    '</div>';
+  var w=_docOpen({
+    title:isDone?'PROOF OF DELIVERY':'TRIP REPORT',
+    sub:'Temperature-Controlled Transport',
+    docNo:docNo,
+    status:isDone?'✔ COMPLETED':esc(t.status).replace(/_/g,' ').toUpperCase(),
+    css:_css
+  },body);
+  if(!w)return;
   setTimeout(function(){try{w.focus();}catch(e){}},300);
   audit('TRIP_PDF',(isDone?'PoD':'Report')+' generated',t.id);
 }
@@ -16227,7 +16373,10 @@ function _exportInvoicePDF(inv){
     +'.bank-box strong{color:#1E293B}'
     +'.notes-box{background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:12px 14px;font-size:11px;color:#92400E;margin-bottom:20px}'
     +'.footer{text-align:center;font-size:10px;color:#94A3B8;border-top:1px solid #E2E8F0;padding-top:14px;margin-top:4px}'
-    +'@media print{.no-print{display:none}body{padding:0}.page{padding:20px 24px}.inv-header{margin:-20px -24px 22px}}'
+    +'.ip-ft{position:fixed;left:0;right:0;bottom:0;padding:8px 36px;border-top:1px solid #E2E8F0;background:#fff;font-size:9.5px;color:#8a8a9a;display:flex;justify-content:space-between;align-items:center}'
+    +'.ip-ft b{color:'+_b.primary+';font-weight:800}'
+    +'body{padding-bottom:44px}'
+    +'@media print{.no-print{display:none}body{padding:0 0 44px}.page{padding:20px 24px}.inv-header{margin:-20px -24px 22px}}'
     +'</style></head><body>'
     +'<div class="page">'
     // Branded gradient header
@@ -16275,8 +16424,9 @@ function _exportInvoicePDF(inv){
       +'</div>':'')
     // Notes
     +(inv.notes?'<div class="notes-box">📝 <strong>Notes:</strong> '+inv.notes+'</div>':'')
-    // Footer
-    +'<div class="footer">'+_b.footer+' &bull; Generated '+new Date().toLocaleString('en-GB')+' &bull; '+inv.id+'</div>'
+    // Footer — organisation line, then the fixed product signature
+    +'<div class="footer">'+_b.company+' &bull; Generated '+_tc().at+' &bull; '+inv.id+'</div>'
+    +_docFoot({docNo:inv.id})
     +'<div class="no-print" style="text-align:center;margin-top:20px">'
     +'<button onclick="window.print()" style="background:'+_b.primary+';color:#fff;border:none;padding:10px 28px;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer">&#128424; Print / Save as PDF</button>'
     +'</div>'
@@ -17144,26 +17294,18 @@ function _expPDF(title,headers,rows,ts,usr){
   var trs=rows.map(function(r,i){
     return'<tr class="'+(i%2===0?'ev':'')+'">'+r.map(function(v){return'<td>'+String(v==null?'':v)+'</td>';}).join('')+'</tr>';
   }).join('');
-  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>'+title+'</title>'+
-    '<style>'+
-    '*{box-sizing:border-box;margin:0;padding:0}'+
-    'body{font-family:Arial,Helvetica,sans-serif;font-size:10px;color:#1e293b;padding:24px;background:#fff}'+
-    'table{width:100%;border-collapse:collapse}'+
-    'thead th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;white-space:nowrap;font-weight:700}'+
-    'td{padding:5px 7px;font-size:9px;border-bottom:1px solid #e2e8f0;vertical-align:top}'+
-    'tr.ev td{background:#f8fafc}'+
-    '.footer{margin-top:18px;font-size:8px;color:#94a3b8;border-top:2px solid '+_b.primary+'22;padding-top:6px;display:flex;justify-content:space-between}'+
-    '.meta-bar{font-size:9px;color:#64748b;margin-bottom:14px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid '+_b.primary+'}'+
-    '@page{margin:12mm}'+
-    '@media print{body{padding:0}.no-print{display:none}}'+
-    '</style></head><body>'+
-    _b.header(title,ts)+
+  var _o={
+    title:title, docNo:_expFname(title,''), status:rows.length+' records',
+    css:'table{width:100%;border-collapse:collapse}'+
+      'thead th{background:'+_b.sidebar+';color:#fff;padding:7px 8px;text-align:left;font-size:9px;white-space:nowrap;font-weight:700}'+
+      'td{padding:5px 7px;font-size:9px;border-bottom:1px solid #e2e8f0;vertical-align:top}'+
+      'tr.ev td{background:#f8fafc}'+
+      '.meta-bar{font-size:9px;color:#64748b;margin-bottom:14px;padding:8px 12px;background:#f8fafc;border-radius:6px;border-left:3px solid '+_b.primary+'}'+
+      '@page{margin:12mm}'
+  };
+  var html=_docHTML(_o,
     '<div class="meta-bar">Exported by: <strong>'+usr+'</strong> &nbsp;|&nbsp; '+rows.length+' records</div>'+
-    '<table><thead><tr>'+ths+'</tr></thead><tbody>'+trs+'</tbody></table>'+
-    '<div class="footer"><span>'+_b.footer+'</span><span>'+title+' — '+ts+'</span></div>'+
-    '<div class="no-print" style="text-align:center;margin-top:16px"><button onclick="window.print()" style="background:'+_b.primary+';color:#fff;border:none;padding:9px 28px;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer">🖨 Print / Save as PDF</button></div>'+
-    '<scr'+'ipt>window.onload=function(){window.print();};<\/scr'+'ipt>'+
-    '</body></html>';
+    '<table><thead><tr>'+ths+'</tr></thead><tbody>'+trs+'</tbody></table>');
   var w=null;
   try{w=window.open('','_blank','width=900,height=700');}catch(e){}
   if(w&&!w.closed){
@@ -18239,7 +18381,10 @@ function _anBuildPDF(_captured){
     return '<tr><td><b>'+r.type+'</b></td><td>'+r.trucks+'</td><td style="color:#059669">'+r.active+'</td><td>'+r.trips+'</td><td>'+Math.round(r.rev).toLocaleString()+'</td><td>'+Math.round(r.km).toLocaleString()+' km</td><td>'+util+'%</td></tr>';
   }).join('')+'</tbody></table></div>':'')+
   maintHtml+
-  '<div class="footer"><span>'+_brFooter+'</span><span>'+ts+'</span></div>'+
+  '<div class="footer"><span>'+_docBrand().co+'</span><span>'+ts+'</span></div>'+
+  _docFoot({docNo:'ANALYTICS'})+
+  '<style>.ip-ft{position:fixed;left:0;right:0;bottom:0;padding:8px 30px;border-top:1px solid #e5e5ef;background:#fff;font-size:9.5px;color:#8a8a9a;display:flex;justify-content:space-between}'+
+  '.ip-ft b{color:#6C3FF5;font-weight:800}body{padding-bottom:44px}</style>'+
   '<scr'+'ipt>window.onload=function(){window.print();};</scr'+'ipt></body></html>';
 
   var w=null;try{w=window.open('','_blank','width=1050,height=820');}catch(e){}
@@ -18915,23 +19060,20 @@ function exportDriverCompliance(){
 function exportComplianceCert(){
   var today=new Date().toLocaleDateString('en-GB');
   var comp=S.trips.filter(function(t){return t.status==='completed'&&(t.condition||'').indexOf('Cold')>-1;});
-  var html='<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Cold Chain Compliance Certificate</title>'+
-    '<style>body{font-family:Arial,sans-serif;font-size:11px;color:#1e293b;padding:20px;max-width:800px;margin:0 auto}'+
-    '.header{text-align:center;border-bottom:3px solid #4F46E5;padding-bottom:16px;margin-bottom:20px}'+
-    '.logo{font-size:24px;font-weight:900;color:#4F46E5}'+
-    '.cert-title{font-size:18px;font-weight:700;margin:10px 0 4px}'+
-    '.cert-sub{font-size:12px;color:#64748b}'+
-    '.section{margin-bottom:16px}'+
-    '.section-title{font-size:13px;font-weight:700;color:#4F46E5;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:8px}'+
-    'table{width:100%;border-collapse:collapse;font-size:10px}'+
-    'th{background:#4F46E5;color:#fff;padding:5px 8px;text-align:left}'+
-    'td{padding:4px 8px;border-bottom:1px solid #e2e8f0}'+
-    'tr:nth-child(even)td{background:#f8fafc}'+
-    '.stamp{margin-top:30px;border:2px solid #10B981;border-radius:12px;padding:14px;text-align:center;color:#10B981;font-weight:700}'+
-    '@page{margin:15mm}@media print{body{padding:0}}</style></head><body>'+
-    '<div class="header"><div class="logo">InstaPort TMS</div>'+
-    '<div class="cert-title">Cold Chain Compliance Certificate</div>'+
-    '<div class="cert-sub">Issued: '+today+' &nbsp;|&nbsp; Generated by: '+(S.user?S.user.name:'System')+'</div></div>'+
+  var html=_docHTML({
+    title:'Cold Chain Compliance Certificate',
+    sub:'Temperature-controlled operations',
+    docNo:'CERT-COLD-'+new Date().toISOString().slice(0,10).replace(/-/g,''),
+    status:comp.length+' cold-chain trips',
+    css:'.section{margin-bottom:16px}'+
+      '.section-title{font-size:13px;font-weight:700;color:#4F46E5;border-bottom:1px solid #e2e8f0;padding-bottom:4px;margin-bottom:8px}'+
+      'table{width:100%;border-collapse:collapse;font-size:10px}'+
+      'th{background:#4F46E5;color:#fff;padding:5px 8px;text-align:left}'+
+      'td{padding:4px 8px;border-bottom:1px solid #e2e8f0}'+
+      'tr:nth-child(even)td{background:#f8fafc}'+
+      '.stamp{margin-top:30px;border:2px solid #10B981;border-radius:12px;padding:14px;text-align:center;color:#10B981;font-weight:700}'+
+      '@page{margin:15mm}'
+  },
     '<div class="section"><div class="section-title">Fleet Cold Chain Compliance</div>'+
     '<table><thead><tr><th>Truck</th><th>Type</th><th>Cooling Unit</th><th>Cal. Expiry</th><th>Status</th></tr></thead><tbody>'+
     TRUCKS.filter(function(t){return t.cooling&&t.cooling!=='-';}).map(function(t){
@@ -18947,8 +19089,7 @@ function exportComplianceCert(){
       return '<tr><td>'+t.id+'</td><td>'+t.customer+'</td><td>'+t.condition+'</td>'+
         '<td>'+t.truck+'</td><td>'+(t.driver||'—')+'</td><td>'+t.ts+'</td></tr>';
     }).join('')+'</tbody></table></div>'+
-    '<div class="stamp">✅ This document certifies that cold chain operations have been conducted in compliance with InstaPort TMS temperature monitoring and fleet validation protocols.</div>'+
-    '<scr'+'ipt>window.onload=function(){window.print()};<\/scr'+'ipt></body></html>';
+    '<div class="stamp">✅ This document certifies that cold chain operations have been conducted in compliance with '+_docBrand().co+'’s temperature monitoring and fleet validation protocols. Issued '+today+' by '+(S.user?S.user.name:'System')+'.</div>');
   var w=null;try{w=window.open('','_blank','width=900,height=700');}catch(e){}
   if(w&&!w.closed){w.document.write(html);w.document.close();}
   else{var b=new Blob([html],{type:'text/html'});var a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='ColdChainCert_'+new Date().toISOString().slice(0,10)+'.html';a.click();}
@@ -20996,14 +21137,7 @@ function _drvDestRow(t,d,i,started,isActive){
       }).join('')+
     '</div>'+
 
-    '<div style="display:flex;gap:8px;margin-bottom:13px">'+
-      '<div style="flex:1"><label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Arrived</label>'+
-        '<input type="time" id="dd-a-'+t.id+'-'+i+'" value="'+(d.arriveTime||'')+'" style="'+big+'"/>'+
-        '<button class="btn btn-outline btn-sm" style="width:100%;margin-top:5px" onclick="_drvNow(\'dd-a-'+t.id+'-'+i+'\')">now</button></div>'+
-      '<div style="flex:1"><label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Departed</label>'+
-        '<input type="time" id="dd-d-'+t.id+'-'+i+'" value="'+(d.departTime||'')+'" style="'+big+'"/>'+
-        '<button class="btn btn-outline btn-sm" style="width:100%;margin-top:5px" onclick="_drvNow(\'dd-d-'+t.id+'-'+i+'\')">now</button></div>'+
-    '</div>'+
+    '<div id="dd-ts-'+t.id+'-'+i+'" style="margin-bottom:13px">'+_drvStampRow(t,d,i)+'</div>'+
 
     '<div id="dd-pod-'+t.id+'-'+i+'" style="margin-bottom:8px">'+(d.podPhoto?'<img src="'+d.podPhoto+'" style="height:60px;border-radius:8px;border:1px solid var(--bd)"/>':'')+'</div>'+
     '<label class="btn btn-outline" style="width:100%;cursor:pointer;margin-bottom:9px;padding:13px;display:block;text-align:center">📷 '+(d.podPhoto?'Retake POD photo':'Take POD photo')+
@@ -21020,10 +21154,51 @@ function _drvPickLoad(el){
   el.style.border='1.5px solid var(--c1)';el.style.background='var(--c1)';el.style.color='#fff';
   row.dataset.picked=el.dataset.v;
 }
-function _drvNow(id){
-  var e=document.getElementById(id);if(!e)return;
-  var d=new Date();
-  e.value=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+// ══ Driver time stamps ═════════════════════════════════════════════
+// The driver does not type a time. One tap on Arrived, one on Departed, and
+// the moment is taken from the trusted clock. A stamp is written once and
+// cannot be re-tapped, so a recorded arrival cannot be moved later — and
+// changing the clock on the phone does not move it either.
+function _drvStampRow(t,d,i){
+  var cell=function(label,stamp,legacy,btn,hint){
+    var has=!!(stamp||legacy);
+    return '<div style="flex:1;border:1.5px solid '+(has?'#A7F3D0':'var(--bd)')+';background:'+(has?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:9px 11px">'+
+      '<div style="font-size:11px;font-weight:800;color:'+(has?'#065F46':'var(--t2)')+'">'+label+'</div>'+
+      (has
+        ? '<div style="font-size:17px;font-weight:800;color:var(--t);margin-top:3px">'+((stamp&&stamp.time)||legacy)+' '+(stamp?_tcMark(stamp):'')+'</div>'
+        : (btn||'<div style="font-size:11px;color:var(--t3);margin-top:5px">'+(hint||'—')+'</div>'))+
+      '</div>';
+  };
+  return '<div style="display:flex;gap:8px">'+
+    cell('Arrived',d.arriveStamp,d.arriveTime,
+      '<button class="btn btn-primary btn-sm" style="width:100%;margin-top:6px;padding:11px" onclick="drvStamp(\''+t.id+'\','+i+',\'arrive\')">🕒 Tap on arrival</button>')+
+    cell('Departed',d.departStamp,d.departTime,
+      (d.arriveStamp||d.arriveTime)
+        ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px;padding:11px" onclick="drvStamp(\''+t.id+'\','+i+',\'depart\')">🕒 Tap on departure</button>'
+        :null,'Stamp arrival first')+
+  '</div>';
+}
+function drvStamp(id,i,which){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var c=_shipNormalize(t),d=c.destinations[i];if(!d)return;
+  var key=which==='arrive'?'arriveStamp':'departStamp';
+  var lbl=which==='arrive'?'Arrival':'Departure';
+  if(d[key]){toast(lbl+' is already stamped — it cannot be changed','err');return;}
+  if(which==='depart'&&!(d.arriveStamp||d.arriveTime)){toast('Stamp the arrival first','err');return;}
+  _tcSync(function(){
+    var s=_tc();s.by=S.user?S.user.name:'';
+    d[key]=s;
+    if(which==='arrive')d.arriveTime=s.time; else d.departTime=s.time;
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:s.at,user:s.by,action:'🕒 '+lbl+' — stop '+(i+1)+' '+(d.name||''),
+      detail:s.time+' · '+(s.src==='server'?'server clock':'device clock')+(s.trusted?'':' · ⚠ device clock off by '+s.drift+'s')});
+    audit('DRV_STAMP',lbl+' '+(d.name||'')+' @ '+s.at+' ('+s.src+')',id);
+    _drvGeo(function(loc){if(loc){d[which+'Location']=loc;_lcSave&&_lcSave();}});
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    var el=document.getElementById('dd-ts-'+id+'-'+i);
+    if(el)el.innerHTML=_drvStampRow(t,d,i);
+    toast('🕒 '+lbl+' '+s.time,'ok');
+  });
 }
 function drvStartTrip(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
@@ -21032,11 +21207,12 @@ function drvStartTrip(id){
   if(!km){toast('Enter the start KM','err');return;}
   c.startKm=km;
   c.startLoading=(document.getElementById('drv-sload-'+id)||{}).value||'Loading';
-  var now=new Date();
-  c.actualStartTime=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  var now=_tc();
+  c.actualStartTime=now.time;
+  c.startStamp=now;
   if(!c.startTime)c.startTime=c.actualStartTime;
   t.status='in_progress';
-  t.tl.push({ts:now.toLocaleString('en-GB'),user:S.user.name,action:'▶ Trip started',detail:'Start KM '+km+' · '+c.startLoading});
+  t.tl.push({ts:now.at,user:S.user.name,action:'▶ Trip started',detail:'Start KM '+km+' · '+c.startLoading+' · '+(now.src==='server'?'server clock':'device clock')});
   audit('DRV_START','Start KM '+km,id);
   _drvGeo(function(loc){if(loc){c.startLocation=loc;_lcSave&&_lcSave();}});
   _lcSave&&_lcSave();syncTrip&&syncTrip(t);
@@ -21079,14 +21255,15 @@ function drvCompleteDest(id,i){
   if(!km){toast('Enter the KM reading at this stop','err');return;}
   var prevKm=i===0?(+c.startKm||0):(+((c.destinations[i-1]||{}).km)||0);
   if(km<prevKm){toast('KM ('+km+') cannot be less than the previous reading ('+prevKm+')','err');return;}
-  var now=new Date();
+  if(!(d.arriveStamp||d.arriveTime)){toast('Tap Arrived to stamp the time','err');return;}
+  if(!(d.departStamp||d.departTime)){toast('Tap Departed to stamp the time','err');return;}
+  var now=_tc();
   var _lr=document.querySelector('.drv-load-row[data-tid="'+id+'"][data-idx="'+i+'"]');
   d.loading=(_lr&&_lr.dataset.picked)||d.loading||'Unloading';
   d.km=km;
-  d.arriveTime=g('a')||now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
-  d.departTime=g('d')||'';
   d.completed=true;
-  d.completedAt=now.toLocaleString('en-GB');
+  d.completedAt=now.at;
+  d.completedStamp=now;
   d.completedBy=S.user.name;
   t.tl.push({ts:d.completedAt,user:S.user.name,action:'📍 Stop '+(i+1)+' completed — '+d.name,
     detail:d.loading+' · KM '+km+' · arrived '+d.arriveTime+(d.podPhoto?' · POD attached':'')});
@@ -21106,9 +21283,10 @@ function drvEndTrip(id){
   if(pend.length){toast(pend.length+' stop(s) still open','err');return;}
   var lastKm=(c.destinations||[]).reduce(function(m,d){return Math.max(m,+d.km||0);},+c.startKm||0);
   if(km<lastKm){toast('End KM cannot be less than the last reading ('+lastKm+')','err');return;}
-  var now=new Date();
+  var now=_tc();
   c.endKm=km;
-  c.endTime=now.toLocaleTimeString('en-GB',{hour:'2-digit',minute:'2-digit'});
+  c.endTime=now.time;
+  c.endStamp=now;
   t.km=_shipTripKm(t);
   // The driver arriving starts the inbound chain — Security, then Operations,
   // then Control Room close it out. Only then is the trip complete.
@@ -22297,6 +22475,9 @@ function openInspectionForm(id,formId){
       '<span>'+t.id+'</span></div>'+
     (locked?'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:7px 11px;font-size:11.5px;color:#065F46;margin-bottom:10px">🔒 معتمد — للعرض فقط</div>':'')+
 
+    // ── inspection start / end — stamped from the server clock
+    '<div id="form-timing">'+_formTimingHTML(t,form,locked)+'</div>'+
+
     // ── header fields
     '<div style="direction:rtl;display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px">'+
     form.header.map(function(f){
@@ -22391,15 +22572,90 @@ function _formReturn(){
   if(_formCtx&&_formCtx.id){ openInspectionForm(_formCtx.id,_formCtx.fid); return true; }
   return false;
 }
+// ══ Inspection timing ══════════════════════════════════════════════
+// The inspection has a stamped beginning and a stamped end. Both come from
+// the trusted clock, both are written once and never rewritten, and the
+// document carries where each stamp came from.
+function _fmtDur(ms){
+  if(!(ms>0))return '—';
+  var s=Math.round(ms/1000);
+  if(s<60)return s+' ث';
+  var m=Math.round(s/60);
+  return m<60?(m+' د'):(Math.floor(m/60)+' س '+(m%60)+' د');
+}
+function _formTimingHTML(t,form,locked){
+  var st=_formState(t,form);
+  var s=st.inspStart,e=st.inspEnd;
+  var cell=function(label,stamp,btn){
+    return '<div style="flex:1;min-width:118px;border:1.5px solid '+(stamp?'#A7F3D0':'var(--bd)')+';background:'+(stamp?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:8px 10px">'+
+      '<div style="font-size:10.5px;font-weight:800;color:'+(stamp?'#065F46':'var(--t2)')+'">'+label+'</div>'+
+      (stamp
+        ? '<div style="font-size:12.5px;font-weight:800;color:var(--t);margin-top:3px;direction:ltr;text-align:right">'+stamp.at+' '+_tcMark(stamp)+'</div>'+
+          '<div style="font-size:10px;color:var(--t2);margin-top:2px">'+(stamp.by||'')+'</div>'
+        : (locked?'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">—</div>':btn))+
+      '</div>';
+  };
+  var dur=(s&&e)?_fmtDur(e.ms-s.ms):'';
+  return '<div style="direction:rtl;display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px">'+
+    cell('بداية الفحص',s,'<button class="btn btn-primary btn-sm" style="width:100%;margin-top:5px" onclick="_formStart(\''+t.id+'\',\''+form.id+'\')">▶ بدء الفحص</button>')+
+    cell('نهاية الفحص',e,s?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:5px" onclick="_formEnd(\''+t.id+'\',\''+form.id+'\')">■ إنهاء الفحص</button>'
+                          :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">ابدأ الفحص أولاً</div>')+
+    (dur?'<div style="flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;padding:8px 12px;border:1.5px solid var(--bd);border-radius:10px;background:var(--bg)">'+
+      '<div style="font-size:10.5px;font-weight:800;color:var(--t2)">المدة</div>'+
+      '<div style="font-size:13px;font-weight:800;color:var(--c1)">'+dur+'</div></div>':'')+
+  '</div>'+
+  (!_TC.ok?'<div style="direction:rtl;font-size:10.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 10px;margin-bottom:10px">⚠ تعذّر الوصول لساعة السيرفر — الأوقات مسجّلة من الجهاز وغير موثّقة.</div>':'');
+}
+function _formRefreshTiming(t,form){
+  var el=document.getElementById('form-timing');
+  if(el)el.innerHTML=_formTimingHTML(t,form,!!(_formState(t,form).signatures||{}).supervisor);
+}
+function _formStart(id,fid){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS[fid],st=_formState(t,form);
+  if(st.inspStart){toast('الفحص بدأ بالفعل — لا يمكن تغيير الوقت','err');return;}
+  _tcSync(function(){
+    var s=_tc();s.by=S.user?S.user.name:'';s.role=S.role||'';
+    st.inspStart=s;
+    st.startedAt=s.at;st.startedBy=s.by;      // legacy fields kept in step
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:s.at,user:s.by,action:'▶ بدء '+form.title,
+      detail:'ساعة '+(s.src==='server'?'السيرفر':'الجهاز')+(s.trusted?'':' · ⚠ ساعة الجهاز منحرفة '+s.drift+'ث')});
+    audit('FORM_START',form.doc+' @ '+s.at+' ('+s.src+')',id);
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    _formRefreshTiming(t,form);
+    toast('▶ بدأ الفحص '+s.time,'ok');
+  });
+}
+function _formEnd(id,fid){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS[fid],st=_formState(t,form);
+  if(!st.inspStart){toast('اضغط بدء الفحص أولاً','err');return;}
+  if(st.inspEnd){toast('الفحص انتهى بالفعل — لا يمكن تغيير الوقت','err');return;}
+  var p=_formProgress(t,form);
+  if(!p.complete){toast('أكمل جميع البنود قبل إنهاء الفحص ('+(p.yes+p.no)+'/'+p.total+')','err');return;}
+  _tcSync(function(){
+    var s=_tc();s.by=S.user?S.user.name:'';s.role=S.role||'';
+    st.inspEnd=s;
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:s.at,user:s.by,action:'■ انتهاء '+form.title,
+      detail:'المدة '+_fmtDur(s.ms-st.inspStart.ms)+' · '+p.yes+'/'+p.total});
+    audit('FORM_END',form.doc+' @ '+s.at+' ('+s.src+')',id);
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    _formRefreshTiming(t,form);
+    toast('■ انتهى الفحص '+s.time,'ok');
+  });
+}
 // Answering an item updates just that row and the counter — no rebuild, so
 // the scroll position and the operator's place in the list are kept.
 function _formAns(id,fid,n,val){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var form=INSPECTION_FORMS[fid];
   var st=_formState(t,form);
+  if(!st.inspStart){toast('اضغط ▶ بدء الفحص أولاً','err');return;}
+  if(st.inspEnd){toast('انتهى الفحص — لا يمكن تعديل البنود','err');return;}
   st.answers[n]=(st.answers[n]===val)?'':val;
-  if(!st.startedAt){st.startedAt=new Date().toLocaleString('en-GB');st.startedBy=S.user?S.user.name:'';}
-  st.lastEditAt=new Date().toLocaleString('en-GB');
+  st.lastEditAt=_tc().at;
   _lcSave&&_lcSave();
   var now=st.answers[n];
   var key=String(n).replace(/\./g,'_');
@@ -22448,6 +22704,8 @@ function _formSign(id,fid,sigId){
   var p=_formProgress(t,form);
   var sg=form.signatures.find(function(s){return s.id===sigId;});
   if(!p.complete){toast('أكمل جميع البنود أولاً ('+(p.yes+p.no)+'/'+p.total+')','err');return;}
+  if(!st.inspStart){toast('اضغط ▶ بدء الفحص أولاً','err');return;}
+  if(!st.inspEnd){toast('اضغط ■ إنهاء الفحص قبل الاعتماد','err');return;}
   var _cfg=_opsCfg(),_op=t.ops||{};
   var _plate=(_op.scans||[]).find(function(s){return s.kind==='plate';});
   var _units=(_op.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';});
@@ -22463,7 +22721,8 @@ function _formSign(id,fid,sigId){
     toast('يوجد بند غير مطابق — اكتب الملاحظات وأبلغ الجودة','err');return;}
   requirePwd(form.title+' — '+sg.label,function(){
     if(!st.signatures)st.signatures={};
-    st.signatures[sigId]={by:S.user.name,role:S.role,at:new Date().toLocaleString('en-GB'),pct:p.pct};
+    var _sg=_tc();
+    st.signatures[sigId]={by:S.user.name,role:S.role,at:_sg.at,ms:_sg.ms,src:_sg.src,trusted:_sg.trusted,pct:p.pct};
     if(!t.tl)t.tl=[];
     t.tl.push({ts:st.signatures[sigId].at,user:S.user.name,
       action:'📋 '+form.title+' — '+sg.label,
@@ -22545,23 +22804,32 @@ function printInspectionForm(id,fid){
   var units=(op.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';});
   var photos=op.photos||[];
   var esc=function(s){return String(s==null?'':s).replace(/</g,'&lt;');};
-  var w=window.open('','_blank');if(!w){toast('اسمح بالنوافذ المنبثقة','err');return;}
-  w.document.write('<!DOCTYPE html><html dir="rtl" lang="ar"><head><meta charset="utf-8"><title>'+form.doc+' — '+esc(t.id)+'</title><style>'+
-    'body{font-family:Segoe UI,Tahoma,Arial;padding:20px;font-size:12px;color:#111}'+
-    'h1{font-size:17px;margin:0 0 2px}.doc{font-size:11px;color:#666;margin-bottom:10px}'+
-    'table{width:100%;border-collapse:collapse;margin-bottom:9px}td,th{border:1px solid #999;padding:5px 7px}'+
-    'th{background:#eee}.sec{background:#f3f3f3;font-weight:800}'+
-    '.hdr td{border:none;padding:3px 6px;font-size:11.5px}'+
-    '.ev{border:1px solid #999;padding:8px;margin-bottom:9px}'+
-    '.ev b{font-size:12px}.codes{direction:ltr;text-align:right;font-size:10.5px;color:#444;margin-top:4px;word-break:break-all}'+
-    '.ph{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.ph img{width:150px;height:112px;object-fit:cover;border:1px solid #999}'+
-    '.sig{display:flex;gap:14px;margin-top:14px}.sig div{flex:1;border:1px solid #999;padding:9px}'+
-    '@media print{.noprint{display:none}.ph img{width:135px;height:100px}}'+
-    '</style></head><body>'+
-    '<h1>'+esc(form.title)+'</h1><div class="doc">'+form.doc+' — '+esc(t.id)+' — '+esc(t.customer)+'</div>'+
+  var docNo=form.doc+' / '+t.id;
+  var w=_docOpen({
+    title:form.title, sub:esc(t.id)+' — '+esc(t.customer), docNo:docNo, rtl:true,
+    status:p.passed?'مطابق '+p.pct+'%':'يوجد عدم مطابقة',
+    width:980, height:820,
+    css:'body{direction:rtl}'+
+      'table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:12px}td,th{border:1px solid #999;padding:5px 7px}'+
+      'th{background:#eee}.sec{background:#f3f3f3;font-weight:800}'+
+      '.hdr td{border:none;padding:3px 6px;font-size:11.5px}'+
+      '.ev{border:1px solid #999;border-radius:6px;padding:8px 10px;margin-bottom:9px}'+
+      '.ev b{font-size:12px}.codes{direction:ltr;text-align:right;font-size:10.5px;color:#444;margin-top:4px;word-break:break-all}'+
+      '.ph{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}.ph img{width:150px;height:112px;object-fit:cover;border:1px solid #999;border-radius:4px}'+
+      '.sig{display:flex;gap:14px;margin-top:14px}.sig div{flex:1;border:1px solid #999;border-radius:6px;padding:9px}'+
+      '@media print{.ph img{width:135px;height:100px}}'
+  },
     '<table class="hdr">'+form.header.map(function(f,i){
       return (i%2===0?'<tr>':'')+'<td><b>'+esc(f.label)+':</b> '+esc(st.header[f.id]||'')+'</td>'+(i%2===1?'</tr>':'');
     }).join('')+'</table>'+
+    // inspection timing — stamped, not typed
+    '<div class="ev"><b>وقت الفحص</b><br><span style="font-size:11.5px">'+
+      'بداية: <b>'+esc(st.inspStart?st.inspStart.at:'—')+'</b>'+
+      ' &nbsp;·&nbsp; نهاية: <b>'+esc(st.inspEnd?st.inspEnd.at:'—')+'</b>'+
+      ((st.inspStart&&st.inspEnd)?' &nbsp;·&nbsp; المدة: <b>'+esc(_fmtDur(st.inspEnd.ms-st.inspStart.ms))+'</b>':'')+
+      '<br>مصدر الوقت: <b>'+((st.inspStart&&st.inspStart.src==='server')?'ساعة السيرفر (موثّقة)':'ساعة الجهاز (غير موثّقة)')+'</b>'+
+      (st.inspStart&&!st.inspStart.trusted?' — ⚠ ساعة الجهاز كانت منحرفة '+esc(st.inspStart.drift)+' ثانية':'')+
+    '</span></div>'+
     // evidence block
     '<div class="ev"><b>المرفقات والمسح</b><br>'+
       '<span style="font-size:11.5px">رقم السيارة (مسح): <b>'+esc(plate?plate.code:'—')+'</b>'+
@@ -22586,11 +22854,9 @@ function printInspectionForm(id,fid){
     (st.notes?'<div style="font-size:12px;margin-bottom:8px"><b>ملاحظات:</b> '+esc(st.notes)+'</div>':'')+
     '<div class="sig">'+form.signatures.map(function(sg){
       var s=(st.signatures||{})[sg.id];
-      return '<div><b>'+esc(sg.label)+'</b><br><br>'+(s?'معتمد: '+esc(s.by)+'<br><span style="font-size:10px;color:#666">'+esc(s.at)+'</span>':'الاعتماد/التاريخ: ....................')+'</div>';
-    }).join('')+'</div>'+
-    '<div class="noprint" style="position:fixed;top:10px;left:10px"><button onclick="window.print()" style="padding:9px 18px;background:#4F1FD4;color:#fff;border:0;border-radius:8px;font-size:13px;cursor:pointer">📄 حفظ PDF / طباعة</button></div>'+
-    '</body></html>');
-  w.document.close();
+      return '<div><b>'+esc(sg.label)+'</b><br><br>'+(s?'معتمد: '+esc(s.by)+'<br><span style="font-size:10px;color:#666">'+esc(s.at)+(s.src==='server'?' 🔒':'')+'</span>':'الاعتماد/التاريخ: ....................')+'</div>';
+    }).join('')+'</div>');
+  if(!w)return;
   audit('FORM_PDF',form.doc,id);
 }
 
