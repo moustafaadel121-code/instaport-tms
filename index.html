@@ -9442,7 +9442,6 @@ function rAdmin(){
   '<div class="tab'+(tab==='customers'?' on':'')+'" onclick="S.adminTab=\'customers\';rAdmin()">🏢 Customers</div>'+
   '<div class="tab'+(tab==='trucks'?' on':'')+'" onclick="S.adminTab=\'trucks\';rAdmin()">🚛 Trucks</div>'+
   '<div class="tab'+(tab==='pricing'?' on':'')+'" onclick="S.adminTab=\'pricing\';rAdmin()">💰 Pricing</div>'+
-  '<div class="tab'+(tab==='sla'?' on':'')+'" onclick="S.adminTab=\'sla\';rAdmin()">📑 SLA Rates</div>'+
   '<div class="tab'+(tab==='rbac'?' on':'')+'" onclick="S.adminTab=\'rbac\';rAdmin()">🔐 Role Access</div>'+
   '<div class="tab'+(tab==='pages'?' on':'')+'" onclick="S.adminTab=\'pages\';rAdmin()">📋 Page Access</div>'+
   '<div class="tab'+(tab==='dashboard'?' on':'')+'" onclick="S.adminTab=\'dashboard\';rAdmin()">📊 Dashboard</div>'+
@@ -9459,7 +9458,7 @@ function rAdmin(){
   '<div class="tab'+(tab==='operations'?' on':'')+'" onclick="S.adminTab=\'operations\';rAdmin()">📷 Operations</div>'+
   '</div>'+
   '<div id="admin-content"></div>';
-  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity,workflow:rAdminWorkflow,operations:rAdminOperations,sla:rAdminSLA};
+  var fn={users:rAdminUsers,customers:rAdminCustomers,trucks:rAdminTrucks,pricing:rAdminPricing,rbac:rAdminRBAC,pages:rAdminPageAccess,dashboard:rAdminDashboard,spare:rAdminSpare,settings:rAdminSettings,assignments:rAdminAssignments,sysconfig:rAdminSysConfig,import:rAdminImport,exceptions:rAdminExceptions,apikeys:rAdminAPIKeys,branding:rAdminBranding,security:rAdminSecurity,workflow:rAdminWorkflow,operations:rAdminOperations,sla:rAdminPricing};
   (fn[tab]||rAdminUsers)();
 }
 
@@ -10596,8 +10595,51 @@ function rAdminPricing(){
   '<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">'+
   '<div><div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--t2)">Global Settings</div>'+
   [['CO₂ Rate (kg/km)','co2Rate',S.priceModifiers.co2Rate||0.258,0.001],['Global Fuel Adj (×)','fuelAdjGlobal',S.priceModifiers.fuelAdjGlobal||1.0,0.01],['Waiting Rate (EGP/h)','waitingRate',S.priceModifiers.waitingRate||120,1],['Stop Fee (EGP)','stopFee',S.priceModifiers.stopFee||50,1]].map(function(r){return '<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid var(--tb)"><span style="font-size:13px">'+r[0]+'</span><input type="number" step="'+r[3]+'" value="'+r[1]+'" style="width:80px;padding:6px;border:1.5px solid var(--border);border-radius:6px;font-size:13px;text-align:center" onchange="S.priceModifiers.'+r[1]+'=+this.value;toast(\'Updated!\',\'ok\')"/></div>';}).join('')+'</div>'+
-  '<div><div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--t2)">Per-Customer Quick View</div>'+
-  '<div style="max-height:350px;overflow-y:auto">'+CUSTOMERS.map(function(cu){var m=S.custModifiers[cu]||{};return '<div style="padding:10px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-weight:600">'+cu+'</span><span style="color:var(--c1);font-weight:700">EGP '+(m.baseRate||8).toFixed(1)+'/km</span></div><div style="font-size:11px;color:var(--t2)">Bonus: '+m.bonus+' · Refrig: '+m.refrigSurcharge+'% · Emerg: '+m.emergencySurcharge+'% · Disc: '+m.discountPct+'%</div><button class="btn btn-outline btn-sm" style="margin-top:6px" onclick="editCustModifiers(\''+cu+'\')">Configure</button></div>';}).join('')+'</div></div></div></div>';
+  '<div><div style="font-size:13px;font-weight:600;margin-bottom:10px;color:var(--t2)">Customer Price Lists</div>'+
+  '<div style="max-height:350px;overflow-y:auto">'+_pricingCustomerList()+'</div></div></div></div>'+
+  // Contract rate card editor lives here too — one pricing screen, two modes
+  _slaSectionHTML();
+}
+// Per-customer row: shows which pricing mode the customer is on
+function _pricingCustomerList(){
+  var cards=_slaLoad();
+  var all=(CUSTOMERS||[]).slice();
+  Object.keys(cards).forEach(function(c){if(all.indexOf(c)<0)all.push(c);});
+  all.sort();
+  if(!all.length)return '<div style="font-size:12px;color:var(--t3)">No customers yet.</div>';
+  return all.map(function(cu){
+    var card=cards[cu],m=S.custModifiers[cu]||{};
+    var onSla=!!(card&&card.active);
+    return '<div style="padding:10px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px">'+
+        '<span style="font-weight:600">'+cu+(card&&card.code?' <span style="font-size:10.5px;color:var(--t3)">#'+card.code+'</span>':'')+'</span>'+
+        '<span style="font-size:10px;font-weight:700;padding:2px 9px;border-radius:20px;white-space:nowrap;background:'+(onSla?'#EEF2FF;color:#6C3FF5':'#F1F5F9;color:#64748B')+'">'+(onSla?'📑 Contract':'📐 Formula')+'</span>'+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--t2)">'+(onSla
+        ? _slaFilledCount(card)+' rates configured · '+(card.bands||[]).length+' distance bands'
+        : 'EGP '+(m.baseRate||8).toFixed(1)+'/km · Refrig '+(m.refrigSurcharge||0)+'% · Emerg '+(m.emergencySurcharge||0)+'%')+'</div>'+
+      '<div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap">'+
+        (onSla
+          ? '<button class="btn btn-primary btn-sm" onclick="S._slaSel=\''+cu+'\';rAdminPricing();setTimeout(function(){var e=document.getElementById(\'sla-section\');if(e)e.scrollIntoView({behavior:\'smooth\'});},80)">Edit rate card</button>'
+          : '<button class="btn btn-outline btn-sm" onclick="editCustModifiers(\''+cu+'\')">Configure</button>'+
+            '<button class="btn btn-outline btn-sm" onclick="_slaSwitchToContract(\''+cu+'\')">→ Contract pricing</button>')+
+      '</div></div>';
+  }).join('');
+}
+function _slaFilledCount(card){
+  var n=0;
+  SLA_SERVICES.forEach(function(s){var r=(card.rates||{})[s.id]||{};
+    Object.keys(r).forEach(function(tk){Object.keys(r[tk]).forEach(function(b){if(+r[tk][b].rate>0)n++;});});});
+  return n;
+}
+function _slaSwitchToContract(cu){
+  var code=prompt('Customer code for '+cu+' (as it appears on their invoices):','');
+  if(code===null)return;
+  _slaLoad()[cu]=_slaNewCard(cu,code.trim());_slaSave();
+  if(typeof _custSetCode==='function'&&code.trim())_custSetCode(cu,code.trim());
+  S._slaSel=cu;rAdminPricing();
+  setTimeout(function(){var e=document.getElementById('sla-section');if(e)e.scrollIntoView({behavior:'smooth'});},80);
+  toast('Contract rate card created for '+cu,'ok');
 }
 
 // ── RBAC — Role Access Rights ──
@@ -19856,7 +19898,7 @@ function _slaCard(customer){return (_slaLoad())[customer]||null;}
 function _slaActive(customer){var c=_slaCard(customer);return !!(c&&c.active);}
 
 function _slaNewCard(customer,code){
-  return {
+  var card={
     customer:customer,code:code||'',currency:'EGP',active:true,
     perLeg:true,          // price every loaded leg by its own distance band
     emptyLegFree:true,    // empty/return legs free of charge
@@ -19865,6 +19907,22 @@ function _slaNewCard(customer,code){
     rates:{},             // rates[service][truck||'*'][bandId||'*'] = {scm,rate}
     notes:''
   };
+  _slaBuildGrid(card);
+  return card;
+}
+// Standard grid: every service × truck × band gets an empty slot ready to fill.
+// Keeps any codes/rates already entered.
+function _slaBuildGrid(card){
+  SLA_SERVICES.forEach(function(s){
+    var trucks=s.perTruck?card.trucks:['*'];
+    var bands=s.flat?['*']:(s.id==='cancellation'?['*']:card.bands.map(function(b){return b.id;}));
+    trucks.forEach(function(tk){
+      bands.forEach(function(b){
+        if(!_slaGetRate(card,s.id,tk,b))_slaSetRate(card,s.id,tk,b,'',0);
+      });
+    });
+  });
+  return card;
 }
 function _slaGetRate(card,service,truck,bandId){
   var r=card.rates&&card.rates[service];if(!r)return null;
@@ -19892,14 +19950,18 @@ function calcSLA(trip){
   if(!card||!card.active)return null;
   var truck=trip.truckType||_slaTruckTypeOf(trip.truck)||card.trucks[0];
   var lines=[];
-  var push=function(service,label,truckKey,band,qty,note){
+  var push=function(service,label,truckKey,band,qty,note,leg){
     var r=_slaGetRate(card,service,truckKey,band?band.id:'*');
     if(!r)return;
     qty=+qty||0;if(qty<=0)return;
     lines.push({scm:r.scm||'',service:service,
       desc:label+(band?' — '+band.label:''),
       um:(SLA_SERVICES.find(function(s){return s.id===service;})||{}).um||'EA',
-      qty:qty,rate:+r.rate||0,amount:qty*(+r.rate||0),note:note||''});
+      qty:qty,rate:+r.rate||0,amount:qty*(+r.rate||0),note:note||'',
+      // audit trail: which manually-recorded odometer readings produced this line
+      band:band?band.label:'',
+      legFrom:leg?leg.from:'',legTo:leg?leg.to:'',legKm:leg?leg.km:'',
+      odoFrom:leg?leg.odoFrom:'',odoTo:leg?leg.odoTo:''});
   };
 
   // 1) Cancellation replaces the whole trip charge
@@ -19910,9 +19972,14 @@ function calcSLA(trip){
     var legs=_slaLegs(trip);
     if(card.perLeg&&legs.length){
       legs.forEach(function(lg,i){
-        if(card.emptyLegFree&&lg.loading==='Empty')return; // free empty leg
+        if(card.emptyLegFree&&lg.loading==='Empty'){
+          lines.push({scm:'',service:'trip',desc:truck+' Trip (leg '+(i+1)+') — empty',
+            um:'TR',qty:1,rate:0,amount:0,note:'Empty leg — free of charge',band:'',
+            legFrom:lg.from,legTo:lg.to,legKm:lg.km,odoFrom:lg.odoFrom,odoTo:lg.odoTo});
+          return;
+        }
         push('trip',truck+' Trip (leg '+(i+1)+')',truck,_slaBandFor(card,lg.km),1,
-          lg.from+' → '+lg.to+' · '+lg.km+' km');
+          'Odometer '+lg.odoFrom+' → '+lg.odoTo+' (driver recorded)',lg);
       });
     }else{
       push('trip',truck+' Trip',truck,_slaBandFor(card,trip.km||0),1);
@@ -19943,12 +20010,16 @@ function calcSLA(trip){
 function _slaLegs(trip){
   var ds=trip.destinations||[];
   if(!ds.length)return [];
+  // Each leg's distance comes from the odometer readings the driver records
+  // manually at every destination — that is what the invoice is priced on.
   var out=[],prev=trip.from||trip.origin||'Origin',prevKm=+trip.startKm||0;
   ds.forEach(function(d){
     if(!d||!d.name)return;
-    var km=(d.km!==undefined&&d.km!=='')?Math.max(0,(+d.km)-prevKm):0;
-    out.push({from:prev,to:d.name,km:km,loading:d.loading||'Unloading'});
-    prev=d.name;if(d.km!==undefined&&d.km!=='')prevKm=+d.km;
+    var has=(d.km!==undefined&&d.km!=='');
+    var km=has?Math.max(0,(+d.km)-prevKm):0;
+    out.push({from:prev,to:d.name,km:km,loading:d.loading||'Unloading',
+      odoFrom:prevKm,odoTo:has?+d.km:prevKm});
+    prev=d.name;if(has)prevKm=+d.km;
   });
   return out;
 }
@@ -19968,89 +20039,21 @@ function _slaTruckTypeOf(plate){
   return t?t.type:null;
 }
 
-// ── Seed the Novartis contract (all SCM codes from the signed SLA) ──
-function _slaSeedNovartis(){
-  var cust='NOVARTIS - DISTRIBUTION';
-  var cards=_slaLoad();
-  var card=_slaNewCard(cust,'1705');
-  card.notes='Calculated per leg (stop→stop) for loaded trucks. Empty pallet trips free of charge when loaded from Site 5 en route to Novartis inbound.';
-  var B=['b1','b2','b3','b4','b5','b6'];
-  // trip rates — SCM codes exactly as in the SLA sheet
-  var tripCodes={
-    Dababa :['SCM-2595','SCM-2596','SCM-2597','SCM-2598','SCM-2599','SCM-2600'],
-    Jumbo  :['SCM-2601','SCM-2602','SCM-2603','SCM-2604','SCM-2605','SCM-2606'],
-    Actros :['SCM-2607','SCM-2608','SCM-2609','SCM-2610','SCM-2611','SCM-2612'],
-    Trailer:['SCM-2613','SCM-2614','SCM-2615','SCM-2616','SCM-2617','SCM-2618']
-  };
-  Object.keys(tripCodes).forEach(function(tk){
-    tripCodes[tk].forEach(function(scm,i){_slaSetRate(card,'trip',tk,B[i],scm,0);});
-  });
-  // cancellation (single code per truck, all zones)
-  var cancel={Dababa:'SCM-2619',Jumbo:'SCM-2625',Actros:'SCM-2631',Trailer:'SCM-2637'};
-  Object.keys(cancel).forEach(function(tk){_slaSetRate(card,'cancellation',tk,'*',cancel[tk],0);});
-  // man power / representative — per band
-  ['SCM-2669','SCM-2670','SCM-2671','SCM-2672','SCM-2673','SCM-2674']
-    .forEach(function(scm,i){_slaSetRate(card,'manpower','*',B[i],scm,0);});
-  ['SCM-2675','SCM-2676','SCM-2677','SCM-2678','SCM-2679','SCM-2680']
-    .forEach(function(scm,i){_slaSetRate(card,'representative','*',B[i],scm,0);});
-  _slaSetRate(card,'extra_hour_rep','*','*','SCM-18793',0);
-  // overnight
-  var on={
-    Dababa :['SCM-19232','SCM-19233','SCM-19234','SCM-19235','SCM-19236','SCM-19237'],
-    Jumbo  :['SCM-19238','SCM-19239','SCM-19240','SCM-19241','SCM-19242','SCM-19243'],
-    Actros :['SCM-19244','SCM-19245','SCM-19246','SCM-19247','SCM-19248','SCM-19249'],
-    Trailer:['SCM-19250','SCM-19251','SCM-19252','SCM-19253','SCM-19254','SCM-19255']
-  };
-  Object.keys(on).forEach(function(tk){on[tk].forEach(function(scm,i){_slaSetRate(card,'overnight',tk,B[i],scm,0);});});
-  // extra day
-  var ed={
-    Dababa :['SCM-19256','SCM-19257','SCM-19258','SCM-19259','SCM-19260','SCM-19261'],
-    Jumbo  :['SCM-19262','SCM-19263','SCM-19264','SCM-19265','SCM-19266','SCM-19267'],
-    Actros :['SCM-19268','SCM-19269','SCM-19270','SCM-19271','SCM-19272','SCM-19273'],
-    Trailer:['SCM-19274','SCM-19275','SCM-19276','SCM-19277','SCM-19278','SCM-19279']
-  };
-  Object.keys(ed).forEach(function(tk){ed[tk].forEach(function(scm,i){_slaSetRate(card,'extra_day',tk,B[i],scm,0);});});
-  cards[cust]=card;_slaSave();
-  return card;
-}
-
 // ══ ADMIN → Pricing: SLA rate card editor ═════════════════════════
-function rAdminSLA(){
-  var el=document.getElementById('admin-content');if(!el)return;
+// Contract rate card section — rendered inside Finance & Pricing
+function _slaSectionHTML(){
   var cards=_slaLoad();
-  var sel=S._slaSel||Object.keys(cards)[0]||'';
-  // include customers that only exist as SLA cards (not yet in the customer master)
-  var allCust=(CUSTOMERS||[]).slice();
-  Object.keys(cards).forEach(function(c){if(allCust.indexOf(c)<0)allCust.push(c);});
-  allCust.sort();
-  var custOpts=allCust.map(function(c){return '<option value="'+c+'"'+(c===sel?' selected':'')+'>'+c+(cards[c]?' ✓ ('+(cards[c].code||'—')+')':'')+'</option>';}).join('');
+  var sel=S._slaSel||'';
   var card=cards[sel];
-  el.innerHTML='<div class="card">'+
-    '<div class="card-hd"><div class="card-title">📑 SLA Rate Cards (contract billing)</div>'+
-    '<button class="btn btn-outline btn-sm" onclick="_slaSeedNovartisUI()">⚡ Load Novartis SLA</button></div>'+
-    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Customers on an SLA contract are billed from a rate table — <b>service × truck type × distance band</b> — each line carrying the customer\'s own item code (SCM). Customers without a card keep using the formula engine.</div>'+
-    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px">'+
-      '<div class="fg" style="flex:1;min-width:220px;margin:0"><label>Customer</label>'+
-        '<select onchange="S._slaSel=this.value;rAdminSLA()"><option value="">— select —</option>'+custOpts+'</select></div>'+
-      (sel&&!card?'<button class="btn btn-primary btn-sm" onclick="_slaCreateUI()">+ Create rate card</button>':'')+
-    '</div>'+
-    (card?_slaCardEditorHTML(card):(sel?'<div style="font-size:12px;color:var(--t3)">No SLA card for this customer — they use the formula engine.</div>':''))+
+  if(!card)return '';
+  return '<div class="card" id="sla-section">'+
+    '<div class="card-hd"><div class="card-title">📑 Contract Rate Card — '+sel+'</div>'+
+    '<button class="btn btn-outline btn-sm" onclick="S._slaSel=\'\';rAdminPricing()">✕ Close</button></div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Billed from the contract table — <b>service × truck type × distance band</b> — each line carrying the customer\'s own item code.</div>'+
+    _slaCardEditorHTML(card)+
   '</div>';
 }
-function _slaCreateUI(){
-  var c=S._slaSel;if(!c)return;
-  var code=prompt('Customer code for '+c+' (e.g. 1705):','');
-  if(code===null)return;
-  _slaLoad()[c]=_slaNewCard(c,code.trim());_slaSave();rAdminSLA();
-  toast('Rate card created','ok');
-}
-function _slaSeedNovartisUI(){
-  if(!confirm('Load the Novartis SLA structure (all SCM codes, 6 distance bands, 4 truck types)?\n\nRates start at 0 — enter your contracted prices after loading.'))return;
-  var card=_slaSeedNovartis();
-  if((CUSTOMERS||[]).indexOf(card.customer)<0)CUSTOMERS.push(card.customer);
-  S._slaSel=card.customer;rAdminSLA();
-  toast('✅ Novartis SLA loaded — now enter the rates','ok');
-}
+
 function _slaCardEditorHTML(card){
   var svc=S._slaSvc||'trip';
   var s=SLA_SERVICES.find(function(x){return x.id===svc;})||SLA_SERVICES[0];
@@ -20069,7 +20072,7 @@ function _slaCardEditorHTML(card){
     '<span style="margin-left:auto;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:'+(filled===total&&total?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+filled+'/'+total+' rates set</span>'+
   '</div>'+
   '<div class="tabs" style="flex-wrap:wrap;gap:4px;margin-bottom:12px">'+
-    SLA_SERVICES.map(function(x){return '<div class="tab'+(x.id===svc?' on':'')+'" onclick="S._slaSvc=\''+x.id+'\';rAdminSLA()">'+x.label+'</div>';}).join('')+
+    SLA_SERVICES.map(function(x){return '<div class="tab'+(x.id===svc?' on':'')+'" onclick="S._slaSvc=\''+x.id+'\';rAdminPricing()">'+x.label+'</div>';}).join('')+
   '</div>'+
   '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th style="min-width:120px">'+(s.perTruck?'Truck':'Service')+'</th>'+
     bands.map(function(b){return '<th style="text-align:center;font-size:11px">'+b.label+'</th>';}).join('')+'</tr></thead><tbody>'+
@@ -20086,21 +20089,21 @@ function _slaCardEditorHTML(card){
   '<div style="font-size:11px;color:var(--t3);margin-top:10px">Unit: <b>'+s.um+'</b>'+(card.notes?' · '+card.notes:'')+'</div>'+
   '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn btn-outline btn-sm" onclick="_slaExportCard()">⬇ Export rate card (CSV)</button>'+
-    '<button class="btn btn-outline btn-sm" onclick="_slaImportPrompt()">⬆ Import rates (CSV)</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="openRateImport(S._slaSel)">⬆ Import / re-import sheet</button>'+
     '<button class="btn btn-danger btn-sm" onclick="_slaDeleteCard()">Delete card</button></div>';
 }
-function _slaFlag(k,v){var c=_slaCard(S._slaSel);if(!c)return;c[k]=v;_slaSave();rAdminSLA();}
+function _slaFlag(k,v){var c=_slaCard(S._slaSel);if(!c)return;c[k]=v;_slaSave();rAdminPricing();}
 function _slaEdit(svc,truck,band,field,val){
   var c=_slaCard(S._slaSel);if(!c)return;
   var cur=_slaGetRate(c,svc,truck,band)||{scm:'',rate:0};
   _slaSetRate(c,svc,truck,band,field==='scm'?val:cur.scm,field==='rate'?val:cur.rate);
   _slaSave();
-  if(field==='rate')rAdminSLA();
+  if(field==='rate')rAdminPricing();
 }
 function _slaDeleteCard(){
   var c=S._slaSel;if(!c)return;
   if(!confirm('Delete the SLA rate card for '+c+'? They will fall back to the formula engine.'))return;
-  delete _slaLoad()[c];_slaSave();rAdminSLA();toast('Rate card deleted','ok');
+  delete _slaLoad()[c];_slaSave();rAdminPricing();toast('Rate card deleted','ok');
 }
 function _slaExportCard(){
   var c=_slaCard(S._slaSel);if(!c)return;
@@ -20138,7 +20141,7 @@ function _slaImportRun(){
       if(map[scm]!==undefined){r[tk][b].rate=map[scm];n++;}
     });});
   });
-  _slaSave();closeM();rAdminSLA();
+  _slaSave();closeM();rAdminPricing();
   toast(n?('✅ '+n+' rates updated'):'No matching item numbers found',n?'ok':'err');
 }
 function _csvDownload(rows,filename){
@@ -20319,7 +20322,9 @@ function exportBillingSheet(trips){
   trips=trips||(S.trips||[]).filter(function(t){return t.contract;});
   if(!trips.length){toast('No contract shipments to bill','err');return;}
   var rows=[['Date','Trip ID','Customer','Customer Code','Truck','Truck Type','Driver',
-    'Transaction','Item Number','Service','Description','UM','Qty','Unit Rate','Amount','Currency','Note']];
+    'Transaction','Item Number','Service','Description','From','To',
+    'Odometer From','Odometer To','Leg KM','Distance Band',
+    'UM','Qty','Unit Rate','Amount','Currency','Note']];
   var grand=0,billed=0;
   trips.forEach(function(t){
     var c=t.contract||{};
@@ -20327,21 +20332,23 @@ function exportBillingSheet(trips){
     if(!res){
       // formula-priced customer → single summary line
       rows.push([c.date||'',t.id,t.customer,_custCode(t.customer),t.truck||'',t.truckType||'',t.driver||'',
-        c.transactionType||t.dir||'','—','Trip (formula)','Standard tariff','TR',1,+t.cost||0,+t.cost||0,'EGP','']);
+        c.transactionType||t.dir||'','—','Trip (formula)','Standard tariff','','','','',_shipTripKm(t),'','TR',1,+t.cost||0,+t.cost||0,'EGP','']);
       grand+=(+t.cost||0);billed++;return;
     }
     res.lines.forEach(function(l){
       rows.push([c.date||'',t.id,t.customer,res.card,t.truck||'',res.truck,t.driver||'',
-        c.transactionType||t.dir||'',l.scm,l.service,l.desc,l.um,l.qty,l.rate,l.amount,res.currency,l.note||'']);
+        c.transactionType||t.dir||'',l.scm,l.service,l.desc,
+        l.legFrom||'',l.legTo||'',l.odoFrom!==undefined&&l.odoFrom!==''?l.odoFrom:'',l.odoTo!==undefined&&l.odoTo!==''?l.odoTo:'',l.legKm!==undefined&&l.legKm!==''?l.legKm:'',l.band||'',
+        l.um,l.qty,l.rate,l.amount,res.currency,l.note||'']);
     });
     if(res.expenses>0){
       rows.push([c.date||'',t.id,t.customer,res.card,t.truck||'',res.truck,t.driver||'',
-        c.transactionType||t.dir||'','—','expenses','Reimbursed expenses (petty cash)','EA',1,res.expenses,res.expenses,res.currency,'At cost']);
+        c.transactionType||t.dir||'','—','expenses','Reimbursed expenses (petty cash)','','','','','','','EA',1,res.expenses,res.expenses,res.currency,'At cost']);
     }
     grand+=res.total;billed++;
   });
   rows.push([]);
-  rows.push(['','','','','','','','','','','GRAND TOTAL ('+billed+' shipments)','','','',Math.round(grand*100)/100,'EGP','']);
+  rows.push(['','','','','','','','','','','GRAND TOTAL ('+billed+' shipments)','','','','','','','','','',Math.round(grand*100)/100,'EGP','']);
   _csvDownload(rows,'Billing-Sheet-'+new Date().toISOString().slice(0,10)+'.csv');
   audit('EXPORT_BILLING',billed+' shipments · EGP '+Math.round(grand),'');
   toast('⬇ Billing sheet: EGP '+Math.round(grand).toLocaleString(),'ok');
@@ -20376,6 +20383,9 @@ function openShipmentRequest(editId){
     '<datalist id="sr-cust-list">'+allCust.map(function(x){return '<option value="'+x+'">'+(_custCode(x)||'')+'</option>';}).join('')+'</datalist></div>'+
   '<div class="fg"><label>Customer Code</label><input id="sr-code" value="'+(t?_custCode(t.customer):'')+'" placeholder="auto"/></div>'+
   '<div class="fg"><label>Transaction *</label><select id="sr-tx">'+opt(TRANSACTION_TYPES,c.transactionType)+'</select></div></div>'+
+
+  // ── Pricing mode banner + contract-billable extras (driven by the rate card)
+  '<div id="sr-contract"></div>'+
 
   // ── Truck / driver / condition
   '<div class="frow"><div class="fg"><label>Truck Type *</label><select id="sr-ttype">'+
@@ -20427,12 +20437,48 @@ function openShipmentRequest(editId){
   '<button class="btn btn-outline" onclick="_srPreviewCost()">💰 Calculate</button>'+
   '<button class="btn btn-primary" onclick="_srSubmit()">'+(t?'Save changes':'Create Shipment')+'</button></div>');
   _srRenderDests();
+  _srSyncContract(t?t.customer:'');
 }
 function _srCustCode(){
-  var n=(document.getElementById('sr-cust')||{}).value||'';
-  var code=_custCode(n.trim());
+  var n=((document.getElementById('sr-cust')||{}).value||'').trim();
+  var code=_custCode(n);
   var el=document.getElementById('sr-code');
   if(el&&code)el.value=code;
+  _srSyncContract(n);
+}
+// Reflect the customer's rate card into the form: their truck types and the
+// extras their contract actually bills for.
+function _srSyncContract(cust){
+  var box=document.getElementById('sr-contract');if(!box)return;
+  var card=_slaCard(cust);
+  var t=window._srEdit?S.trips.find(function(x){return x.id===window._srEdit;}):null;
+  var c=(t&&t.contract)||{};
+  if(!card||!card.active){
+    box.innerHTML='<div style="display:flex;align-items:center;gap:8px;background:#F1F5F9;color:#475569;border-radius:8px;padding:7px 11px;font-size:11.5px;margin-bottom:12px">'+
+      '<span>📐</span><span>Formula pricing — rate per km with modifiers.</span></div>';
+    return;
+  }
+  // truck types come from the contract
+  var sel=document.getElementById('sr-ttype');
+  if(sel){
+    var cur=sel.value;
+    sel.innerHTML=(card.trucks||[]).map(function(x){return '<option'+(x===cur?' selected':'')+'>'+x+'</option>';}).join('');
+    if((card.trucks||[]).indexOf(cur)<0&&card.trucks.length)sel.value=card.trucks[0];
+  }
+  var num=function(id,label,val,hint){
+    return '<div class="fg" style="margin:0"><label style="font-size:11px">'+label+'</label>'+
+      '<input type="number" min="0" id="'+id+'" value="'+(val||0)+'" oninput="_srPreviewCost()"/>'+
+      (hint?'<div style="font-size:9.5px;color:var(--t3);margin-top:2px">'+hint+'</div>':'')+'</div>';
+  };
+  box.innerHTML='<div style="background:#EEF2FF;border:1px solid #DDD6FE;border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
+    '<div style="display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:#6C3FF5;margin-bottom:8px">'+
+      '<span>📑</span><span>Contract pricing — code '+(card.code||'—')+'</span>'+
+      '<span style="margin-left:auto;font-size:10px;font-weight:600;color:var(--t2)">'+(card.bands||[]).length+' bands · '+(card.trucks||[]).length+' truck types'+(card.perLeg?' · per-leg':'')+(card.emptyLegFree?' · empty free':'')+'</span></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:8px">'+
+      num('sr-overnights','Overnights',c.overnights,'18:00 → 08:00')+
+      num('sr-extradays','Extra days',c.extraDays,'08:00 → 18:00')+
+      num('sr-extrarep','Extra rep hours',c.extraRepHours,'after 8 hours')+
+    '</div></div>';
 }
 function _srAddDest(){
   if(window._srDests.length>=MAX_DESTINATIONS){toast('Maximum '+MAX_DESTINATIONS+' destinations','err');return;}
@@ -20466,6 +20512,7 @@ function _srCollect(){
     transactionType:g('sr-tx'),truckType:g('sr-ttype'),truck:g('sr-truck'),driver:g('sr-driver'),
     temperature:g('sr-temp'),governorate:g('sr-gov'),
     reps:+g('sr-reps')||0,labors:+g('sr-labors')||0,pettyCash:+g('sr-petty')||0,
+    overnights:+g('sr-overnights')||0,extraDays:+g('sr-extradays')||0,extraRepHours:+g('sr-extrarep')||0,
     express:ck('sr-express'),emergency:ck('sr-emerg'),nonRevenue:ck('sr-nonrev'),
     tailLift:ck('sr-tail'),upaDelivery:ck('sr-upa'),truckBilling:g('sr-billing'),
     fromSite:g('sr-fromsite'),fromOther:g('sr-fromother'),
@@ -20904,6 +20951,171 @@ function _rolesCardHTML(){
           '<button class="btn btn-danger btn-sm" onclick="_roleDelete(\''+id+'\')"'+(n>0?' title="'+n+' user(s) assigned"':'')+'>Delete</button></td></tr>';
       }).join('')+'</tbody></table></div>':'')+
   '</div>';
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// RATE CARD IMPORT — paste the customer's own SLA sheet and map columns.
+// Builds the whole card: distance bands, truck types, services, item
+// codes and rates, discovered from the data itself.
+// ══════════════════════════════════════════════════════════════════
+function _rcParse(text){
+  var rows=[],lines=String(text||'').split(/\r?\n/).filter(function(l){return l.trim();});
+  var delim=(lines[0]||'').indexOf('\t')>-1?'\t':',';
+  lines.forEach(function(line){
+    var out=[],cur='',q=false;
+    for(var i=0;i<line.length;i++){
+      var ch=line[i];
+      if(ch==='"'){ if(q&&line[i+1]==='"'){cur+='"';i++;} else q=!q; }
+      else if(ch===delim&&!q){out.push(cur);cur='';}
+      else cur+=ch;
+    }
+    out.push(cur);
+    rows.push(out.map(function(c){return c.trim();}));
+  });
+  return rows;
+}
+// Work out what a description line means
+function _rcService(desc){
+  var d=(desc||'').toLowerCase();
+  if(/over\s*night/.test(d))        return 'overnight';
+  if(/extra\s*day/.test(d))         return 'extra_day';
+  if(/cancel/.test(d))              return 'cancellation';
+  if(/extra\s*hour/.test(d))        return 'extra_hour_rep';
+  if(/man\s*power|manpower|labou?r/.test(d)) return 'manpower';
+  if(/represent/.test(d))           return 'representative';
+  if(/truck|trip|dababa|jumbo|actros|trailer/.test(d)) return 'trip';
+  return null;
+}
+function _rcTruck(desc){
+  var d=(desc||'').toLowerCase();
+  var known=['dababa','jumbo','actros','trailer','truck head','hundai','hyundai'];
+  for(var i=0;i<known.length;i++){
+    if(d.indexOf(known[i])>-1){
+      return known[i].split(' ').map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(' ');
+    }
+  }
+  return null;
+}
+// "Up To 75 KM" / "From 75 KM To 150 KM" / "700 KM To1000 KM"
+function _rcBand(text,tolerance){
+  var t=(text||'').replace(/\s+/g,' ').trim();
+  if(!t)return null;
+  var nums=(t.match(/\d+/g)||[]).map(Number);
+  if(!nums.length)return null;
+  var tol=tolerance===undefined?5:+tolerance;
+  if(nums.length===1||/up\s*to/i.test(t)){
+    return {label:t,min:0,max:nums[nums.length-1]+tol};
+  }
+  return {label:t,min:nums[0]+tol,max:nums[1]+tol};
+}
+function openRateImport(customer){
+  S._rcCust=customer||S._slaSel||'';
+  openM('<div class="m-title">⬆ Import Rate Card'+(S._rcCust?' — '+S._rcCust:'')+'</div>'+
+    '<div style="font-size:12px;color:var(--t2);line-height:1.6;margin-bottom:10px">Paste the customer\'s rate sheet (copy straight from Excel, or CSV). Include the header row — the columns are detected and you confirm the mapping in the next step.</div>'+
+    '<div class="fg"><textarea id="rc-text" rows="9" placeholder="Customer Number	Item Number	Description	Description Line 2	UM	Rate&#10;1705	SCM-2595	Dababa Truck	Up To 75 KM	TR	1250" style="font-family:monospace;font-size:11.5px"></textarea></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-primary" onclick="_rcDetect()">Next → map columns</button></div>');
+}
+function _rcDetect(){
+  var txt=(document.getElementById('rc-text')||{}).value||'';
+  var rows=_rcParse(txt);
+  if(rows.length<2){toast('Paste a header row plus at least one data row','err');return;}
+  S._rcRows=rows;
+  var hdr=rows[0];
+  // best-guess mapping from the header text
+  var guess=function(re,fallback){
+    for(var i=0;i<hdr.length;i++){if(re.test(hdr[i]))return i;}
+    return fallback===undefined?-1:fallback;
+  };
+  var m={
+    code   :guess(/customer\s*(number|code)/i,-1),
+    item   :guess(/item|scm|code/i,-1),
+    desc   :guess(/^description$|description(?!\s*line)/i,-1),
+    desc2  :guess(/description\s*line\s*2|band|zone|distance|km/i,-1),
+    um     :guess(/^um$|unit\s*of\s*measure/i,-1),
+    rate   :guess(/rate|price|cost|amount|value/i,-1)
+  };
+  var sel=function(key,label,hint){
+    return '<div class="fg" style="margin-bottom:8px"><label style="font-size:11.5px">'+label+
+      (hint?' <span style="color:var(--t3);font-weight:400">'+hint+'</span>':'')+'</label>'+
+      '<select id="rc-m-'+key+'"><option value="-1">— not in sheet —</option>'+
+      hdr.map(function(h,i){return '<option value="'+i+'"'+(m[key]===i?' selected':'')+'>'+(h||'Column '+(i+1))+'</option>';}).join('')+
+      '</select></div>';
+  };
+  openM('<div class="m-title">🔗 Map the columns</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">'+(rows.length-1)+' rows detected. Confirm which column is which.</div>'+
+    sel('item','Item / SCM code','(the customer\'s billing code)')+
+    sel('desc','Description','(service + truck type)')+
+    sel('desc2','Distance band','(e.g. "Up To 75 KM")')+
+    sel('rate','Rate','(leave unset to import codes only)')+
+    sel('code','Customer code','(optional)')+
+    sel('um','UM','(optional)')+
+    '<div class="frow" style="margin-top:6px"><div class="fg"><label style="font-size:11.5px">Band tolerance (km)</label>'+
+      '<input type="number" id="rc-tol" value="5"/><div style="font-size:9.5px;color:var(--t3);margin-top:2px">Contracts often allow a margin over the stated band (Novartis: +5 km).</div></div></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="openRateImport(S._rcCust)">← Back</button>'+
+    '<button class="btn btn-primary" onclick="_rcRun()">Import</button></div>');
+}
+function _rcRun(){
+  var rows=S._rcRows||[];if(rows.length<2){toast('Nothing to import','err');return;}
+  var gi=function(k){var e=document.getElementById('rc-m-'+k);return e?+e.value:-1;};
+  var mi=gi('item'),md=gi('desc'),md2=gi('desc2'),mr=gi('rate'),mc=gi('code'),mu=gi('um');
+  var tol=+((document.getElementById('rc-tol')||{}).value||5);
+  if(md<0){toast('Select the Description column','err');return;}
+  var cust=S._rcCust;
+  if(!cust){toast('No customer selected','err');return;}
+
+  // Key bands by their numeric range, not their text — the same band is often
+  // written several ways in one sheet ("150 KM To 300", "From 150 KM to 300").
+  var bandsByRange={},trucks=[],parsed=[],skipped=0,custCode='';
+  rows.slice(1).forEach(function(r){
+    var desc=(r[md]||'').trim();if(!desc)return;
+    var svc=_rcService(desc);
+    if(!svc){skipped++;return;}
+    var truck=_rcTruck(desc);
+    var spec=SLA_SERVICES.find(function(s){return s.id===svc;})||{};
+    if(spec.perTruck&&!truck){skipped++;return;}
+    if(truck&&trucks.indexOf(truck)<0)trucks.push(truck);
+    var bandTxt=md2>=0?(r[md2]||'').trim():'';
+    var band=(spec.flat||svc==='cancellation')?null:_rcBand(bandTxt,tol);
+    var key='*';
+    if(band){
+      key=band.min+'-'+band.max;
+      if(!bandsByRange[key])bandsByRange[key]=band;   // first spelling wins as the label
+    }
+    if(mc>=0&&!custCode)custCode=(r[mc]||'').trim();
+    parsed.push({svc:svc,truck:truck||'*',bandKey:key,
+      scm:mi>=0?(r[mi]||'').trim():'',
+      rate:mr>=0?(parseFloat(String(r[mr]||'').replace(/[^\d.\-]/g,''))||0):0});
+  });
+  if(!parsed.length){toast('No priceable rows recognised — check the Description column','err');return;}
+
+  // Bands sorted by distance become the card's ladder
+  var bands=Object.keys(bandsByRange).map(function(k){return bandsByRange[k];})
+    .sort(function(a,b){return a.max-b.max;})
+    .map(function(b,i){return {id:'b'+(i+1),label:b.label,min:b.min,max:b.max};});
+  var byKey={};bands.forEach(function(b){byKey[b.min+'-'+b.max]=b.id;});
+
+  var cards=_slaLoad();
+  var card=cards[cust]||_slaNewCard(cust,custCode);
+  if(custCode)card.code=custCode;
+  if(bands.length)card.bands=bands;
+  if(trucks.length)card.trucks=trucks;
+  card.rates={};                 // rebuild from the imported sheet
+  _slaBuildGrid(card);
+  var applied=0;
+  parsed.forEach(function(p){
+    var bid=p.bandKey==='*'?'*':(byKey[p.bandKey]||'*');
+    _slaSetRate(card,p.svc,p.truck,bid,p.scm,p.rate);applied++;
+  });
+  card.active=true;
+  cards[cust]=card;_slaSave();
+  if(custCode&&typeof _custSetCode==='function')_custSetCode(cust,custCode);
+  if((CUSTOMERS||[]).indexOf(cust)<0)CUSTOMERS.push(cust);
+  audit('RATE_IMPORT',cust+' · '+applied+' lines','');
+  S._slaSel=cust;closeM();rAdminPricing();
+  setTimeout(function(){var e=document.getElementById('sla-section');if(e)e.scrollIntoView({behavior:'smooth'});},80);
+  toast('✅ '+applied+' rate lines imported · '+bands.length+' bands · '+trucks.length+' truck types'+(skipped?' ('+skipped+' rows skipped)':''),'ok');
 }
 
 </script>
