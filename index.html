@@ -3600,6 +3600,8 @@ async function initApp(silent){
 // ══════════════════════════════════════════════════
 var _lcTimer=null;
 function _lcSaveNow(){
+  // Never overwrite a good snapshot with the cleared state after logout
+  if(!S.user||!_tenantId)return;
   try{
     localStorage.setItem('ip_core',JSON.stringify({
       v:1,ts:Date.now(),tenant:_tenantId,
@@ -5721,6 +5723,10 @@ function _anRenderDrivers(trips){
 function secureLogout(){
   _idleStop();
   if(S.user){_secRecordLogout(S.user.id,S.user.name);}
+  // Persist the session's work, then stop any pending debounced save from
+  // firing after the in-memory state is cleared and writing an empty snapshot.
+  try{if(S.user)_lcSaveNow();}catch(e){}
+  try{clearTimeout(_lcTimer);_lcTimer=null;}catch(e){}
   // Clear JWT token so next login starts fresh (no stale token injected into /api/auth)
   sessionStorage.removeItem('ip_token');
   // Reset tenant state — forces _loadTenant() to re-run cleanly on next login
@@ -6530,6 +6536,12 @@ function rForecast(){
 }
 
 function openTrip(){
+  // Single shipment entry point — the contract request form carries every
+  // field the customer template needs; pricing comes from the rate card.
+  if(typeof openShipmentRequest==='function'){return openShipmentRequest();}
+  return _openTripLegacy();
+}
+function _openTripLegacy(){
   _dests=[''];
   var types=can('all')?['Planned','Emergency','Non-Revenue']:(can('create_emergency')?['Planned','Emergency']:['Planned']);
   openM('<div class="m-title">🚛 New Shipment</div>'+
@@ -7338,6 +7350,23 @@ function rFin(){
     var lists=S.priceLists[cu]||[];
     var active=lists.find(function(l){return l.active;})||lists[0]||{};
     var inp='width:58px;padding:3px 5px;border:1.5px solid var(--bd);border-radius:6px;font-size:11px;font-weight:700;text-align:center;color:var(--t);background:var(--bg);outline:none;font-family:inherit';
+    // Contract customers are priced from their rate card, not these criteria —
+    // show what actually governs them instead of misleading formula inputs.
+    if(typeof _slaActive==='function'&&_slaActive(cu)){
+      var _c=_slaCard(cu);
+      var _n=(typeof _slaFilledCount==='function')?_slaFilledCount(_c):0;
+      return '<tr data-cu="'+cu+'">'+
+        '<td style="font-weight:800;color:var(--t);position:sticky;left:0;background:var(--surf);z-index:1;border-right:1px solid var(--bd)">'+
+        '<div style="display:flex;align-items:center;gap:7px">'+
+        '<div style="width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center">'+cu[0]+'</div>'+
+        cu+'</div></td>'+
+        '<td colspan="'+(CRITERIA_FIELDS.length+1)+'" style="background:rgba(108,63,245,.05)">'+
+          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<span style="font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5">📑 Contract '+(_c.code?'#'+_c.code:'')+'</span>'+
+          '<span style="font-size:11px;color:var(--t2)">'+(_c.bands||[]).length+' distance bands · '+(_c.trucks||[]).length+' truck types · '+_n+' rates set'+(_c.perLeg?' · per-leg':'')+'</span>'+
+          '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="S.adminTab=\'pricing\';S._slaSel=\''+cu.replace(/'/g,"\\'")+'\';nav(\'admin_mgmt\')">Open rate card ›</button>'+
+          '</div></td></tr>';
+    }
     return '<tr data-cu="'+cu+'">'+
       '<td style="font-weight:800;color:var(--t);position:sticky;left:0;background:var(--surf);z-index:1;border-right:1px solid var(--bd)">'+
       '<div style="display:flex;align-items:center;gap:7px">'+
@@ -13913,6 +13942,7 @@ function rAdminOperations(){
       '<input id="ops-new-chk" placeholder="Add a new checklist item…" style="flex:1;padding:8px 12px;border:1.5px solid var(--bd);border-radius:8px"/>'+
       '<button class="btn btn-primary btn-sm" onclick="_opsAddChk()">+ Add</button></div>'+
     '</div>'+
+    _apvConfigHTML()+
     '<div style="font-size:11px;color:var(--t3);text-align:center">Changes apply immediately to the Operations screen. Existing shipments keep their recorded data.</div>'+
     '</div>';
 }
@@ -19954,10 +19984,15 @@ function calcSLA(trip){
     var r=_slaGetRate(card,service,truckKey,band?band.id:'*');
     if(!r)return;
     qty=+qty||0;if(qty<=0)return;
+    var rate=+r.rate||0;
+    // A billable line with no rate in the card would silently invoice zero —
+    // surface it instead so it can't slip through unnoticed.
+    var warn=rate<=0?'⚠ NO RATE CONFIGURED — check the rate card':'';
     lines.push({scm:r.scm||'',service:service,
       desc:label+(band?' — '+band.label:''),
       um:(SLA_SERVICES.find(function(s){return s.id===service;})||{}).um||'EA',
-      qty:qty,rate:+r.rate||0,amount:qty*(+r.rate||0),note:note||'',
+      qty:qty,rate:rate,amount:qty*rate,missingRate:rate<=0,
+      note:warn||note||'',
       // audit trail: which manually-recorded odometer readings produced this line
       band:band?band.label:'',
       legFrom:leg?leg.from:'',legTo:leg?leg.to:'',legKm:leg?leg.km:'',
@@ -19997,13 +20032,14 @@ function calcSLA(trip){
   push('extra_day',truck+' Extra Day',truck,farBand,trip.extraDays||0,'08:00 → 18:00 per day');
 
   var services=lines.reduce(function(s,l){return s+l.amount;},0);
+  var missing=lines.filter(function(l){return l.missingRate;}).length;
   // 5) Reimbursed expenses (petty cash) — passed through at cost
   var exp=_slaExpenseTotal(trip);
   return {
     mode:'sla',card:card.code||card.customer,currency:card.currency||'EGP',
     lines:lines,servicesTotal:Math.round(services*100)/100,
     expenses:exp,total:Math.round((services+exp)*100)/100,
-    truck:truck,farthestKm:_slaFarthestKm(trip)
+    truck:truck,farthestKm:_slaFarthestKm(trip),missingRates:missing
   };
 }
 // Legs from the destination list (start → d1 → d2 …)
@@ -20087,12 +20123,83 @@ function _slaCardEditorHTML(card){
     }).join('')+
   '</tbody></table></div>'+
   '<div style="font-size:11px;color:var(--t3);margin-top:10px">Unit: <b>'+s.um+'</b>'+(card.notes?' · '+card.notes:'')+'</div>'+
+  // ── Contract shape: distance bands + truck types are per-customer, editable
+  '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:14px;padding-top:12px;border-top:1px solid var(--bd)">'+
+    '<div><div style="font-size:11.5px;font-weight:800;color:var(--t2);margin-bottom:6px">Distance Bands</div>'+
+      (card.bands||[]).map(function(b,i){
+        return '<div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">'+
+          '<input value="'+b.label+'" onchange="_slaBandEdit('+i+',\'label\',this.value)" style="flex:1;min-width:0;padding:5px 7px;border:1px solid var(--bd);border-radius:6px;font-size:11px"/>'+
+          '<input type="number" value="'+b.min+'" title="from km" onchange="_slaBandEdit('+i+',\'min\',this.value)" style="width:58px;padding:5px;border:1px solid var(--bd);border-radius:6px;font-size:11px;text-align:center"/>'+
+          '<input type="number" value="'+b.max+'" title="to km" onchange="_slaBandEdit('+i+',\'max\',this.value)" style="width:58px;padding:5px;border:1px solid var(--bd);border-radius:6px;font-size:11px;text-align:center"/>'+
+          '<span onclick="_slaBandDel('+i+')" style="cursor:pointer;color:#EF4444;font-size:15px;padding:0 3px">×</span></div>';
+      }).join('')+
+      '<button class="btn btn-outline btn-sm" onclick="_slaBandAdd()">+ Add band</button></div>'+
+    '<div><div style="font-size:11.5px;font-weight:800;color:var(--t2);margin-bottom:6px">Truck Types</div>'+
+      (card.trucks||[]).map(function(tk,i){
+        return '<div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">'+
+          '<input value="'+tk+'" onchange="_slaTruckEdit('+i+',this.value)" style="flex:1;min-width:0;padding:5px 7px;border:1px solid var(--bd);border-radius:6px;font-size:11px"/>'+
+          '<span onclick="_slaTruckDel('+i+')" style="cursor:pointer;color:#EF4444;font-size:15px;padding:0 3px">×</span></div>';
+      }).join('')+
+      '<button class="btn btn-outline btn-sm" onclick="_slaTruckAdd()">+ Add truck type</button></div>'+
+  '</div>'+
   '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn btn-outline btn-sm" onclick="_slaExportCard()">⬇ Export rate card (CSV)</button>'+
     '<button class="btn btn-outline btn-sm" onclick="openRateImport(S._slaSel)">⬆ Import / re-import sheet</button>'+
     '<button class="btn btn-danger btn-sm" onclick="_slaDeleteCard()">Delete card</button></div>';
 }
 function _slaFlag(k,v){var c=_slaCard(S._slaSel);if(!c)return;c[k]=v;_slaSave();rAdminPricing();}
+// ── Per-customer contract shape: bands & truck types ──
+function _slaBandEdit(i,field,val){
+  var c=_slaCard(S._slaSel);if(!c||!c.bands[i])return;
+  c.bands[i][field]=(field==='label')?val:(+val||0);
+  c.bands.sort(function(a,b){return a.max-b.max;});
+  _slaSave();rAdminPricing();
+}
+function _slaBandAdd(){
+  var c=_slaCard(S._slaSel);if(!c)return;
+  var last=c.bands[c.bands.length-1];
+  var min=last?last.max:0, max=min+100;
+  c.bands.push({id:'b'+(Date.now()%100000),label:min+' KM To '+max+' KM',min:min,max:max});
+  _slaBuildGrid(c);_slaSave();rAdminPricing();
+}
+function _slaBandDel(i){
+  var c=_slaCard(S._slaSel);if(!c||!c.bands[i])return;
+  if(c.bands.length<2){toast('A rate card needs at least one band','err');return;}
+  var id=c.bands[i].id;
+  if(!confirm('Remove the band "'+c.bands[i].label+'"? Its rates will be deleted.'))return;
+  c.bands.splice(i,1);
+  Object.keys(c.rates||{}).forEach(function(s){
+    Object.keys(c.rates[s]).forEach(function(tk){delete c.rates[s][tk][id];});
+  });
+  _slaSave();rAdminPricing();
+}
+function _slaTruckEdit(i,val){
+  var c=_slaCard(S._slaSel);if(!c)return;
+  var old=c.trucks[i],nv=(val||'').trim();
+  if(!nv||nv===old)return;
+  c.trucks[i]=nv;
+  Object.keys(c.rates||{}).forEach(function(s){
+    if(c.rates[s][old]){c.rates[s][nv]=c.rates[s][old];delete c.rates[s][old];}
+  });
+  _slaSave();rAdminPricing();
+}
+function _slaTruckAdd(){
+  var c=_slaCard(S._slaSel);if(!c)return;
+  var n=prompt('Truck type name:','');
+  if(!n||!n.trim())return;
+  n=n.trim();
+  if(c.trucks.indexOf(n)>-1){toast('That truck type already exists','err');return;}
+  c.trucks.push(n);_slaBuildGrid(c);_slaSave();rAdminPricing();
+}
+function _slaTruckDel(i){
+  var c=_slaCard(S._slaSel);if(!c||!c.trucks[i])return;
+  if(c.trucks.length<2){toast('A rate card needs at least one truck type','err');return;}
+  var tk=c.trucks[i];
+  if(!confirm('Remove the truck type "'+tk+'"? Its rates will be deleted.'))return;
+  c.trucks.splice(i,1);
+  Object.keys(c.rates||{}).forEach(function(s){delete c.rates[s][tk];});
+  _slaSave();rAdminPricing();
+}
 function _slaEdit(svc,truck,band,field,val){
   var c=_slaCard(S._slaSel);if(!c)return;
   var cur=_slaGetRate(c,svc,truck,band)||{scm:'',rate:0};
@@ -20320,6 +20427,13 @@ function exportDataEntrySheet(trips){
 // ══ EXPORT 2 — Billing sheet (every SCM line, fully calculated) ══
 function exportBillingSheet(trips){
   trips=trips||(S.trips||[]).filter(function(t){return t.contract;});
+  // Only fully approved sheets are billable when the policy says so
+  if(typeof _apvCfg==='function'&&_apvCfg().billOnlyApproved){
+    var all=trips.length;
+    trips=trips.filter(function(t){return _apvStatusOf(t).key==='approved';});
+    if(!trips.length){toast('No approved final sheets to bill ('+all+' awaiting approval)','err');return;}
+    if(trips.length<all)toast(all-trips.length+' shipment(s) skipped — not yet approved','info');
+  }
   if(!trips.length){toast('No contract shipments to bill','err');return;}
   var rows=[['Date','Trip ID','Customer','Customer Code','Truck','Truck Type','Driver',
     'Transaction','Item Number','Service','Description','From','To',
@@ -20329,6 +20443,11 @@ function exportBillingSheet(trips){
   trips.forEach(function(t){
     var c=t.contract||{};
     var res=shipCalc(t);
+    var _rv=(typeof _finalSheet==='function')?_finalSheet(t):null;
+    // Bill the reviewed sheet: reviewer exclusions change the lines AND the total
+    if(res&&_rv&&_rv.lines&&_rv.lines.length){
+      res=Object.assign({},res,{lines:_rv.lines,total:_rv.total,servicesTotal:_rv.servicesTotal});
+    }
     if(!res){
       // formula-priced customer → single summary line
       rows.push([c.date||'',t.id,t.customer,_custCode(t.customer),t.truck||'',t.truckType||'',t.driver||'',
@@ -20336,6 +20455,11 @@ function exportBillingSheet(trips){
       grand+=(+t.cost||0);billed++;return;
     }
     res.lines.forEach(function(l){
+      if(l.excluded){
+        rows.push([c.date||'',t.id,t.customer,res.card,t.truck||'',res.truck,t.driver||'',
+          c.transactionType||t.dir||'',l.scm,l.service,l.desc+' — NOT APPLIED',l.legFrom||'',l.legTo||'','','',l.legKm!==undefined?l.legKm:'',l.band||'',l.um,0,l.rate,0,res.currency,'Not applied: '+(l.justification||'')+(l.excludedBy?' ('+l.excludedBy+')':'')]);
+        return;
+      }
       rows.push([c.date||'',t.id,t.customer,res.card,t.truck||'',res.truck,t.driver||'',
         c.transactionType||t.dir||'',l.scm,l.service,l.desc,
         l.legFrom||'',l.legTo||'',l.odoFrom!==undefined&&l.odoFrom!==''?l.odoFrom:'',l.odoTo!==undefined&&l.odoTo!==''?l.odoTo:'',l.legKm!==undefined&&l.legKm!==''?l.legKm:'',l.band||'',
@@ -20430,11 +20554,13 @@ function openShipmentRequest(editId){
 
   '<div class="fg f1" style="margin-top:12px"><label>Notes</label><textarea id="sr-notes" rows="2">'+(c.notes||'')+'</textarea></div>'+
 
-  // ── Live cost preview
-  '<div id="sr-cost" style="background:var(--c1l);border-radius:10px;padding:12px;margin-bottom:6px;font-size:12px"></div>'+
+  // Pricing is not entered here — it is derived from the customer's rate card
+  // and the driver's recorded kilometres, and appears on the final report.
+  '<div id="sr-cost" style="display:none"></div>'+
+  '<div style="display:flex;align-items:center;gap:8px;background:var(--bg);border-radius:8px;padding:8px 11px;font-size:11px;color:var(--t2);margin-bottom:6px">'+
+    '<span>💰</span><span>Pricing is calculated from the rate card and the driver\'s recorded KM — it appears on the final report and billing sheet.</span></div>'+
 
   '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
-  '<button class="btn btn-outline" onclick="_srPreviewCost()">💰 Calculate</button>'+
   '<button class="btn btn-primary" onclick="_srSubmit()">'+(t?'Save changes':'Create Shipment')+'</button></div>');
   _srRenderDests();
   _srSyncContract(t?t.customer:'');
@@ -20538,9 +20664,11 @@ function _srPreviewCost(){
   el.innerHTML='<div style="font-weight:700;color:var(--c1);margin-bottom:6px">📑 SLA contract — '+res.card+'</div>'+
     res.lines.map(function(l){
       return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid rgba(124,58,237,.12)">'+
-        '<span style="color:var(--t2)"><b style="color:var(--c1);font-size:10.5px">'+(l.scm||'')+'</b> '+l.desc+(l.qty>1?' ×'+l.qty:'')+'</span>'+
+        '<span style="color:'+(l.missingRate?'#B45309':'var(--t2)')+'"><b style="color:'+(l.missingRate?'#B45309':'var(--c1)')+';font-size:10.5px">'+(l.scm||'')+'</b> '+l.desc+(l.qty>1?' ×'+l.qty:'')+
+          (l.missingRate?' <b>⚠ no rate</b>':'')+'</span>'+
         '<span style="font-weight:700;white-space:nowrap">'+l.amount.toLocaleString()+'</span></div>';
     }).join('')+
+    (res.missingRates?'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:7px 10px;font-size:11px;color:#92400E;margin-top:8px">⚠️ '+res.missingRates+' line(s) have no rate in the card — this shipment would be under-billed. Set them in Finance &amp; Pricing.</div>':'')+
     '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:14px;font-weight:800"><span>Total</span><span>'+res.currency+' '+res.total.toLocaleString()+'</span></div>';
 }
 function _srSubmit(){
@@ -20612,7 +20740,7 @@ function rContract(){
       '<div class="card"><div class="card-hd"><div class="card-title">'+list.length+' shipment(s)</div>'+
       '<div style="font-size:13px;font-weight:800;color:var(--c1)">EGP '+Math.round(revenue).toLocaleString()+'</div></div>'+
       '<div style="overflow-x:auto"><table class="tbl"><thead><tr>'+
-      '<th>Date</th><th>Trip</th><th>Customer</th><th>Code</th><th>Tx</th><th>Truck</th><th>Driver</th><th>Stops</th><th>KM</th><th>Amount</th><th>Status</th><th>Actions</th>'+
+      '<th>Date</th><th>Trip</th><th>Customer</th><th>Code</th><th>Tx</th><th>Truck</th><th>Driver</th><th>Stops</th><th>KM</th><th>Amount</th><th>Status</th><th>Final Sheet</th><th>Actions</th>'+
       '</tr></thead><tbody>'+
       list.slice().reverse().map(function(t){
         var ct=t.contract||{};var st=SHIP_STATUS[t.status]||{label:t.status,color:'#64748B',bg:'#F1F5F9'};
@@ -20624,9 +20752,10 @@ function rContract(){
           '<td style="text-align:center">'+(ct.destinations||[]).length+'</td>'+
           '<td style="text-align:center">'+_shipTripKm(t)+'</td>'+
           '<td style="font-weight:700">'+(+t.cost||0).toLocaleString()+'</td>'+
-          '<td><span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></td>'+
+          '<td><span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></td>'+'<td>'+(function(){var a=_apvStatusOf(t);return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:'+a.bg+';color:'+a.color+'">'+a.label+'</span>';})()+'</td>'+
           '<td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="openShipmentRequest(\''+t.id+'\')">Edit</button>'+
-          '<button class="btn btn-outline btn-sm" onclick="_ctStatus(\''+t.id+'\')">Status</button></td></tr>';
+          '<button class="btn btn-outline btn-sm" onclick="_ctStatus(\''+t.id+'\')">Status</button>'+
+          '<button class="btn btn-primary btn-sm" onclick="openFinalSheet(\''+t.id+'\')">🧾 Sheet</button></td></tr>';
       }).join('')+'</tbody></table></div></div>'
       :_emptyState('📋','No contract shipments yet','Create a shipment request to start building the data-entry sheet.',
         '<button class="btn btn-primary" onclick="openShipmentRequest()">+ New Request</button>'));
@@ -20984,18 +21113,30 @@ function _rcService(desc){
   if(/extra\s*hour/.test(d))        return 'extra_hour_rep';
   if(/man\s*power|manpower|labou?r/.test(d)) return 'manpower';
   if(/represent/.test(d))           return 'representative';
-  if(/truck|trip|dababa|jumbo|actros|trailer/.test(d)) return 'trip';
-  return null;
+  // Anything else that names something is the base service: the trip itself.
+  // (Fleets use names like "Refrigerated Van" that contain no keyword at all.)
+  return /[a-z؀-ۿ]/.test(d)?'trip':null;
 }
+// Derive the truck type from a description by removing the service wording —
+// works for any fleet, not a fixed list of known truck names.
+// "Jumbo Truck Over night" → Jumbo · "Refrigerated Van Extra day" → Refrigerated Van
 function _rcTruck(desc){
-  var d=(desc||'').toLowerCase();
-  var known=['dababa','jumbo','actros','trailer','truck head','hundai','hyundai'];
-  for(var i=0;i<known.length;i++){
-    if(d.indexOf(known[i])>-1){
-      return known[i].split(' ').map(function(w){return w.charAt(0).toUpperCase()+w.slice(1);}).join(' ');
-    }
-  }
-  return null;
+  var d=(desc||'').replace(/\s+/g,' ').trim();
+  if(!d)return null;
+  var strip=[
+    /\bover\s*night\b/ig,/\bovernight\b/ig,/\bextra\s*day\b/ig,/\bextra\s*hour\b/ig,
+    /\bcancellation\b/ig,/\bcancelled?\b/ig,/\bman\s*power\b/ig,/\bmanpower\b/ig,
+    /\brepresentative\b/ig,/\blabou?r\b/ig,/\btrips?\b/ig,/\btrucks?\b/ig,
+    /\bfrom\b/ig,/\bto\b/ig,/\bper\b/ig,/\bup\b/ig
+  ];
+  strip.forEach(function(re){d=d.replace(re,' ');});
+  d=d.replace(/[\-–—_,()]+/g,' ').replace(/\d+/g,' ').replace(/\bkm\b/ig,' ')
+     .replace(/\s+/g,' ').trim();
+  if(!d)return null;
+  // Title-case so the same truck from different rows collapses to one key
+  return d.split(' ').map(function(w){
+    return w.charAt(0).toUpperCase()+w.slice(1).toLowerCase();
+  }).join(' ');
 }
 // "Up To 75 KM" / "From 75 KM To 150 KM" / "700 KM To1000 KM"
 function _rcBand(text,tolerance){
@@ -21023,19 +21164,48 @@ function _rcDetect(){
   if(rows.length<2){toast('Paste a header row plus at least one data row','err');return;}
   S._rcRows=rows;
   var hdr=rows[0];
-  // best-guess mapping from the header text
-  var guess=function(re,fallback){
-    for(var i=0;i<hdr.length;i++){if(re.test(hdr[i]))return i;}
-    return fallback===undefined?-1:fallback;
+  var body=rows.slice(1);
+  // Score each header against ordered patterns; the strongest match wins and a
+  // column is never assigned to two fields (sheets use words like "Cust Code"
+  // and "Product Code" that would otherwise collide).
+  var score=function(h,pats){
+    for(var p=0;p<pats.length;p++){if(pats[p].test(h))return pats.length-p;}
+    return 0;
   };
-  var m={
-    code   :guess(/customer\s*(number|code)/i,-1),
-    item   :guess(/item|scm|code/i,-1),
-    desc   :guess(/^description$|description(?!\s*line)/i,-1),
-    desc2  :guess(/description\s*line\s*2|band|zone|distance|km/i,-1),
-    um     :guess(/^um$|unit\s*of\s*measure/i,-1),
-    rate   :guess(/rate|price|cost|amount|value/i,-1)
+  var looksNumeric=function(i){
+    var n=0,seen=0;
+    body.slice(0,25).forEach(function(r){
+      var v=(r[i]||'').replace(/[^\d.\-]/g,'');
+      if((r[i]||'').trim()){seen++;if(v&&!isNaN(parseFloat(v)))n++;}
+    });
+    return seen>0&&n/seen>0.7;
   };
+  var FIELDS=[
+    {k:'code' ,pats:[/customer\s*(number|code|id)/i,/^cust\b.*\b(code|no|number|id)/i,/\bcustomer\b/i]},
+    {k:'rate' ,pats:[/^(rate|tariff|price|unit\s*cost|unit\s*price)$/i,/tariff|rate|price/i,/\b(amount|value|charge|cost|egp)\b/i]},
+    {k:'item' ,pats:[/item\s*(number|code|no)/i,/^(scm|sku)\b/i,/\b(product|material|service)\s*(code|number|no)\b/i,/\bitem\b/i,/\bcode\b/i]},
+    {k:'desc' ,pats:[/^description$/i,/service\s*description/i,/^(service|item)\s*name$/i,/description(?!\s*line)/i,/\bdescription\b/i]},
+    {k:'desc2',pats:[/description\s*line\s*2/i,/^(zone|band|distance|range|leg)$/i,/\b(zone|band|distance|range|bracket)\b/i,/\bkm\b/i]},
+    {k:'um'   ,pats:[/^(um|uom)$/i,/unit\s*of\s*measure/i,/\bunit\b/i]}
+  ];
+  var m={},taken={};
+  FIELDS.forEach(function(f){
+    var best=-1,bestScore=0;
+    for(var i=0;i<hdr.length;i++){
+      if(taken[i])continue;
+      var sc=score(hdr[i]||'',f.pats);
+      if(!sc)continue;
+      // a rate column should actually contain numbers
+      if(f.k==='rate'&&!looksNumeric(i))sc=sc*0.4;
+      if(sc>bestScore){bestScore=sc;best=i;}
+    }
+    m[f.k]=best;
+    if(best>-1)taken[best]=1;
+  });
+  // last resort: an unclaimed numeric column is very likely the rate
+  if(m.rate<0){
+    for(var i=0;i<hdr.length;i++){if(!taken[i]&&looksNumeric(i)){m.rate=i;taken[i]=1;break;}}
+  }
   var sel=function(key,label,hint){
     return '<div class="fg" style="margin-bottom:8px"><label style="font-size:11.5px">'+label+
       (hint?' <span style="color:var(--t3);font-weight:400">'+hint+'</span>':'')+'</label>'+
@@ -21116,6 +21286,238 @@ function _rcRun(){
   S._slaSel=cust;closeM();rAdminPricing();
   setTimeout(function(){var e=document.getElementById('sla-section');if(e)e.scrollIntoView({behavior:'smooth'});},80);
   toast('✅ '+applied+' rate lines imported · '+bands.length+' bands · '+trucks.length+' truck types'+(skipped?' ('+skipped+' rows skipped)':''),'ok');
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// FINAL SHEET & APPROVAL — pricing is settled only after the driver has
+// closed the trip and all data is in. Reviewers may drop any service line
+// (with a written justification), then approve in configurable steps.
+// ══════════════════════════════════════════════════════════════════
+var APV_DEFAULT={
+  steps:[
+    {id:'finance',label:'Finance',roles:['finance','account_manager'],enabled:true},
+    {id:'manager',label:'Manager',roles:['admin','supervisor'],enabled:true}
+  ],
+  requireJustification:true,
+  lockAfterApproval:true,
+  billOnlyApproved:true
+};
+function _apvCfg(){
+  if(!S.approvalConfig){
+    try{S.approvalConfig=JSON.parse(localStorage.getItem('ip_approval')||'null');}catch(e){}
+  }
+  if(!S.approvalConfig)S.approvalConfig=JSON.parse(JSON.stringify(APV_DEFAULT));
+  if(!S.approvalConfig.steps||!S.approvalConfig.steps.length)
+    S.approvalConfig.steps=JSON.parse(JSON.stringify(APV_DEFAULT.steps));
+  ['requireJustification','lockAfterApproval','billOnlyApproved'].forEach(function(k){
+    if(S.approvalConfig[k]===undefined)S.approvalConfig[k]=APV_DEFAULT[k];
+  });
+  return S.approvalConfig;
+}
+function _apvSave(){try{localStorage.setItem('ip_approval',JSON.stringify(S.approvalConfig||{}));}catch(e){}}
+function _apvSteps(){return _apvCfg().steps.filter(function(s){return s.enabled;});}
+function _apvCanApprove(step){
+  if(can('all'))return true;
+  return (step.roles||[]).indexOf(S.role)>-1;
+}
+
+// Build (or refresh) the final sheet from live data, preserving reviewer edits
+function _finalSheet(t,rebuild){
+  var res=shipCalc(t);
+  if(!t.review)t.review={lines:[],status:'draft',approvals:{}};
+  var rv=t.review;
+  if(!res){rv.mode='formula';rv.formulaCost=+t.cost||0;}
+  else rv.mode='sla';
+  var calc=res?res.lines:[];
+  var prev={};
+  (rv.lines||[]).forEach(function(l,i){prev[(l.scm||'')+'|'+l.desc]= l;});
+  rv.lines=calc.map(function(l){
+    var p=prev[(l.scm||'')+'|'+l.desc];
+    return Object.assign({},l,{
+      excluded:p?!!p.excluded:false,
+      justification:p?p.justification||'':'',
+      excludedBy:p?p.excludedBy||'':''
+    });
+  });
+  rv.expenses=res?res.expenses:0;
+  rv.currency=res?res.currency:'EGP';
+  rv.servicesTotal=rv.lines.filter(function(l){return !l.excluded;}).reduce(function(s,l){return s+l.amount;},0);
+  rv.excludedTotal=rv.lines.filter(function(l){return l.excluded;}).reduce(function(s,l){return s+l.amount;},0);
+  rv.total=Math.round((rv.servicesTotal+(rv.expenses||0))*100)/100;
+  rv.missingRates=res?res.missingRates:0;
+  if(rebuild)_lcSave&&_lcSave();
+  return rv;
+}
+function _apvStatusOf(t){
+  var rv=t.review;
+  if(!rv)return {key:'draft',label:'Not reviewed',color:'#64748B',bg:'#F1F5F9'};
+  var steps=_apvSteps();
+  var done=steps.filter(function(s){return rv.approvals&&rv.approvals[s.id];});
+  if(!steps.length||done.length===steps.length)
+    return {key:'approved',label:'Approved',color:'#059669',bg:'#ECFDF5'};
+  var next=steps.find(function(s){return !(rv.approvals&&rv.approvals[s.id]);});
+  if(done.length===0)return {key:'pending',label:'Awaiting '+next.label,color:'#B45309',bg:'#FFFBEB'};
+  return {key:'partial',label:done.length+'/'+steps.length+' · awaiting '+next.label,color:'#6C3FF5',bg:'#EEF2FF'};
+}
+function _apvLocked(t){
+  return _apvCfg().lockAfterApproval && _apvStatusOf(t).key==='approved';
+}
+
+// ── Final sheet review screen ──────────────────────────────────────
+function openFinalSheet(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var rv=_finalSheet(t,true);
+  var st=_apvStatusOf(t);
+  var locked=_apvLocked(t);
+  var ct=t.contract||{};
+  var steps=_apvSteps();
+  openM('<div class="m-title">🧾 Final Sheet — '+t.id+'</div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">'+
+      '<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
+      '<span style="font-size:11.5px;color:var(--t2)">'+t.customer+' · '+(ct.transactionType||'')+' · '+(t.truckType||'')+' · '+_shipTripKm(t)+' km</span>'+
+      (locked?'<span style="font-size:10.5px;color:#059669;font-weight:700">🔒 locked</span>':'')+
+    '</div>'+
+    (rv.missingRates?'<div style="background:#FFFBEB;border:1px solid #F59E0B;border-radius:8px;padding:8px 11px;font-size:11px;color:#92400E;margin-bottom:10px">⚠️ '+rv.missingRates+' line(s) have no rate in the card — set them before approving.</div>':'')+
+    '<div style="max-height:300px;overflow:auto;border:1.5px solid var(--bd);border-radius:10px;margin-bottom:10px">'+
+    '<table class="tbl" style="font-size:11.5px"><thead><tr><th>Apply</th><th>Item</th><th>Service line</th><th style="text-align:center">Qty</th><th style="text-align:right">Rate</th><th style="text-align:right">Amount</th></tr></thead><tbody>'+
+    (rv.lines.length?rv.lines.map(function(l,i){
+      return '<tr style="'+(l.excluded?'opacity:.5':'')+'">'+
+        '<td style="text-align:center"><input type="checkbox" '+(l.excluded?'':'checked')+(locked?' disabled':'')+' onchange="_apvToggle(\''+id+'\','+i+',this.checked)" style="width:16px;height:16px;cursor:'+(locked?'not-allowed':'pointer')+'"/></td>'+
+        '<td style="font-size:10.5px;font-weight:700;color:var(--c1)">'+(l.scm||'—')+'</td>'+
+        '<td>'+l.desc+(l.legKm!==''&&l.legKm!==undefined?'<div style="font-size:10px;color:var(--t3)">'+l.legFrom+' → '+l.legTo+' · '+l.legKm+' km</div>':'')+
+          (l.excluded&&l.justification?'<div style="font-size:10px;color:#B45309;margin-top:2px">✎ '+l.justification+(l.excludedBy?' — '+l.excludedBy:'')+'</div>':'')+
+          (l.missingRate?'<div style="font-size:10px;color:#B45309">⚠ no rate configured</div>':'')+'</td>'+
+        '<td style="text-align:center">'+l.qty+'</td>'+
+        '<td style="text-align:right">'+l.rate.toLocaleString()+'</td>'+
+        '<td style="text-align:right;font-weight:700;'+(l.excluded?'text-decoration:line-through':'')+'">'+l.amount.toLocaleString()+'</td></tr>';
+    }).join(''):'<tr><td colspan="6" style="text-align:center;color:var(--t3);padding:14px">No service lines — this customer is priced by formula ('+(rv.formulaCost||0).toLocaleString()+').</td></tr>')+
+    '</tbody></table></div>'+
+    '<div style="display:flex;flex-direction:column;gap:3px;font-size:12px;margin-bottom:12px">'+
+      '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">Services applied</span><b>'+rv.servicesTotal.toLocaleString()+'</b></div>'+
+      (rv.excludedTotal?'<div style="display:flex;justify-content:space-between;color:#B45309"><span>Not applied</span><b>−'+rv.excludedTotal.toLocaleString()+'</b></div>':'')+
+      '<div style="display:flex;justify-content:space-between"><span style="color:var(--t2)">Reimbursed expenses</span><b>'+(rv.expenses||0).toLocaleString()+'</b></div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:15px;font-weight:800;padding-top:6px;border-top:1px solid var(--bd)"><span>Final total</span><span>'+rv.currency+' '+rv.total.toLocaleString()+'</span></div>'+
+    '</div>'+
+    // approval chain
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+    steps.map(function(s){
+      var a=(rv.approvals||{})[s.id];
+      return '<div style="flex:1;min-width:150px;border:1.5px solid '+(a?'#A7F3D0':'var(--bd)')+';background:'+(a?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:9px 11px">'+
+        '<div style="font-size:11px;font-weight:800;color:'+(a?'#059669':'var(--t2)')+'">'+(a?'✓ ':'')+s.label+'</div>'+
+        (a?'<div style="font-size:10.5px;color:var(--t2);margin-top:2px">'+a.by+'<br>'+a.at+'</div>'
+          :(_apvCanApprove(s)
+            ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px" onclick="_apvApprove(\''+id+'\',\''+s.id+'\')">Approve</button>'
+            :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">'+(s.roles||[]).map(function(r){return RL[r]||r;}).join(' / ')+' only</div>'))+
+        '</div>';
+    }).join('')+'</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Close</button>'+
+    (st.key==='approved'?'<button class="btn btn-outline" onclick="_apvReopen(\''+id+'\')">↺ Reopen</button>':'')+
+    '<button class="btn btn-primary" onclick="exportBillingSheet([S.trips.find(function(x){return x.id===\''+id+'\';})])">⬇ Export</button></div>');
+}
+function _apvToggle(id,i,applied){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t||!t.review)return;
+  var l=t.review.lines[i];if(!l)return;
+  if(applied){
+    l.excluded=false;l.justification='';l.excludedBy='';
+    _finalSheet(t,true);openFinalSheet(id);return;
+  }
+  var cfg=_apvCfg();
+  var why=cfg.requireJustification?prompt('Why is "'+l.desc+'" not applied?\n\nA justification is required and is recorded on the sheet.',''):'';
+  if(cfg.requireJustification&&(why===null||!String(why).trim())){
+    toast('A justification is required to drop a line','err');openFinalSheet(id);return;
+  }
+  l.excluded=true;l.justification=String(why||'').trim();l.excludedBy=S.user?S.user.name:'';
+  if(!t.tl)t.tl=[];
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
+    action:'🧾 Line not applied — '+(l.scm||l.desc),detail:l.justification});
+  audit('SHEET_LINE_DROP',(l.scm||l.desc)+': '+l.justification,id);
+  _finalSheet(t,true);_lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  openFinalSheet(id);
+}
+function _apvApprove(id,stepId){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var step=_apvSteps().find(function(s){return s.id===stepId;});if(!step)return;
+  if(!_apvCanApprove(step)){toast('Your role cannot approve this step','err');return;}
+  var rv=_finalSheet(t,true);
+  if(rv.missingRates){toast('Set the missing rates before approving','err');return;}
+  requirePwd('Approve as '+step.label+' — '+id,function(){
+    if(!t.review.approvals)t.review.approvals={};
+    t.review.approvals[stepId]={by:S.user.name,role:S.role,at:new Date().toLocaleString('en-GB')};
+    var st=_apvStatusOf(t);
+    t.review.status=st.key;
+    if(st.key==='approved'){t.review.approvedTotal=rv.total;t.cost=rv.total;}
+    if(!t.tl)t.tl=[];
+    t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,
+      action:'✅ '+step.label+' approved final sheet',detail:rv.currency+' '+rv.total.toLocaleString()});
+    audit('SHEET_APPROVE',step.label+' · '+rv.total,id);
+    _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+    toast('✅ Approved as '+step.label,'ok');
+    openFinalSheet(id);
+  });
+}
+function _apvReopen(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t||!t.review)return;
+  if(!can('all')){toast('Only an admin can reopen an approved sheet','err');return;}
+  if(!confirm('Reopen this approved sheet? All approvals will be cleared.'))return;
+  t.review.approvals={};t.review.status='pending';
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user.name,action:'↺ Final sheet reopened',detail:''});
+  audit('SHEET_REOPEN','',id);
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);openFinalSheet(id);
+}
+
+// ── Admin → Operations: approval configuration ────────────────────
+function _apvConfigHTML(){
+  var cfg=_apvCfg();
+  var allRoles=Object.keys(RL);
+  return '<div class="card">'+
+    '<div style="font-size:14px;font-weight:800;margin-bottom:4px">🧾 Final Sheet Approval</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Pricing is settled after the driver closes the trip. These steps must approve the final sheet before it can be billed.</div>'+
+    cfg.steps.map(function(s,i){
+      return '<div style="border:1.5px solid var(--bd);border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
+        '<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">'+
+          '<label class="fg-toggle" style="flex-shrink:0"><input type="checkbox" '+(s.enabled?'checked':'')+' onchange="_apvStepFlag('+i+',\'enabled\',this.checked)"/><span class="fg-slider"></span></label>'+
+          '<input value="'+s.label+'" onchange="_apvStepFlag('+i+',\'label\',this.value)" style="flex:1;padding:6px 9px;border:1px solid var(--bd);border-radius:7px;font-size:12.5px;font-weight:700"/>'+
+          '<span onclick="_apvStepDel('+i+')" style="cursor:pointer;color:#EF4444;font-size:16px;padding:0 4px">×</span></div>'+
+        '<div style="display:flex;gap:5px;flex-wrap:wrap">'+
+          allRoles.map(function(r){
+            var on=(s.roles||[]).indexOf(r)>-1;
+            return '<span onclick="_apvStepRole('+i+',\''+r+'\')" style="cursor:pointer;font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:20px;background:'+(on?'#6C3FF5;color:#fff':'var(--bg);color:var(--t2)')+';border:1px solid '+(on?'#6C3FF5':'var(--bd)')+'">'+(RL[r]||r)+'</span>';
+          }).join('')+
+        '</div></div>';
+    }).join('')+
+    '<button class="btn btn-outline btn-sm" onclick="_apvStepAdd()">+ Add approval step</button>'+
+    '<div style="margin-top:14px;border-top:1px solid var(--bd);padding-top:10px">'+
+      _apvTog('requireJustification','Require a justification to drop a line','A reviewer must write why a service was not applied.')+
+      _apvTog('lockAfterApproval','Lock the sheet once fully approved','Prevents further edits; an admin can reopen it.')+
+      _apvTog('billOnlyApproved','Bill only approved sheets','The billing sheet export skips shipments that are not fully approved.')+
+    '</div></div>';
+}
+function _apvTog(key,label,desc){
+  var v=_apvCfg()[key];
+  return '<div style="display:flex;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--bd)">'+
+    '<div style="flex:1;padding-right:14px"><div style="font-size:13px;font-weight:600">'+label+'</div>'+
+    '<div style="font-size:11px;color:var(--t2);margin-top:2px">'+desc+'</div></div>'+
+    '<label class="fg-toggle" style="flex-shrink:0"><input type="checkbox" '+(v?'checked':'')+' onchange="_apvFlag(\''+key+'\',this.checked)"/><span class="fg-slider"></span></label></div>';
+}
+function _apvFlag(k,v){_apvCfg()[k]=v;_apvSave();rAdminOperations();toast('Saved','ok');}
+function _apvStepFlag(i,k,v){var c=_apvCfg();if(c.steps[i]){c.steps[i][k]=v;_apvSave();rAdminOperations();}}
+function _apvStepRole(i,r){
+  var c=_apvCfg(),s=c.steps[i];if(!s)return;
+  if(!s.roles)s.roles=[];
+  var k=s.roles.indexOf(r);
+  if(k>-1)s.roles.splice(k,1);else s.roles.push(r);
+  _apvSave();rAdminOperations();
+}
+function _apvStepAdd(){
+  var n=prompt('Approval step name:','');if(!n||!n.trim())return;
+  _apvCfg().steps.push({id:'step_'+Date.now(),label:n.trim(),roles:['admin'],enabled:true});
+  _apvSave();rAdminOperations();
+}
+function _apvStepDel(i){
+  var c=_apvCfg();if(c.steps.length<2){toast('Keep at least one approval step','err');return;}
+  if(!confirm('Remove the "'+c.steps[i].label+'" step?'))return;
+  c.steps.splice(i,1);_apvSave();rAdminOperations();
 }
 
 </script>
