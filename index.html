@@ -3608,7 +3608,8 @@ function _lcSaveNow(){
       trips:S.trips,maint:S.maintTickets,valLog:S.valLog||[],
       audit:(S.auditTrail||[]).slice(0,500),notifs:(S.notifs||[]).slice(0,100),
       users:USERS,trucks:TRUCKS,customers:CUSTOMERS,
-      spare:S.sparePartsStock||[]
+      spare:S.sparePartsStock||[],
+      invoices:S.invoices||[],fuelLogs:S.fuelLogs||[]
     }));
   }catch(e){console.warn('local save failed',e);}
 }
@@ -3622,6 +3623,8 @@ function _lcLoad(){
     put(S.auditTrail,p.audit);put(S.notifs,p.notifs);
     put(USERS,p.users);put(TRUCKS,p.trucks);put(CUSTOMERS,p.customers);
     if(p.spare&&p.spare.length&&S.sparePartsStock)put(S.sparePartsStock,p.spare);
+    if(!S.invoices)S.invoices=[];put(S.invoices,p.invoices);
+    if(!S.fuelLogs)S.fuelLogs=[];put(S.fuelLogs,p.fuelLogs);
     return true;
   }catch(e){console.warn('local restore failed',e);return false;}
 }
@@ -15430,6 +15433,9 @@ function _saveInvoices(){
 
 function rBilling(){
   S.page='billing';
+  // Storage is the source of truth — don't show an empty list while the
+  // deferred loader is still pending after login.
+  if(!S.invoices||!S.invoices.length){try{_loadInvoices();}catch(e){}}
   var c=document.getElementById('content');if(!c)return;
   var tab=S.billingTab||'invoices';
   var canCreate=can('finance_view')||can('all');
