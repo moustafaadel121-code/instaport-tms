@@ -4716,7 +4716,7 @@ const PAGES={
   ],
   admin:[
     {id:'dashboard',icon:'📊',l:'Dashboard'},{id:'fleet',icon:'🚛',l:'Fleet'},
-    {id:'trips',icon:'📋',l:'Trips'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'operation',icon:'📷',l:'Operations'},{id:'quality',icon:'🧪',l:'Quality'},
+    {id:'trips',icon:'📋',l:'Trips'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'contract',icon:'📋',l:'Contract'},{id:'operation',icon:'📷',l:'Operations'},{id:'quality',icon:'🧪',l:'Quality'},
     {id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'security',icon:'🔒',l:'Security'},
     {id:'finance',icon:'💰',l:'Finance'},{id:'maintenance',icon:'🔧',l:'Maintenance'},
     {id:'validation',icon:'✅',l:'Validation'},{id:'ai',icon:'🤖',l:'AI'},
@@ -4726,7 +4726,7 @@ const PAGES={
     {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'},
     {id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'contract',icon:'📋',l:'Contract'},{id:'dispatch',icon:'🚦',l:'Dispatch'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -5798,6 +5798,7 @@ const ALL_PAGES_MASTER=[
   {id:'ai',          icon:'🤖',l:'AI Assistant'},
   {id:'my_trips',    icon:'🚛',l:'My Trips (Driver)'},
   {id:'operation',   icon:'📷',l:'Operations'},
+  {id:'contract',    icon:'📋',l:'Contract Shipments'},
   {id:'nr_trip',     icon:'🔄',l:'Non-Revenue Trip'},
   {id:'admin_mgmt',  icon:'⚙️',l:'Admin Panel'},
   {id:'pm_schedule', icon:'📅', l:'PM Scheduler'},
@@ -5887,7 +5888,7 @@ function nav(page){
   var map={dashboard:rDash,fleet:rFleet,trips:rTrips,forecast:rForecast,dispatch:rDispatch,fleet_map:rFleetMap,client_portal:rClientPortal,
     quality:rQuality,controlroom:rCtrl,security:rSec,finance:rFin,
     maintenance:rMaint,spare_parts:rSpareParts,validation:rVal,ai:rAI,
-    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
+    nr_trip:rNR,my_trips:rDriverTrips,operation:rOperation,contract:rContract,audit:rAudit,admin_mgmt:rAdmin,analytics:rAnalytics,
     exceptions:rExceptions,
     billing:rBilling,fuel:rFuel,esg:rESG,
     pm_schedule:rPMSchedule,vendors:rVendors,hr:rHR,
@@ -13356,8 +13357,8 @@ buildSB = function() {
   var pp = PAGES[S.role] || PAGES.admin;
   var ar = _lang === 'ar';
   var pnd = S.trips.filter(function(t) { return t.status === 'awaiting_truck' && t.type !== 'Non-Revenue'; }).length;
-  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
-  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
+  var PGL = {dashboard:'Dashboard',fleet:'Fleet',trips:'Shipments',forecast:'New Shipment',dispatch:'Dispatch',quality:'Quality',controlroom:'Control Room',security:'Security',finance:'Finance',maintenance:'Maintenance',spare_parts:'Spare Parts',validation:'Validation',analytics:'Reports',ai:'AI Insights',nr_trip:'Non-Revenue',audit:'Audit',admin_mgmt:'Settings',my_trips:'My Trips',operation:'Operations',contract:'Contract',exceptions:'Exceptions',billing:'Invoices',fuel:'Fuel',esg:'ESG Report',pm_schedule:'PM Scheduler',vendors:'Vendors',hr:'HR & Compliance',fleet_map:'Fleet Map'};
+  var ICO = {dashboard:'&#128200;',fleet:'&#128666;',trips:'&#128230;',forecast:'&#128197;',dispatch:'&#128390;',quality:'&#129514;',controlroom:'&#127925;',security:'&#128274;',finance:'&#128176;',maintenance:'&#128295;',spare_parts:'&#128297;',validation:'&#10003;',analytics:'&#128202;',ai:'&#129302;',nr_trip:'&#128260;',audit:'&#128220;',admin_mgmt:'&#9881;',my_trips:'&#128666;',operation:'&#128247;',contract:'&#128203;',exceptions:'&#9888;&#65039;',billing:'&#128196;',fuel:'&#9981;',esg:'&#127807;',pm_schedule:'&#128197;',vendors:'&#127978;',hr:'&#128100;',fleet_map:'&#128506;&#65039;'};
 
   var navEl = document.getElementById('sb-nav');
   if(!navEl) return;
@@ -20141,6 +20142,461 @@ function _csvDownload(rows,filename){
   var blob=new Blob([csv],{type:'text/csv;charset=utf-8'});
   var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=filename;a.click();
   setTimeout(function(){URL.revokeObjectURL(a.href);},2000);
+}
+
+
+// ══════════════════════════════════════════════════════════════════
+// CONTRACT SHIPMENT — extended fields + Excel exports that match the
+// customer's own "Transportation Data Entry" template 1:1 (101 columns)
+// ══════════════════════════════════════════════════════════════════
+var EG_GOVERNORATES=[
+  'القاهرة | Cairo','الجيزة | Giza','الإسكندرية | Alexandria','القليوبية | Qalyubia',
+  'الدقهلية | Dakahlia','الشرقية | Sharqia','الغربية | Gharbia','المنوفية | Monufia',
+  'كفر الشيخ | Kafr El Sheikh','البحيرة | Beheira','دمياط | Damietta','بورسعيد | Port Said',
+  'الإسماعيلية | Ismailia','السويس | Suez','شمال سيناء | North Sinai','جنوب سيناء | South Sinai',
+  'بني سويف | Beni Suef','الفيوم | Fayoum','المنيا | Minya','أسيوط | Assiut','سوهاج | Sohag',
+  'قنا | Qena','الأقصر | Luxor','أسوان | Aswan','البحر الأحمر | Red Sea',
+  'الوادي الجديد | New Valley','مطروح | Matrouh'
+];
+var LOADING_TYPES=['Loading','Unloading','Empty'];
+var TRANSACTION_TYPES=['Outbound','Inbound','Return'];
+var TRUCK_BILLING=['Per Trip','Monthly Rental','Daily Rental','Additional','Custom Clearance'];
+var TEMPERATURES=['Ambient','Cold','Dry','Frozen'];
+var MAX_DESTINATIONS=15;
+// Trip lifecycle for the contract dashboard
+var SHIP_STATUS={
+  in_progress        :{label:'In Progress',            color:'#6C3FF5',bg:'#EEF2FF'},
+  completed          :{label:'Completed',              color:'#059669',bg:'#ECFDF5'},
+  cancelled_customer :{label:'Cancelled by Customer',  color:'#B45309',bg:'#FFFBEB'},
+  cancelled_org      :{label:'Cancelled by Us',        color:'#DC2626',bg:'#FEF2F2'}
+};
+
+// ── Customer master: name ⇄ code (drop-list or free typing) ────────
+function _custCode(name){
+  var m=(S.customerCodes||{})[name];
+  if(m)return m;
+  var c=_slaCard(name);
+  return c?c.code:'';
+}
+function _custSetCode(name,code){
+  if(!S.customerCodes)S.customerCodes={};
+  S.customerCodes[name]=code;
+  try{localStorage.setItem('ip_custcodes',JSON.stringify(S.customerCodes));}catch(e){}
+}
+function _custCodesLoad(){
+  try{S.customerCodes=JSON.parse(localStorage.getItem('ip_custcodes')||'{}');}catch(e){S.customerCodes={};}
+}
+
+// ── Ensure a trip carries the full contract shape ─────────────────
+function _shipNormalize(t){
+  if(!t.contract)t.contract={};
+  var c=t.contract;
+  if(!c.destinations)c.destinations=[];
+  if(!c.expenses)c.expenses={};
+  return c;
+}
+function _shipTotalExpense(t){
+  var e=(t.contract&&t.contract.expenses)||{};
+  return SLA_EXPENSE_KEYS.reduce(function(s,k){return s+(+e[k]||0);},0);
+}
+function _shipTripKm(t){
+  var c=t.contract||{};
+  if(c.endKm!==undefined&&c.endKm!==''&&c.startKm!==undefined&&c.startKm!=='')
+    return Math.max(0,(+c.endKm)-(+c.startKm));
+  return +t.km||0;
+}
+// Build the SLA-shaped object calcSLA() expects, from a stored trip
+function _shipToSLA(t){
+  var c=t.contract||{};
+  return {
+    customer:t.customer, truckType:t.truckType||_slaTruckTypeOf(t.truck),
+    status:t.status, km:_shipTripKm(t),
+    from:c.fromSite||c.fromOther||t.from, startKm:+c.startKm||0,
+    destinations:(c.destinations||[]).map(function(d){return {name:d.name,km:d.km,loading:d.loading};}),
+    reps:+c.reps||0, labors:+c.labors||0,
+    overnights:+c.overnights||0, extraDays:+c.extraDays||0, extraRepHours:+c.extraRepHours||0,
+    expenses:c.expenses||{}
+  };
+}
+function shipCalc(t){return calcSLA(_shipToSLA(t));}
+
+// ══ EXPORT 1 — Transportation Data Entry (exact 101-column template) ══
+var DE_COLUMNS=(function(){
+  var cols=[
+    ['#','#'],
+    ['التاريخ','Date'],['رقم الشاحنة','Truck Number'],['نوع الشاحنة','Truck Type'],
+    ['اسم السائق','Driver Name'],['اسم العميل','Customers Name'],['كود العميل','Customers Code'],
+    ['محافظة الجهة (الجهة الابعد)','Entity Governorate'],
+    ['عدد المندوب','Epx Rep QTY'],['عدد العمال','Epx Man power QTY'],
+    ['درجة الحرارة','Temperature'],
+    ['رحلة عاجلة','Express Trip (Yes Press 1)'],['رحلة طارئة','Emergency Trip (Yes Press 1)'],
+    ['حساب الشاحنة','Truck billing (Rental-Daily-Additional-Custom Clearance)'],
+    ['بداء من موقع EPX','From Epx Sites'],['بداء من مواقع اخرى','From Other Locations'],
+    ['حالة تحميل بداية الرحلة','Loading type (Trip Start)'],
+    ['بداية عداد الكيلومترات','Start KM'],['وقت بداية الرحلة','Start Time'],
+    ['نوع الحركة','Transaction type']
+  ];
+  for(var i=1;i<=MAX_DESTINATIONS;i++){
+    cols.push(['الوجهة '+i,'Destination '+i]);
+    cols.push(['حالة التحميل','Loading type -'+i]);
+    cols.push(['عداد الكيلومترات','KM -'+i]);
+    cols.push(['وقت المغادرة الوجهة '+i,'Departure Time -'+i]);
+  }
+  cols.push(['نهاية عداد الكيلومترات','End KM'],['وقت نهاية الرحلة','End Time'],
+    ['رافعة خلفية للشاحنة','Tail lift (Yes Press 1)'],['التسليم مستخدماً','UPA Delivery (Yes Press 1)'],
+    ['استثناء خاص بنوع الشاحنة','Exceptions Related to Truck Type'],
+    ['استثناء في خدمة المبيت','Exceptions for overnight service'],
+    ['استثناء في خدمة المرتجعات','Exceptions for returns service'],
+    ['بطاقة تعبئة الوقود','Card Fuel'],['تعبئة الوقود','fuel'],['رسوم بوابات الطريق','Kartat'],
+    ['رسوم خدمات الضيافة','Hospitality all'],['مخالفة مرورية','Traffic Violation'],
+    ['رسوم تحميل','Mashalat'],['رسوم انتظار','Parking'],['وجبة','Meal'],
+    ['مصاريف الصيانة','Maintenance'],['رحلة إضافية','Second trip'],['رسوم انتقال','Transport'],
+    ['إجمالي المصروفات','Total expense'],['اجمالى الكيلومتر للرحلة','Trip KM'],['الملاحظات','Notes']);
+  return cols;
+})();
+
+function _deRow(t,idx){
+  var c=_shipNormalize(t),e=c.expenses||{},r=[];
+  var ds=c.destinations||[];
+  r.push(idx);
+  r.push(c.date||(t.ts||'').split(',')[0]||'');
+  r.push(t.truck||'');
+  r.push(t.truckType||_slaTruckTypeOf(t.truck)||'');
+  r.push(t.driver||'');
+  r.push(t.customer||'');
+  r.push(_custCode(t.customer));
+  r.push(c.governorate||'');
+  r.push(c.reps||0);
+  r.push(c.labors||0);
+  r.push(t.condition||c.temperature||'');
+  r.push(c.express?1:'');
+  r.push(c.emergency?1:'');
+  r.push(c.truckBilling||'');
+  r.push(c.fromSite||'');
+  r.push(c.fromOther||'');
+  r.push(c.startLoading||'');
+  r.push(c.startKm!==undefined?c.startKm:'');
+  r.push(c.startTime||'');
+  r.push(c.transactionType||t.dir||'');
+  for(var i=0;i<MAX_DESTINATIONS;i++){
+    var d=ds[i]||{};
+    r.push(d.name||'');r.push(d.loading||'');
+    r.push(d.km!==undefined&&d.km!==''?d.km:'');r.push(d.departTime||'');
+  }
+  r.push(c.endKm!==undefined?c.endKm:'');
+  r.push(c.endTime||'');
+  r.push(c.tailLift?1:'');
+  r.push(c.upaDelivery?1:'');
+  r.push(c.excTruckType||'');
+  r.push(c.excOvernight||'');
+  r.push(c.excReturns||'');
+  ['cardFuel','fuel','kartat','hospitality','traffic','mashalat','parking','meal','maintenance','secondTrip','transport']
+    .forEach(function(k){r.push(+e[k]||0);});
+  r.push(_shipTotalExpense(t));
+  r.push(_shipTripKm(t));
+  r.push(c.notes||t.notes||'');
+  return r;
+}
+function exportDataEntrySheet(trips){
+  trips=trips||(S.trips||[]).filter(function(t){return t.contract;});
+  if(!trips.length){toast('No contract shipments to export','err');return;}
+  var rows=[DE_COLUMNS.map(function(c){return c[0]+'\n'+c[1];})];
+  trips.forEach(function(t,i){rows.push(_deRow(t,i+1));});
+  _csvDownload(rows,'Transportation-Data-Entry-'+new Date().toISOString().slice(0,10)+'.csv');
+  audit('EXPORT_DE',trips.length+' shipments','');
+  toast('⬇ '+trips.length+' shipments exported','ok');
+}
+
+// ══ EXPORT 2 — Billing sheet (every SCM line, fully calculated) ══
+function exportBillingSheet(trips){
+  trips=trips||(S.trips||[]).filter(function(t){return t.contract;});
+  if(!trips.length){toast('No contract shipments to bill','err');return;}
+  var rows=[['Date','Trip ID','Customer','Customer Code','Truck','Truck Type','Driver',
+    'Transaction','Item Number','Service','Description','UM','Qty','Unit Rate','Amount','Currency','Note']];
+  var grand=0,billed=0;
+  trips.forEach(function(t){
+    var c=t.contract||{};
+    var res=shipCalc(t);
+    if(!res){
+      // formula-priced customer → single summary line
+      rows.push([c.date||'',t.id,t.customer,_custCode(t.customer),t.truck||'',t.truckType||'',t.driver||'',
+        c.transactionType||t.dir||'','—','Trip (formula)','Standard tariff','TR',1,+t.cost||0,+t.cost||0,'EGP','']);
+      grand+=(+t.cost||0);billed++;return;
+    }
+    res.lines.forEach(function(l){
+      rows.push([c.date||'',t.id,t.customer,res.card,t.truck||'',res.truck,t.driver||'',
+        c.transactionType||t.dir||'',l.scm,l.service,l.desc,l.um,l.qty,l.rate,l.amount,res.currency,l.note||'']);
+    });
+    if(res.expenses>0){
+      rows.push([c.date||'',t.id,t.customer,res.card,t.truck||'',res.truck,t.driver||'',
+        c.transactionType||t.dir||'','—','expenses','Reimbursed expenses (petty cash)','EA',1,res.expenses,res.expenses,res.currency,'At cost']);
+    }
+    grand+=res.total;billed++;
+  });
+  rows.push([]);
+  rows.push(['','','','','','','','','','','GRAND TOTAL ('+billed+' shipments)','','','',Math.round(grand*100)/100,'EGP','']);
+  _csvDownload(rows,'Billing-Sheet-'+new Date().toISOString().slice(0,10)+'.csv');
+  audit('EXPORT_BILLING',billed+' shipments · EGP '+Math.round(grand),'');
+  toast('⬇ Billing sheet: EGP '+Math.round(grand).toLocaleString(),'ok');
+}
+
+// ══ CONTRACT SHIPMENT REQUEST — full SLA form ═════════════════════
+function openShipmentRequest(editId){
+  _custCodesLoad();
+  var t=editId?S.trips.find(function(x){return x.id===editId;}):null;
+  var c=t?_shipNormalize(t):{destinations:[{}],expenses:{}};
+  window._srDests=(c.destinations&&c.destinations.length)?c.destinations.slice():[{}];
+  window._srEdit=editId||null;
+  var cards=_slaLoad();
+  var allCust=(CUSTOMERS||[]).slice();
+  Object.keys(cards).forEach(function(x){if(allCust.indexOf(x)<0)allCust.push(x);});
+  allCust.sort();
+  var drivers=(USERS||[]).filter(function(u){return u.role==='driver'&&u.active!==false;});
+  var sup=(USERS||[]).filter(function(u){return u.role==='supervisor'&&u.active!==false;});
+  var opt=function(arr,cur){return arr.map(function(x){return '<option'+(x===cur?' selected':'')+'>'+x+'</option>';}).join('');};
+
+  openM('<div class="m-title">📋 Shipment Request'+(t?' — '+t.id:'')+'</div>'+
+  '<div style="font-size:11.5px;color:var(--t2);margin-bottom:12px">Fields follow the customer SLA template — this record exports straight to the Transportation Data Entry sheet.</div>'+
+
+  // ── Header block
+  '<div class="frow"><div class="fg"><label>Date *</label><input type="date" id="sr-date" value="'+(c.date||new Date().toISOString().slice(0,10))+'"/></div>'+
+  '<div class="fg"><label>Supervisor</label><select id="sr-sup"><option value="">—</option>'+
+    sup.map(function(u){return '<option'+(c.supervisor===u.name?' selected':'')+'>'+u.name+'</option>';}).join('')+'</select></div></div>'+
+
+  // ── Customer + code (typeahead with free typing)
+  '<div class="frow"><div class="fg"><label>Customer *</label>'+
+    '<input id="sr-cust" list="sr-cust-list" value="'+(t?t.customer||'':'')+'" placeholder="Select or type…" oninput="_srCustCode()"/>'+
+    '<datalist id="sr-cust-list">'+allCust.map(function(x){return '<option value="'+x+'">'+(_custCode(x)||'')+'</option>';}).join('')+'</datalist></div>'+
+  '<div class="fg"><label>Customer Code</label><input id="sr-code" value="'+(t?_custCode(t.customer):'')+'" placeholder="auto"/></div>'+
+  '<div class="fg"><label>Transaction *</label><select id="sr-tx">'+opt(TRANSACTION_TYPES,c.transactionType)+'</select></div></div>'+
+
+  // ── Truck / driver / condition
+  '<div class="frow"><div class="fg"><label>Truck Type *</label><select id="sr-ttype">'+
+    opt(['Dababa','Jumbo','Actros','Trailer','Truck Head'],t?t.truckType:'')+'</select></div>'+
+  '<div class="fg"><label>Truck</label><select id="sr-truck"><option value="">— assign later —</option>'+
+    (TRUCKS||[]).map(function(x){return '<option'+(t&&t.truck===x.plate?' selected':'')+'>'+x.plate+'</option>';}).join('')+'</select></div>'+
+  '<div class="fg"><label>Driver</label><select id="sr-driver"><option value="">— assign later —</option>'+
+    drivers.map(function(u){return '<option'+(t&&t.driver===u.name?' selected':'')+'>'+u.name+'</option>';}).join('')+'</select></div></div>'+
+
+  '<div class="frow"><div class="fg"><label>Temperature *</label><select id="sr-temp">'+opt(TEMPERATURES,t?t.condition:c.temperature)+'</select></div>'+
+  '<div class="fg"><label>Governorate (farthest)</label><select id="sr-gov"><option value="">—</option>'+opt(EG_GOVERNORATES,c.governorate)+'</select></div></div>'+
+
+  // ── Crew + petty cash
+  '<div class="frow"><div class="fg"><label>Representatives</label><input type="number" min="0" id="sr-reps" value="'+(c.reps||0)+'"/></div>'+
+  '<div class="fg"><label>Labors (man power)</label><input type="number" min="0" id="sr-labors" value="'+(c.labors||0)+'"/></div>'+
+  '<div class="fg"><label>Petty Cash (EGP)</label><input type="number" min="0" id="sr-petty" value="'+(c.pettyCash||0)+'"/></div></div>'+
+
+  // ── Service flags
+  '<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
+  '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Service Type</div>'+
+  '<div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px">'+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="sr-express" '+(c.express?'checked':'')+'/> Express</label>'+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="sr-emerg" '+(c.emergency?'checked':'')+'/> Emergency</label>'+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="sr-nonrev" '+(c.nonRevenue?'checked':'')+'/> Non-Revenue</label>'+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="sr-tail" '+(c.tailLift?'checked':'')+'/> Tail lift</label>'+
+    '<label style="display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" id="sr-upa" '+(c.upaDelivery?'checked':'')+'/> UPA delivery</label>'+
+  '</div>'+
+  '<div class="fg" style="margin-top:10px;margin-bottom:0"><label>Truck Billing</label><select id="sr-billing">'+opt(TRUCK_BILLING,c.truckBilling)+'</select></div></div>'+
+
+  // ── Origin
+  '<div class="frow"><div class="fg"><label>From EPX Site</label><input id="sr-fromsite" value="'+(c.fromSite||'')+'" placeholder="e.g. Site 5 - Obour"/></div>'+
+  '<div class="fg"><label>From Other Location</label><input id="sr-fromother" value="'+(c.fromOther||'')+'" placeholder="if not an EPX site"/></div></div>'+
+  '<div class="frow"><div class="fg"><label>Start Loading</label><select id="sr-startload">'+opt(LOADING_TYPES,c.startLoading)+'</select></div>'+
+  '<div class="fg"><label>Start KM</label><input type="number" id="sr-startkm" value="'+(c.startKm!==undefined?c.startKm:'')+'"/></div>'+
+  '<div class="fg"><label>Start Time</label><input type="time" id="sr-starttime" value="'+(c.startTime||'')+'"/></div></div>'+
+
+  // ── Destinations (max 15)
+  '<div style="display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px">'+
+    '<label style="font-size:12px;font-weight:700">Destinations <span id="sr-dcount" style="color:var(--t3);font-weight:500"></span></label>'+
+    '<button class="btn btn-outline btn-sm" onclick="_srAddDest()">+ Add stop</button></div>'+
+  '<div id="sr-dests"></div>'+
+
+  '<div class="fg f1" style="margin-top:12px"><label>Notes</label><textarea id="sr-notes" rows="2">'+(c.notes||'')+'</textarea></div>'+
+
+  // ── Live cost preview
+  '<div id="sr-cost" style="background:var(--c1l);border-radius:10px;padding:12px;margin-bottom:6px;font-size:12px"></div>'+
+
+  '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+  '<button class="btn btn-outline" onclick="_srPreviewCost()">💰 Calculate</button>'+
+  '<button class="btn btn-primary" onclick="_srSubmit()">'+(t?'Save changes':'Create Shipment')+'</button></div>');
+  _srRenderDests();
+}
+function _srCustCode(){
+  var n=(document.getElementById('sr-cust')||{}).value||'';
+  var code=_custCode(n.trim());
+  var el=document.getElementById('sr-code');
+  if(el&&code)el.value=code;
+}
+function _srAddDest(){
+  if(window._srDests.length>=MAX_DESTINATIONS){toast('Maximum '+MAX_DESTINATIONS+' destinations','err');return;}
+  window._srDests.push({});_srRenderDests();
+}
+function _srDelDest(i){window._srDests.splice(i,1);if(!window._srDests.length)window._srDests.push({});_srRenderDests();}
+function _srRenderDests(){
+  var el=document.getElementById('sr-dests');if(!el)return;
+  var cnt=document.getElementById('sr-dcount');
+  if(cnt)cnt.textContent='('+window._srDests.length+' of '+MAX_DESTINATIONS+')';
+  el.innerHTML=window._srDests.map(function(d,i){
+    return '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;flex-wrap:wrap">'+
+      '<span style="font-size:11px;font-weight:800;color:var(--c1);width:22px;padding-bottom:9px">'+(i+1)+'</span>'+
+      '<div class="fg" style="flex:2;min-width:130px;margin:0"><input id="srd-n'+i+'" value="'+(d.name||'')+'" placeholder="Destination '+(i+1)+'" onchange="window._srDests['+i+'].name=this.value"/></div>'+
+      '<div class="fg" style="flex:1;min-width:96px;margin:0"><select id="srd-l'+i+'" onchange="window._srDests['+i+'].loading=this.value">'+
+        LOADING_TYPES.map(function(x){return '<option'+(d.loading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
+      '<div class="fg" style="width:84px;margin:0"><input type="number" id="srd-k'+i+'" value="'+(d.km!==undefined?d.km:'')+'" placeholder="KM" onchange="window._srDests['+i+'].km=this.value"/></div>'+
+      '<div class="fg" style="width:96px;margin:0"><input type="time" id="srd-t'+i+'" value="'+(d.departTime||'')+'" onchange="window._srDests['+i+'].departTime=this.value"/></div>'+
+      '<span onclick="_srDelDest('+i+')" style="cursor:pointer;color:#EF4444;font-size:17px;padding:0 4px 8px">×</span></div>';
+  }).join('');
+}
+function _srCollect(){
+  var g=function(id){var e=document.getElementById(id);return e?e.value:'';};
+  var ck=function(id){var e=document.getElementById(id);return !!(e&&e.checked);};
+  window._srDests.forEach(function(d,i){
+    d.name=g('srd-n'+i);d.loading=g('srd-l'+i);d.km=g('srd-k'+i);d.departTime=g('srd-t'+i);
+  });
+  return {
+    date:g('sr-date'),supervisor:g('sr-sup'),
+    customer:g('sr-cust').trim(),code:g('sr-code').trim(),
+    transactionType:g('sr-tx'),truckType:g('sr-ttype'),truck:g('sr-truck'),driver:g('sr-driver'),
+    temperature:g('sr-temp'),governorate:g('sr-gov'),
+    reps:+g('sr-reps')||0,labors:+g('sr-labors')||0,pettyCash:+g('sr-petty')||0,
+    express:ck('sr-express'),emergency:ck('sr-emerg'),nonRevenue:ck('sr-nonrev'),
+    tailLift:ck('sr-tail'),upaDelivery:ck('sr-upa'),truckBilling:g('sr-billing'),
+    fromSite:g('sr-fromsite'),fromOther:g('sr-fromother'),
+    startLoading:g('sr-startload'),startKm:g('sr-startkm'),startTime:g('sr-starttime'),
+    destinations:window._srDests.filter(function(d){return d.name;}),
+    notes:g('sr-notes'),expenses:{}
+  };
+}
+function _srPreviewCost(){
+  var f=_srCollect();
+  var el=document.getElementById('sr-cost');if(!el)return;
+  if(!f.customer){el.innerHTML='<span style="color:var(--t3)">Enter a customer to calculate.</span>';return;}
+  var fake={customer:f.customer,truckType:f.truckType,truck:f.truck,status:'in_progress',
+    contract:Object.assign({},f)};
+  var res=shipCalc(fake);
+  if(!res){
+    var km=f.destinations.length?Math.max.apply(null,f.destinations.map(function(d){return +d.km||0;})):0;
+    var r=calcTripCost(f.customer,km,f.emergency?'Emergency':'Planned',f.temperature,f.destinations.length,0,f.truckType);
+    el.innerHTML='<div style="font-weight:700;color:var(--c1);margin-bottom:6px">Formula pricing</div>'+
+      '<div style="display:flex;justify-content:space-between;font-size:14px;font-weight:800"><span>Total</span><span>EGP '+(r.cost||0)+'</span></div>';
+    return;
+  }
+  el.innerHTML='<div style="font-weight:700;color:var(--c1);margin-bottom:6px">📑 SLA contract — '+res.card+'</div>'+
+    res.lines.map(function(l){
+      return '<div style="display:flex;justify-content:space-between;gap:8px;padding:3px 0;border-bottom:1px solid rgba(124,58,237,.12)">'+
+        '<span style="color:var(--t2)"><b style="color:var(--c1);font-size:10.5px">'+(l.scm||'')+'</b> '+l.desc+(l.qty>1?' ×'+l.qty:'')+'</span>'+
+        '<span style="font-weight:700;white-space:nowrap">'+l.amount.toLocaleString()+'</span></div>';
+    }).join('')+
+    '<div style="display:flex;justify-content:space-between;margin-top:8px;font-size:14px;font-weight:800"><span>Total</span><span>'+res.currency+' '+res.total.toLocaleString()+'</span></div>';
+}
+function _srSubmit(){
+  var f=_srCollect();
+  if(!f.customer){toast('Customer is required','err');return;}
+  if(!f.destinations.length){toast('Add at least one destination','err');return;}
+  if(f.code)_custSetCode(f.customer,f.code);
+  if((CUSTOMERS||[]).indexOf(f.customer)<0)CUSTOMERS.push(f.customer);
+  var editing=window._srEdit;
+  var t=editing?S.trips.find(function(x){return x.id===editing;}):null;
+  if(!t){
+    t={id:'TRP-'+Date.now().toString().slice(-6),tl:[],attachments:[],checklist:{},
+       ts:new Date().toLocaleString('en-GB'),createdBy:S.user?S.user.name:''};
+    S.trips.push(t);
+  }
+  t.customer=f.customer;t.truck=f.truck||null;t.truckType=f.truckType;t.driver=f.driver||null;
+  t.condition=f.temperature;t.dir=f.transactionType;
+  t.type=f.nonRevenue?'Non-Revenue':(f.emergency?'Emergency':(f.express?'Express':'Planned'));
+  t.from=f.fromSite||f.fromOther||'';
+  t.dests=f.destinations.map(function(d){return d.name;}).join(' > ');
+  t.destsArr=f.destinations.map(function(d){return d.name;});
+  t.contract=f;
+  if(!editing)t.status='in_progress';
+  t.km=_shipTripKm(t);
+  var res=shipCalc(t);
+  if(res){t.cost=res.total;t.slaLines=res.lines;}
+  else{var r=calcTripCost(f.customer,t.km,t.type,f.temperature,f.destinations.length,0,f.truckType);t.cost=+r.cost||0;t.costBreakdown=r.breakdown;}
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user?S.user.name:'',
+    action:editing?'✏️ Shipment updated':'📋 Shipment request created',
+    detail:f.transactionType+' · '+f.destinations.length+' stop(s) · '+f.truckType});
+  audit(editing?'SHIP_EDIT':'SHIP_CREATE',f.customer+' · '+f.destinations.length+' stops',t.id);
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  closeM();
+  toast(editing?'✅ Shipment updated':'✅ '+t.id+' created — EGP '+(t.cost||0).toLocaleString(),'ok');
+  if(S.page==='contract')rContract();else nav('contract');
+}
+
+// ══ CONTRACT DASHBOARD — in progress / completed / cancelled ══════
+function rContract(){
+  var c=document.getElementById('content');if(!c)return;
+  _custCodesLoad();
+  var all=(S.trips||[]).filter(function(t){return t.contract;});
+  var f=S._ctFilter||'all';
+  var counts={all:all.length};
+  Object.keys(SHIP_STATUS).forEach(function(k){counts[k]=all.filter(function(t){return t.status===k;}).length;});
+  var list=f==='all'?all:all.filter(function(t){return t.status===f;});
+  var revenue=list.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var chip=function(k,label,n,col,bg){
+    return '<div onclick="S._ctFilter=\''+k+'\';rContract()" style="cursor:pointer;flex:1;min-width:120px;padding:12px 14px;border-radius:12px;background:'+(f===k?col:bg)+';color:'+(f===k?'#fff':col)+';border:1.5px solid '+col+'">'+
+      '<div style="font-size:22px;font-weight:900;line-height:1">'+n+'</div>'+
+      '<div style="font-size:11px;font-weight:700;margin-top:2px">'+label+'</div></div>';
+  };
+  c.innerHTML=
+    '<div class="page-head"><div><h2>📋 Contract Shipments</h2>'+
+    '<div class="page-head-sub">SLA template records — export to the customer data-entry sheet</div></div>'+
+    '<div style="display:flex;gap:8px;flex-wrap:wrap">'+
+      '<button class="btn btn-primary btn-sm" onclick="openShipmentRequest()">+ New Request</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="exportDataEntrySheet()">⬇ Data Entry Sheet</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="exportBillingSheet()">💰 Billing Sheet</button>'+
+    '</div></div>'+
+    '<div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px">'+
+      chip('all','All',counts.all,'#6C3FF5','#EEF2FF')+
+      chip('in_progress','In Progress',counts.in_progress,SHIP_STATUS.in_progress.color,SHIP_STATUS.in_progress.bg)+
+      chip('completed','Completed',counts.completed,SHIP_STATUS.completed.color,SHIP_STATUS.completed.bg)+
+      chip('cancelled_customer','Cancelled — Customer',counts.cancelled_customer,SHIP_STATUS.cancelled_customer.color,SHIP_STATUS.cancelled_customer.bg)+
+      chip('cancelled_org','Cancelled — Us',counts.cancelled_org,SHIP_STATUS.cancelled_org.color,SHIP_STATUS.cancelled_org.bg)+
+    '</div>'+
+    (list.length?
+      '<div class="card"><div class="card-hd"><div class="card-title">'+list.length+' shipment(s)</div>'+
+      '<div style="font-size:13px;font-weight:800;color:var(--c1)">EGP '+Math.round(revenue).toLocaleString()+'</div></div>'+
+      '<div style="overflow-x:auto"><table class="tbl"><thead><tr>'+
+      '<th>Date</th><th>Trip</th><th>Customer</th><th>Code</th><th>Tx</th><th>Truck</th><th>Driver</th><th>Stops</th><th>KM</th><th>Amount</th><th>Status</th><th>Actions</th>'+
+      '</tr></thead><tbody>'+
+      list.slice().reverse().map(function(t){
+        var ct=t.contract||{};var st=SHIP_STATUS[t.status]||{label:t.status,color:'#64748B',bg:'#F1F5F9'};
+        return '<tr><td style="font-size:11px">'+(ct.date||'')+'</td>'+
+          '<td style="font-weight:700">'+t.id+'</td><td>'+t.customer+'</td>'+
+          '<td style="font-size:11px;color:var(--t2)">'+_custCode(t.customer)+'</td>'+
+          '<td style="font-size:11px">'+(ct.transactionType||'')+'</td>'+
+          '<td style="font-size:11px">'+(t.truck||'—')+'</td><td style="font-size:11px">'+(t.driver||'—')+'</td>'+
+          '<td style="text-align:center">'+(ct.destinations||[]).length+'</td>'+
+          '<td style="text-align:center">'+_shipTripKm(t)+'</td>'+
+          '<td style="font-weight:700">'+(+t.cost||0).toLocaleString()+'</td>'+
+          '<td><span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></td>'+
+          '<td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="openShipmentRequest(\''+t.id+'\')">Edit</button>'+
+          '<button class="btn btn-outline btn-sm" onclick="_ctStatus(\''+t.id+'\')">Status</button></td></tr>';
+      }).join('')+'</tbody></table></div></div>'
+      :_emptyState('📋','No contract shipments yet','Create a shipment request to start building the data-entry sheet.',
+        '<button class="btn btn-primary" onclick="openShipmentRequest()">+ New Request</button>'));
+}
+function _ctStatus(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  openM('<div class="m-title">Update status — '+id+'</div>'+
+    '<div style="display:flex;flex-direction:column;gap:8px">'+
+    Object.keys(SHIP_STATUS).map(function(k){
+      var s=SHIP_STATUS[k];
+      return '<button class="btn '+(t.status===k?'btn-primary':'btn-outline')+'" onclick="_ctSetStatus(\''+id+'\',\''+k+'\')" style="justify-content:flex-start">'+s.label+'</button>';
+    }).join('')+'</div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button></div>');
+}
+function _ctSetStatus(id,st){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  t.status=st;
+  var res=shipCalc(t);if(res)t.cost=res.total;
+  t.tl.push({ts:new Date().toLocaleString('en-GB'),user:S.user?S.user.name:'',
+    action:'Status → '+SHIP_STATUS[st].label,detail:res?('Recalculated: EGP '+res.total):''});
+  audit('SHIP_STATUS',SHIP_STATUS[st].label,id);
+  _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+  closeM();rContract();
+  toast('Status updated'+(res?' — EGP '+res.total.toLocaleString():''),'ok');
 }
 
 </script>
