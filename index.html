@@ -13889,7 +13889,7 @@ function _opsCard(t){
   var form=_formFor(t);
   var fp=form?_formProgress(t,form):null;
   var fsig=form?(_formState(t,form).signatures||{}):{};
-  var approved=!!(fsig.officer&&fsig.supervisor);
+  var approved=!!(form&&_formLocked(t,form));
   var plate=(op.scans||[]).find(function(s){return s.kind==='plate';});
   var units=(op.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';});
   var photos=op.photos||[];
@@ -14216,7 +14216,7 @@ function opsCompleteLoading(id){
   var inbound=t.status==='inbound_operation';
   var work=inbound?'Unloading':'Loading';
   var _f=_formFor(t);
-  if(_f){var _fs=_formState(t,_f);if(!(_fs.signatures&&_fs.signatures.officer&&_fs.signatures.supervisor)){toast('يجب استكمال وتوقيع نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}}
+  if(_f&&!_formLocked(t,_f)){toast('يجب استكمال وتوقيع نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}
   if((t.ops.photos||[]).length<cfg.minPhotos){toast('At least '+cfg.minPhotos+' photo(s) required','err');return;}
   if(cfg.requirePlateScan&&!(t.ops.scans||[]).some(function(s){return s.kind==='plate';})){toast('Scan the truck plate first','err');return;}
   if(cfg.requireCartonScan&&!_opsUnitCount(t)){toast('Scan at least one pallet/carton','err');return;}
@@ -22043,8 +22043,7 @@ function wfAdvance(id,note){
   }
   if(stage.role==='operation'){
     var _f=_formFor(t);
-    if(_f){var _s=_formState(t,_f).signatures||{};
-      if(!(_s.officer&&_s.supervisor)){toast('يجب اعتماد نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}}
+    if(_f&&!_formLocked(t,_f)){toast('يجب اعتماد نموذج '+_f.title+' أولاً','err');openInspectionForm(id,_f.id);return;}
   }
   requirePwd(stage.icon+' '+stage.label+' — '+id,function(){_wfAdvanceNow(id,note);});
 }
@@ -22129,7 +22128,7 @@ function _qcCard(t){
   var form=_formFor(t);
   var fp=form?_formProgress(t,form):null;
   var fsig=form?(_formState(t,form).signatures||{}):{};
-  var formDone=!!(fsig.officer&&fsig.supervisor);
+  var formDone=!!(form&&_formLocked(t,form));
   var verified=!!t.qualityVerified;
   var qa=(S.qaAgr&&S.qaAgr[t.customer])||{minTemp:2,maxTemp:8};
   // Quality signs off the same consolidated evidence operations produced
@@ -22190,10 +22189,7 @@ function _qcCard(t){
 function qcVerify(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var _f=_formFor(t);
-  if(_f){
-    var _s=_formState(t,_f).signatures||{};
-    if(!(_s.officer&&_s.supervisor)){toast('نموذج '+_f.title+' لم يُعتمد بعد','err');return;}
-  }
+  if(_f&&!_formLocked(t,_f)){toast('نموذج '+_f.title+' لم يُعتمد بعد','err');return;}
   requirePwd('🧪 Verify quality — '+id,function(){
     t.qualityVerified=true;
     t.qualityVerifiedBy=S.user.name;
@@ -22330,8 +22326,8 @@ var INSPECTION_FORMS={
     titleEn:'Shipping Operations Inspection',
     passMark:100,           // the form requires 100% of items
     header:[
+      // وقت الفحص لا يُكتب — يُختم من الساعة الموثّقة أعلى النموذج
       {id:'customer',   label:'اسم العميل',            type:'text'},
-      {id:'inspectTime',label:'وقت الفحص',             type:'time'},
       {id:'dockNo',     label:'رقم الدوك',             type:'text'},
       {id:'lineNo',     label:'رقم اللاين',            type:'text'},
       {id:'truckNo',    label:'رقم السيارة',           type:'text'},
@@ -22364,9 +22360,9 @@ var INSPECTION_FORMS={
         {n:'14', text:'البالتات المحملة لا توجد بينهما مسافات، تم ملئ المسافات (إن وجدت) بوضع فواصل.'}
       ]}
     ],
+    // الشحن: اعتماد المسئول فقط — الجودة تعتمد بعده كخطوة مستقلة (OUT-2)
     signatures:[
-      {id:'officer',   label:'مسئول الشحن',  labelEn:'Shipping Officer',    role:'operation'},
-      {id:'supervisor',label:'مشرف الشحن',   labelEn:'Shipping Supervisor', role:'supervisor'}
+      {id:'officer',   label:'مسئول الشحن',  labelEn:'Shipping Officer',    role:'operation'}
     ],
     note:'يجب تحقيق 100% من البنود السابقة لإتمام عملية الشحن'
   },
@@ -22377,17 +22373,15 @@ var INSPECTION_FORMS={
     titleEn:'Receiving Operations Inspection',
     passMark:100,
     header:[
+      // بداية ونهاية الاستلام لا تُكتبان — تُختمان من الساعة الموثّقة
       {id:'customer',   label:'اسم العميل',              type:'text'},
-      {id:'startTime',  label:'وقت بداية الاستلام',      type:'time'},
       {id:'dockNo',     label:'رقم الدوك',               type:'text'},
       {id:'lineNo',     label:'رقم اللاين',              type:'text'},
       {id:'truckNo',    label:'رقم السيارة',             type:'text'},
       {id:'truckType',  label:'نوع السيارة',             type:'text'},
       {id:'loggerSerial',label:'Data Logger Serial',     type:'text'},
       {id:'sealNo',     label:'Seal No.',                type:'text'},
-      {id:'temp',       label:'درجة حرارة السيارة أثناء الفحص',type:'text'},
-      {id:'endTime',    label:'وقت نهاية الاستلام',      type:'time'},
-      {id:'duration',   label:'مدة الاستلام',            type:'text'}
+      {id:'temp',       label:'درجة حرارة السيارة أثناء الفحص',type:'text'}
     ],
     sections:[
       {title:'أولاً: منطقة الإستلام',items:[
@@ -22454,7 +22448,7 @@ function openInspectionForm(id,formId){
   if(!st.header.truckNo)st.header.truckNo=t.truck||'';
   if(!st.header.truckType)st.header.truckType=t.truckType||'';
   var p=_formProgress(t,form);
-  var locked=!!(st.signatures&&st.signatures.supervisor);
+  var locked=_formLocked(t,form);
   var cfg=_opsCfg();
   var plate=(op.scans||[]).find(function(s){return s.kind==='plate';});
   var units=(op.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';});
@@ -22475,8 +22469,8 @@ function openInspectionForm(id,formId){
       '<span>'+t.id+'</span></div>'+
     (locked?'<div style="background:#F0FDF4;border:1px solid #A7F3D0;border-radius:8px;padding:7px 11px;font-size:11.5px;color:#065F46;margin-bottom:10px">🔒 معتمد — للعرض فقط</div>':'')+
 
-    // ── inspection start / end — stamped from the server clock
-    '<div id="form-timing">'+_formTimingHTML(t,form,locked)+'</div>'+
+    // ── the inspection begins here, stamped from the server clock
+    '<div id="form-timing-start">'+_formStartHTML(t,form,locked)+'</div>'+
 
     // ── header fields
     '<div style="direction:rtl;display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:12px">'+
@@ -22545,7 +22539,10 @@ function openInspectionForm(id,formId){
 
     (!evidenceOk?'<div style="direction:rtl;font-size:11px;color:#B45309;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:8px;padding:7px 10px;margin-bottom:8px">أكمل المسح والصور قبل الاعتماد</div>':'')+
 
-    // ── the two approvals — the form is what releases the shipment
+    // ── the inspection ends here, directly before the approvals
+    '<div id="form-timing-end">'+_formEndHTML(t,form,locked)+'</div>'+
+
+    // ── the approvals — the form is what releases the shipment
     '<div style="display:flex;gap:8px;direction:rtl">'+
     form.signatures.map(function(sg){
       var s=(st.signatures||{})[sg.id];
@@ -22583,32 +22580,50 @@ function _fmtDur(ms){
   var m=Math.round(s/60);
   return m<60?(m+' د'):(Math.floor(m/60)+' س '+(m%60)+' د');
 }
-function _formTimingHTML(t,form,locked){
+function _formStampCell(label,stamp,locked,btn){
+  return '<div style="flex:1;min-width:118px;border:1.5px solid '+(stamp?'#A7F3D0':'var(--bd)')+';background:'+(stamp?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:8px 10px">'+
+    '<div style="font-size:10.5px;font-weight:800;color:'+(stamp?'#065F46':'var(--t2)')+'">'+label+'</div>'+
+    (stamp
+      ? '<div style="font-size:12.5px;font-weight:800;color:var(--t);margin-top:3px;direction:ltr;text-align:right">'+stamp.at+' '+_tcMark(stamp)+'</div>'+
+        '<div style="font-size:10px;color:var(--t2);margin-top:2px">'+(stamp.by||'')+'</div>'
+      : (locked?'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">—</div>':btn))+
+    '</div>';
+}
+// The inspection opens with its start stamp…
+function _formStartHTML(t,form,locked){
   var st=_formState(t,form);
-  var s=st.inspStart,e=st.inspEnd;
-  var cell=function(label,stamp,btn){
-    return '<div style="flex:1;min-width:118px;border:1.5px solid '+(stamp?'#A7F3D0':'var(--bd)')+';background:'+(stamp?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:8px 10px">'+
-      '<div style="font-size:10.5px;font-weight:800;color:'+(stamp?'#065F46':'var(--t2)')+'">'+label+'</div>'+
-      (stamp
-        ? '<div style="font-size:12.5px;font-weight:800;color:var(--t);margin-top:3px;direction:ltr;text-align:right">'+stamp.at+' '+_tcMark(stamp)+'</div>'+
-          '<div style="font-size:10px;color:var(--t2);margin-top:2px">'+(stamp.by||'')+'</div>'
-        : (locked?'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">—</div>':btn))+
-      '</div>';
-  };
+  return '<div style="direction:rtl;display:flex;gap:7px;margin-bottom:10px">'+
+    _formStampCell('بداية الفحص',st.inspStart,locked,
+      '<button class="btn btn-primary btn-sm" style="width:100%;margin-top:5px" onclick="_formStart(\''+t.id+'\',\''+form.id+'\')">▶ بدء الفحص</button>')+
+  '</div>'+
+  (!_TC.ok?'<div style="direction:rtl;font-size:10.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 10px;margin-bottom:10px">⚠ تعذّر الوصول لساعة السيرفر — الأوقات مسجّلة من الجهاز وغير موثّقة.</div>':'');
+}
+// …and closes with its end stamp, immediately above the approvals, because
+// the inspection has to be finished before anybody signs for it.
+function _formEndHTML(t,form,locked){
+  var st=_formState(t,form),s=st.inspStart,e=st.inspEnd;
   var dur=(s&&e)?_fmtDur(e.ms-s.ms):'';
   return '<div style="direction:rtl;display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px">'+
-    cell('بداية الفحص',s,'<button class="btn btn-primary btn-sm" style="width:100%;margin-top:5px" onclick="_formStart(\''+t.id+'\',\''+form.id+'\')">▶ بدء الفحص</button>')+
-    cell('نهاية الفحص',e,s?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:5px" onclick="_formEnd(\''+t.id+'\',\''+form.id+'\')">■ إنهاء الفحص</button>'
-                          :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">ابدأ الفحص أولاً</div>')+
+    _formStampCell('نهاية الفحص',e,locked,
+      s?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:5px" onclick="_formEnd(\''+t.id+'\',\''+form.id+'\')">■ إنهاء الفحص</button>'
+       :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">ابدأ الفحص أولاً</div>')+
     (dur?'<div style="flex:0 0 auto;display:flex;flex-direction:column;justify-content:center;padding:8px 12px;border:1.5px solid var(--bd);border-radius:10px;background:var(--bg)">'+
       '<div style="font-size:10.5px;font-weight:800;color:var(--t2)">المدة</div>'+
       '<div style="font-size:13px;font-weight:800;color:var(--c1)">'+dur+'</div></div>':'')+
   '</div>'+
-  (!_TC.ok?'<div style="direction:rtl;font-size:10.5px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:6px 10px;margin-bottom:10px">⚠ تعذّر الوصول لساعة السيرفر — الأوقات مسجّلة من الجهاز وغير موثّقة.</div>':'');
+  (!e?'<div style="direction:rtl;font-size:11px;color:#B45309;background:#FFFBEB;border:1px solid #FDE68A;border-radius:8px;padding:7px 10px;margin-bottom:8px">أنهِ الفحص قبل الاعتماد</div>':'');
 }
 function _formRefreshTiming(t,form){
-  var el=document.getElementById('form-timing');
-  if(el)el.innerHTML=_formTimingHTML(t,form,!!(_formState(t,form).signatures||{}).supervisor);
+  var locked=!!_formLocked(t,form);
+  var a=document.getElementById('form-timing-start');
+  if(a)a.innerHTML=_formStartHTML(t,form,locked);
+  var b=document.getElementById('form-timing-end');
+  if(b)b.innerHTML=_formEndHTML(t,form,locked);
+}
+// A form is locked once every signature it asks for has been given
+function _formLocked(t,form){
+  var sg=_formState(t,form).signatures||{};
+  return (form.signatures||[]).every(function(s){return !!sg[s.id];});
 }
 function _formStart(id,fid){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
@@ -22703,6 +22718,7 @@ function _formSign(id,fid,sigId){
   var form=INSPECTION_FORMS[fid],st=_formState(t,form);
   var p=_formProgress(t,form);
   var sg=form.signatures.find(function(s){return s.id===sigId;});
+  if(!sg){toast('هذا النموذج لا يتضمن هذا الاعتماد','err');return;}
   if(!p.complete){toast('أكمل جميع البنود أولاً ('+(p.yes+p.no)+'/'+p.total+')','err');return;}
   if(!st.inspStart){toast('اضغط ▶ بدء الفحص أولاً','err');return;}
   if(!st.inspEnd){toast('اضغط ■ إنهاء الفحص قبل الاعتماد','err');return;}
@@ -22714,9 +22730,10 @@ function _formSign(id,fid,sigId){
   if(_op.expectedUnits&&_units.length<_op.expectedUnits){
     if(!confirm('تم مسح '+_units.length+' من '+_op.expectedUnits+' وحدة. الاعتماد رغم ذلك؟'))return;
   }
-  // the supervisor signs only after the officer
-  if(sigId==='supervisor'&&!(st.signatures&&st.signatures.officer)){
-    toast('يوقّع '+form.signatures[0].label+' أولاً','err');return;}
+  // signatures are given in the order the form lists them
+  var _idx=form.signatures.indexOf(sg);
+  var _missing=form.signatures.slice(0,_idx).find(function(x){return !((st.signatures||{})[x.id]);});
+  if(_missing){toast('يوقّع '+_missing.label+' أولاً','err');return;}
   if(!p.passed&&!st.notes){
     toast('يوجد بند غير مطابق — اكتب الملاحظات وأبلغ الجودة','err');return;}
   requirePwd(form.title+' — '+sg.label,function(){
@@ -22728,21 +22745,25 @@ function _formSign(id,fid,sigId){
       action:'📋 '+form.title+' — '+sg.label,
       detail:p.yes+'/'+p.total+' ('+p.pct+'%)'+(p.passed?'':' · يوجد عدم مطابقة')});
     audit('FORM_SIGN',form.doc+' '+sg.id+' '+p.pct+'%',id);
-    // both signatures mirror into the shipment checklist
-    if(st.signatures.officer&&st.signatures.supervisor){
+    // once the form has every signature it asks for, it mirrors into the shipment
+    var _done=_formLocked(t,form);
+    if(_done){
+      var _last=st.signatures[form.signatures[form.signatures.length-1].id];
       if(!t.ops)t.ops={scans:[],photos:[],checklist:{}};
       t.ops.loadingComplete=true;
-      t.ops.loadingCompleteAt=st.signatures.supervisor.at;
-      t.ops.loadingCompleteBy=st.signatures.supervisor.by;
+      t.ops.loadingCompleteAt=_last.at;
+      t.ops.loadingCompleteBy=_last.by;
       t.inspection=t.inspection||{};
       t.inspection[form.id]={doc:form.doc,pct:p.pct,passed:p.passed,
-        officer:st.signatures.officer.by,supervisor:st.signatures.supervisor.by,at:st.signatures.supervisor.at};
+        officer:(st.signatures.officer||{}).by||_last.by,
+        supervisor:(st.signatures.supervisor||{}).by||'',
+        startedAt:st.inspStart?st.inspStart.at:'', endedAt:st.inspEnd?st.inspEnd.at:'',
+        at:_last.at};
     }
     _lcSave&&_lcSave();syncTrip&&syncTrip(t);
-    // Both approvals on the form release the step — no second approval to give
-    var _both=st.signatures.officer&&st.signatures.supervisor;
+    // A fully signed form releases the step — no second approval to give
     var _stg=_wfStage(t.status);
-    if(_both&&_stg&&_stg.role==='operation'){
+    if(_done&&_stg&&_stg.role==='operation'){
       _formCtx=null;closeM();
       toast('✅ اعتمد النموذج — أُرسلت الشحنة للخطوة التالية','ok');
       _wfAdvanceNow(id,'اعتماد نموذج '+form.doc);
