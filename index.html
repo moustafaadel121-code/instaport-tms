@@ -3296,7 +3296,7 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · tidy';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · locked';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -21521,6 +21521,13 @@ function exportBillingSheet(trips){
 function openShipmentRequest(editId){
   _custCodesLoad();
   var t=editId?S.trips.find(function(x){return x.id===editId;}):null;
+  // one guard for every route into the editor, not just the buttons
+  if(t&&!_canEditPlan(t)){
+    toast(t.status==='completed'
+      ? 'الرحلة مكتملة — الخطة مقفولة ولا يمكن تعديلها'
+      : 'لا يمكن تعديل الخطة في هذه المرحلة','err');
+    return;
+  }
   var c=t?_shipNormalize(t):{destinations:[{}],expenses:{}};
   window._srDests=(c.destinations&&c.destinations.length)?c.destinations.slice():[{}];
   window._srEdit=editId||null;
@@ -21824,7 +21831,12 @@ function rContract(){
           '<td style="text-align:center">'+_shipTripKm(t)+'</td>'+
           '<td style="font-weight:700">'+(+t.cost||0).toLocaleString()+'</td>'+
           '<td><span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></td>'+'<td>'+(function(){var a=_apvStatusOf(t);return '<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:20px;background:'+a.bg+';color:'+a.color+'">'+a.label+'</span>';})()+'</td>'+
-          '<td style="display:flex;gap:4px;flex-wrap:wrap"><button class="btn btn-outline btn-sm" onclick="openShipmentRequest(\''+t.id+'\')">Edit</button>'+
+          // Edit is offered only while the plan may still change — a
+          // completed shipment is a priced record, not a draft.
+          '<td style="display:flex;gap:4px;flex-wrap:wrap">'+
+          (_canEditPlan(t)
+            ?'<button class="btn btn-outline btn-sm" onclick="openShipmentRequest(\''+t.id+'\')">Edit</button>'
+            :'<button class="btn btn-outline btn-sm" disabled title="'+(t.status==='completed'?'الرحلة مكتملة — الخطة مقفولة':'لا يمكن تعديل الخطة في هذه المرحلة')+'" style="opacity:.4;cursor:not-allowed">🔒 Edit</button>')+
           '<button class="btn btn-outline btn-sm" onclick="_ctStatus(\''+t.id+'\')">Status</button>'+
           '<button class="btn btn-primary btn-sm" onclick="openFinalSheet(\''+t.id+'\')">🧾 Sheet</button></td></tr>';
       }).join('')+'</tbody></table></div></div>'
