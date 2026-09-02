@@ -3636,7 +3636,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval','ip_dmgpos','ip_formsigs','ip_drvsheet'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval','ip_dmgpos','ip_formsigs','ip_drvsheet','ip_slatemplate'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -7533,8 +7533,43 @@ function rFin(){
       : '<div style="padding:34px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عميل بهذا الاسم</div>')+
     '</div>'+
     '<div style="font-size:11px;color:var(--t3);margin-top:10px">اضغط على أي عميل لفتح بطاقة الأسعار التعاقدية الخاصة به. أي عميل يُضاف يظهر هنا تلقائياً.</div>'+
+    _finTemplateHTML(mayEdit)+
     _finGlobalHTML(mayEdit)+
     buildForecastSection();
+}
+// The contract shape every new customer starts on
+function _finTemplateHTML(mayEdit){
+  var t=_slaTemplate();
+  var withCards=_finCustomers().filter(function(c){return !!_slaCard(c);});
+  return '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm);margin-top:18px">'+
+    '<div style="padding:14px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Standard Contract</div>'+
+      '<span style="font-size:11px;color:var(--t3)">كل عميل جديد يبدأ بهذا الشكل — الأسعار فقط هي المتفاوض عليها</span>'+
+    '</div>'+
+    '<div style="padding:14px 18px">'+
+      '<div style="display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px">'+
+        ['تسعير لكل رِجل: '+(t.perLeg?'نعم':'لا'),
+         'الأرجل الفارغة مجاناً: '+(t.emptyLegFree?'نعم':'لا'),
+         (t.bands||[]).length+' شريحة مسافة',
+         (t.trucks||[]).length+' نوع سيارة',
+         SLA_SERVICES.length+' خدمة'
+        ].map(function(x){
+          return '<span style="font-size:11px;font-weight:700;padding:4px 11px;border-radius:20px;background:#EEF2FF;color:#6C3FF5">'+x+'</span>';
+        }).join('')+
+      '</div>'+
+      '<div style="font-size:11px;color:var(--t2);margin-bottom:4px"><b>الشرائح:</b> '+(t.bands||[]).map(function(b){return b.label;}).join(' · ')+'</div>'+
+      '<div style="font-size:11px;color:var(--t2);margin-bottom:10px"><b>السيارات:</b> '+(t.trucks||[]).join(' · ')+'</div>'+
+      (mayEdit
+        ? '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">'+
+            '<span style="font-size:11.5px;color:var(--t2)">اعتمد شكل عميل قائم كنموذج قياسي:</span>'+
+            '<select id="fin-tpl-src" style="padding:6px 9px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);color:var(--t)">'+
+            (withCards.length?withCards.map(function(c){return '<option>'+c+'</option>';}).join('')
+                             :'<option value="">— لا توجد بطاقات بعد —</option>')+
+            '</select>'+
+            (withCards.length?'<button class="btn btn-outline btn-sm" onclick="_slaTemplateFrom(document.getElementById(\'fin-tpl-src\').value)">اعتماد كنموذج قياسي</button>':'')+
+          '</div>'
+        : '')+
+    '</div></div>';
 }
 // Settings that apply across every customer. They used to sit in the admin
 // panel, a screen away from the rates they modify; they belong here.
@@ -10695,8 +10730,8 @@ function rAdminCustomers(){
   '<td><button class="btn btn-outline btn-sm" onclick="editCustModifiers(\''+cu+'\')">Modifiers</button></td>'+
   '<td><button class="btn btn-danger btn-sm" onclick="delCust(\''+cu+'\')">Remove</button></td></tr>';}).join('')+'</tbody></table></div></div>';
 }
-function openAddCust(){openM('<div class="m-title">🏢 Add Customer</div><div class="fg f1"><label>Name *</label><input id="nc-name" placeholder="e.g. Pfizer"/></div><div class="frow"><div class="fg"><label>Rate (EGP/km)</label><input type="number" id="nc-rate" value="8.0"/></div><div class="fg"><label>Temp Min/Max</label><div style="display:flex;gap:4px"><input type="number" id="nc-min" value="2" style="width:50px"/><span style="align-self:center">–</span><input type="number" id="nc-max" value="8" style="width:50px"/></div></div></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addCust()">Add</button></div>');}
-async function addCust(){var n=(document.getElementById('nc-name')||{}).value;if(!n){toast('Enter name','err');return;}if(CUSTOMERS.includes(n)){toast('Customer already exists','err');return;}CUSTOMERS.push(n);S.custModifiers[n]={baseRate:+((document.getElementById('nc-rate')||{}).value||8),bonus:0,fuelAdj:1.0,refrigSurcharge:15,emergencySurcharge:25,waitingRate:120,stopFee:50,seasonal:0,discountPct:0};S.qaAgr[n]={minTemp:+((document.getElementById('nc-min')||{}).value||2),maxTemp:+((document.getElementById('nc-max')||{}).value||8),checkReq:7};audit('ADD_CUST',n,'');closeM();toast(n+' added!','ok');rAdminCustomers();if(_sb&&_tenantId){try{await _sb.from('customers').insert({name:n,tenant_id:_tenantId});}catch(e){console.error('addCust sync',e);}}}
+function openAddCust(){openM('<div class="m-title">🏢 Add Customer</div><div class="frow"><div class="fg"><label>Name *</label><input id="nc-name" placeholder="e.g. Pfizer"/></div><div class="fg"><label>Customer Code</label><input id="nc-code" placeholder="e.g. 1705"/></div></div><div class="frow"><div class="fg"><label>Rate (EGP/km)</label><input type="number" id="nc-rate" value="8.0"/></div><div class="fg"><label>Temp Min/Max</label><div style="display:flex;gap:4px"><input type="number" id="nc-min" value="2" style="width:50px"/><span style="align-self:center">–</span><input type="number" id="nc-max" value="8" style="width:50px"/></div></div></div><div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button><button class="btn btn-primary" onclick="addCust()">Add</button></div>');}
+async function addCust(){var n=(document.getElementById('nc-name')||{}).value;if(!n){toast('Enter name','err');return;}if(CUSTOMERS.includes(n)){toast('Customer already exists','err');return;}CUSTOMERS.push(n);S.custModifiers[n]={baseRate:+((document.getElementById('nc-rate')||{}).value||8),bonus:0,fuelAdj:1.0,refrigSurcharge:15,emergencySurcharge:25,waitingRate:120,stopFee:50,seasonal:0,discountPct:0};S.qaAgr[n]={minTemp:+((document.getElementById('nc-min')||{}).value||2),maxTemp:+((document.getElementById('nc-max')||{}).value||8),checkReq:7};_slaEnsureCard(n,(document.getElementById('nc-code')||{}).value||'');audit('ADD_CUST',n,'');closeM();toast(n+' added — standard contract ready','ok');rAdminCustomers();if(_sb&&_tenantId){try{await _sb.from('customers').insert({name:n,tenant_id:_tenantId});}catch(e){console.error('addCust sync',e);}}}
 async function delCust(cu){if(!confirm('Remove '+cu+'?'))return;var i=CUSTOMERS.indexOf(cu);if(i>=0)CUSTOMERS.splice(i,1);audit('DEL_CUST',cu,'');toast(cu+' removed','ok');rAdminCustomers();if(_sb&&_tenantId){try{await _sb.from('customers').delete().eq('name',cu).eq('tenant_id',_tenantId);}catch(e){console.error('delCust sync',e);}}}
 function editCustModifiers(cu){
   var m=S.custModifiers[cu]||{};var qa=S.qaAgr[cu]||{};
@@ -10976,7 +11011,64 @@ function rAdminSettings(){
   '<button class="btn btn-outline" onclick="document.getElementById(\'bk-file\').click()">⬆️ Restore from Backup</button>'+
   '<input type="file" id="bk-file" accept=".json" style="display:none" onchange="backupImport(this.files[0])"/></div>'+
   '<div id="bk-info" style="font-size:11px;color:var(--t3);margin-top:10px">'+_backupInfo()+'</div></div>'+
+  // ── Starting over: operational data goes, configuration stays ──
+  (can('all')?
+  '<div class="card" style="border:1.5px solid #FCA5A5">'+
+  '<div class="card-hd"><div class="card-title" style="color:#B91C1C">🗑️ Start Over</div></div>'+
+  '<div style="font-size:12px;color:var(--t2);margin-bottom:6px">Clears the operational record so you can begin again on a clean system: every shipment with its inspection forms, damage reports, driver sheets and stamps, plus invoices and fuel logs.</div>'+
+  '<div style="font-size:11.5px;color:var(--t2);background:var(--bg);border-radius:9px;padding:9px 12px;margin-bottom:10px;line-height:1.9">'+
+    '<b>Kept:</b> customers, rate cards and pricing · approval chain, form approvals and driver-sheet settings · users, roles and permissions · fleet · branding.'+
+  '</div>'+
+  '<div style="font-size:11.5px;color:#B91C1C;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin-bottom:10px">'+
+    '⚠ This cannot be undone. A backup file is downloaded first — keep it.</div>'+
+  '<div id="purge-count" style="font-size:12px;font-weight:700;color:var(--t);margin-bottom:10px">'+_purgeSummary()+'</div>'+
+  '<button class="btn btn-danger" onclick="purgeTrips()">🗑️ Clear all shipments</button>'+
+  '</div>':'')+
   '</div>';
+}
+// ══ START OVER ════════════════════════════════════════════
+// Operational data only. Everything the organisation configured — its
+// customers, prices, approval chains, forms, users, fleet — survives, so a
+// clean start does not mean setting the system up again.
+function _purgeSummary(){
+  var t=(S.trips||[]).length, i=(S.invoices||[]).length, f=(S.fuelLogs||[]).length;
+  if(!t&&!i&&!f)return 'Nothing to clear — no shipments recorded.';
+  return t+' shipment(s) · '+i+' invoice(s) · '+f+' fuel log(s) will be cleared.';
+}
+function purgeTrips(){
+  var n=(S.trips||[]).length, ni=(S.invoices||[]).length;
+  if(!n&&!ni){toast('لا توجد رحلات لحذفها','info');return;}
+  openM('<div class="m-title" style="color:#B91C1C">🗑️ Clear all shipments</div>'+
+    '<div style="font-size:12.5px;color:var(--t2);line-height:1.8;margin-bottom:10px">'+
+      'This deletes <b>'+n+' shipment(s)</b> and <b>'+ni+' invoice(s)</b>, with every inspection form, damage report, driver sheet and time stamp attached to them.<br>'+
+      'Your customers, prices, approval settings, users and fleet are kept.</div>'+
+    '<div style="font-size:11.5px;color:#B91C1C;background:#FEF2F2;border:1px solid #FCA5A5;border-radius:9px;padding:9px 12px;margin-bottom:12px">'+
+      'A backup file downloads first. This cannot be undone.</div>'+
+    '<div class="fg"><label>Type <b>DELETE</b> to confirm</label>'+
+      '<input id="purge-word" placeholder="DELETE" autocomplete="off" autofocus '+
+      'onkeydown="if(event.key===\'Enter\')_purgeGo()"/></div>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<button class="btn btn-danger" onclick="_purgeGo()">🗑️ Delete everything</button></div>');
+}
+function _purgeGo(){
+  var w=((document.getElementById('purge-word')||{}).value||'').trim().toUpperCase();
+  if(w!=='DELETE'){toast('اكتب DELETE للتأكيد','err');return;}
+  requirePwd('حذف كل الرحلات',function(){
+    var n=(S.trips||[]).length, ni=(S.invoices||[]).length, nf=(S.fuelLogs||[]).length;
+    // the backup goes out before anything is destroyed
+    try{backupExport();}catch(e){console.warn('backup failed',e);}
+    setTimeout(function(){
+      S.trips=[];S.invoices=[];S.fuelLogs=[];
+      try{localStorage.removeItem('ip_invoices');}catch(e){}
+      try{localStorage.removeItem('ip_fuellogs');}catch(e){}
+      S._sheetTrip='';S._finCust='';S._slaSel='';
+      audit('TRIPS_PURGE','Cleared '+n+' shipments, '+ni+' invoices, '+nf+' fuel logs','');
+      _lcSaveNow();
+      closeM();
+      toast('🗑️ حُذفت '+n+' رحلة — النظام جاهز من جديد','ok');
+      nav('dashboard');
+    },600);
+  });
 }
 // ══ BACKUP & RESTORE ══════════════════════════════════════
 function _backupInfo(){
@@ -20199,6 +20291,51 @@ var SLA_DEFAULT_BANDS=[
 ];
 var SLA_DEFAULT_TRUCKS=['Dababa','Jumbo','Actros','Trailer'];
 
+// ── The house standard contract ────────────────────────────────────
+// Every customer starts on the same contract shape — the services, the
+// distance bands, the truck types and the billing rules — with the rates
+// left blank for that customer's own numbers. The shape is the standard;
+// only the prices are negotiated. Edit the standard in Finance and it
+// governs every customer created afterwards.
+function _slaTemplate(){
+  var t={};
+  try{t=JSON.parse(localStorage.getItem('ip_slatemplate')||'{}');}catch(e){t={};}
+  return {
+    perLeg:       t.perLeg!==undefined?!!t.perLeg:true,
+    emptyLegFree: t.emptyLegFree!==undefined?!!t.emptyLegFree:true,
+    active:       t.active!==undefined?!!t.active:true,
+    bands:  (t.bands&&t.bands.length)  ? t.bands.map(function(b){return Object.assign({},b);})
+                                       : SLA_DEFAULT_BANDS.map(function(b){return Object.assign({},b);}),
+    trucks: (t.trucks&&t.trucks.length)? t.trucks.slice() : SLA_DEFAULT_TRUCKS.slice()
+  };
+}
+function _slaTemplateSave(t){
+  try{localStorage.setItem('ip_slatemplate',JSON.stringify(t));}catch(e){}
+}
+// Adopt an existing customer's contract shape as the house standard
+function _slaTemplateFrom(cu){
+  var c=_slaCard(cu);
+  if(!c){toast('لا توجد بطاقة أسعار لهذا العميل','err');return;}
+  if(!canPriceEdit()){toast(_pxDenyMsg(),'err');return;}
+  if(!confirm('اعتماد شكل تعاقد «'+cu+'» كنموذج قياسي لكل عميل جديد؟\n(الأسعار لا تُنسخ — الشكل فقط)'))return;
+  _slaTemplateSave({perLeg:!!c.perLeg,emptyLegFree:!!c.emptyLegFree,active:true,
+    bands:(c.bands||[]).map(function(b){return Object.assign({},b);}),
+    trucks:(c.trucks||[]).slice()});
+  audit('SLA_TEMPLATE','Standard contract shape taken from '+cu,'');
+  toast('✅ صار هذا الشكل هو النموذج القياسي','ok');
+  _pxRerender();
+}
+// Give a customer the standard card if they have none
+function _slaEnsureCard(customer,code){
+  if(!customer)return null;
+  var cards=_slaLoad();
+  if(cards[customer])return cards[customer];
+  cards[customer]=_slaNewCard(customer,code||'');
+  _slaSave();
+  audit('SLA_CARD_AUTO',customer+' — standard contract created','');
+  return cards[customer];
+}
+
 function _slaLoad(){
   if(S.slaCards)return S.slaCards;
   try{S.slaCards=JSON.parse(localStorage.getItem('ip_slacards')||'null');}catch(e){}
@@ -20210,12 +20347,13 @@ function _slaCard(customer){return (_slaLoad())[customer]||null;}
 function _slaActive(customer){var c=_slaCard(customer);return !!(c&&c.active);}
 
 function _slaNewCard(customer,code){
+  var tpl=_slaTemplate();
   var card={
-    customer:customer,code:code||'',currency:'EGP',active:true,
-    perLeg:true,          // price every loaded leg by its own distance band
-    emptyLegFree:true,    // empty/return legs free of charge
-    bands:SLA_DEFAULT_BANDS.map(function(b){return Object.assign({},b);}),
-    trucks:SLA_DEFAULT_TRUCKS.slice(),
+    customer:customer,code:code||'',currency:'EGP',active:tpl.active,
+    perLeg:tpl.perLeg,          // price every loaded leg by its own distance band
+    emptyLegFree:tpl.emptyLegFree, // empty/return legs free of charge
+    bands:tpl.bands,
+    trucks:tpl.trucks,
     rates:{},             // rates[service][truck||'*'][bandId||'*'] = {scm,rate}
     notes:''
   };
