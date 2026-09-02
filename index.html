@@ -462,6 +462,19 @@ input, select, textarea { font-family: inherit; }
   gap: 10px;
   border-bottom: 1px solid rgba(255,255,255,.07);
 }
+/* Sidebar brand: the mark and the organisation's name */
+.sb-brandbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 20px 16px 16px;
+}
+.sb-brandbar #sb-tenant-name {
+  font-size: 17px;
+  font-weight: 800;
+  color: #fff;
+  font-family: 'Space Grotesk', sans-serif;
+}
 .sb-logo-box {
   width: 36px;
   height: 36px;
@@ -2769,6 +2782,41 @@ body.iq #sb-tenant-name{color:var(--iq-text)!important}
 body.iq .sb-theme-row{border-top:1px solid var(--iq-border)}
 body.iq .sb-sw-lbl{color:var(--iq-faint)!important}
 
+/* ── The mark, at the top where it belongs ───────────────────────
+   InstaQ leads with its logo. Ours was a small glyph beside the name and
+   read as decoration; centred and given room it reads as the product. */
+/* The mark is white artwork, which disappears on a white rail. InstaQ sits
+   its logo on an accent tile; ours does the same, so it reads whatever the
+   rail colour and whichever skin is chosen. */
+body.iq .sb-brandbar{
+  flex-direction:column;
+  gap:9px;
+  padding:20px 16px 15px;
+  border-bottom:1px solid var(--iq-border);
+}
+body.iq .sb-mark{
+  height:46px;width:46px;
+  background:var(--c1,#1a64b7);
+  border-radius:11px;
+  padding:7px;
+  filter:none;
+  box-shadow:0 2px 8px rgba(15,35,60,.18);
+}
+/* the bar's own mark sits on the accent already — keep it small and flat */
+body.iq .topbar .ip-logo{height:24px!important;width:auto!important;filter:none!important;background:none}
+body.iq #sb-tenant-name{
+  font-size:15px;text-align:center;color:var(--iq-text);
+  line-height:1.25;
+}
+body.iq #sb-tenant-badge{
+  background:var(--iq-rail2)!important;color:var(--iq-rail-text)!important;
+}
+/* the product signature was white on a white rail — invisible */
+body.iq .sb-powered{border-top:1px solid var(--iq-border);margin-top:6px}
+body.iq .sb-powered-txt{color:var(--iq-rail-text)}
+body.iq .sb-powered-txt b{color:var(--c1,#1a64b7)}
+body.iq #ip-build-stamp{color:var(--iq-faint)}
+
 /* ── The command bar ──────────────────────────────────────────────
    Solid accent across the top, the way InstaQ reads: the chrome is one
    confident band and the content below it is quiet. */
@@ -2844,16 +2892,40 @@ body.iq .kpi-card:hover{transform:none;box-shadow:var(--iq-shadow)}
 body.iq .kpi-val{font-size:19px}
 body.iq .kpi-label{font-size:10.5px}
 body.iq .kpi-icon-wrap{width:32px;height:32px;font-size:15px}
-body.iq .tbl th{
+/* Every table in the app, not only the ones using .tbl — Fleet,
+   Maintenance, Finance, Security and the rest were built with plain
+   tables and stayed loose while Trips tightened. */
+body.iq .tbl th,
+body.iq #content table th{
   padding:8px 10px;font-size:10.5px;letter-spacing:.5px;
   text-transform:uppercase;background:var(--iq-surface2);
+  border-bottom:1px solid var(--iq-border);white-space:nowrap;
+}
+body.iq .tbl td,
+body.iq #content table td{
+  padding:7px 10px;font-size:12.5px;line-height:1.45;
   border-bottom:1px solid var(--iq-border);
 }
-body.iq .tbl td{padding:7px 10px;font-size:12.5px;line-height:1.45;border-bottom:1px solid var(--iq-border)}
-body.iq .tbl tr:hover td{background:var(--iq-surface2)}
-/* buttons living inside a row must not set the row's height */
-body.iq .tbl td .btn,
-body.iq .tbl td .btn-sm{padding:4px 9px;font-size:11px;line-height:1.35}
+body.iq .tbl tr:hover td,
+body.iq #content table tbody tr:hover td{background:var(--iq-surface2)}
+/* buttons and chips living inside a row must not set the row's height */
+body.iq #content table td .btn,
+body.iq #content table td .btn-sm{padding:4px 9px;font-size:11px;line-height:1.35}
+body.iq #content table td img{max-height:26px}
+
+/* ── Card lists read as rows too ─────────────────────────────────
+   Operations, Quality, Control Room and Security list work as stacked
+   cards rather than a table. They get the same rhythm so the whole
+   application reads at one density. */
+body.iq #content .card+.card{margin-top:9px}
+body.iq #content .card .card-hd+div{margin-top:0}
+body.iq #content [style*="border-radius:12px"][style*="margin-bottom"]{margin-bottom:8px!important}
+body.iq #content [style*="gap:14px"]{gap:9px!important}
+body.iq #content [style*="gap:16px"]{gap:11px!important}
+body.iq #content [style*="padding:16px"]{padding:11px 13px!important}
+body.iq #content [style*="padding:13px"]{padding:9px 11px!important}
+body.iq #content [style*="font-size:16px;font-weight:800"]{font-size:14px!important}
+body.iq #content [style*="font-size:15px;font-weight:800"]{font-size:13.5px!important}
 /* status pills read as InstaQ's stage chips */
 body.iq .tbl td span[style*="border-radius:20px"]{
   border-radius:3px!important;
@@ -3092,9 +3164,9 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 <div id="app" style="display:none;height:100vh;flex-direction:row">
   <!-- SIDEBAR -->
   <div class="sidebar" id="sidebar">
-    <div style="display:flex;align-items:center;gap:10px;padding:20px 16px 16px">
-      <img src="logo.png" alt="InstaPort" class="ip-logo"/>
-      <span id="sb-tenant-name" style="font-size:17px;font-weight:800;color:#fff;font-family:Space Grotesk,sans-serif">InstaPort</span>
+    <div class="sb-brandbar">
+      <img src="logo.png" alt="InstaPort" class="ip-logo sb-mark"/>
+      <span id="sb-tenant-name">InstaPort</span>
     </div>
     <div class="sb-nav" id="sb-nav">
       <!-- Filled by buildSB() -->
@@ -13939,10 +14011,10 @@ buildSB = function() {
   }).join('') +
   '<div class="sb-divider"></div>' +
   '<div class="sbi" onclick="openLangMenu(event)"><div class="sbi-icon">&#127760;</div><span class="sbi-label">'+((_L_I18N[_lang]||_L_I18N.en).langWord)+'</span></div>' +
-  '<div style="padding:12px 14px 6px;display:flex;align-items:center;justify-content:center;gap:7px">'+
+  '<div class="sb-powered" style="padding:12px 14px 6px;display:flex;align-items:center;justify-content:center;gap:7px">'+
     '<img src="logo.png" alt="" style="height:20px;width:auto;opacity:.85"/>'+
-    '<span style="font-size:11.5px;color:rgba(255,255,255,.6);letter-spacing:.3px;line-height:1.2">Powered by <b style="color:rgba(255,255,255,.9);font-weight:800">InstaPort</b></span>'+
-  '</div><div id="ip-build-stamp" style="text-align:center;font-size:8.5px;color:rgba(255,255,255,.35);padding-bottom:6px">build '+IP_BUILD+'</div><div>'+
+    '<span class="sb-powered-txt" style="font-size:11.5px;letter-spacing:.3px;line-height:1.2">Powered by <b style="font-weight:800">InstaPort</b></span>'+
+  '</div><div id="ip-build-stamp" style="text-align:center;font-size:8.5px;padding-bottom:6px">build '+IP_BUILD+'</div><div>'+
   '</div>';
 };
 
