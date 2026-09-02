@@ -2912,6 +2912,27 @@ body.iq #content table tbody tr:hover td{background:var(--iq-surface2)}
 body.iq #content table td .btn,
 body.iq #content table td .btn-sm{padding:4px 9px;font-size:11px;line-height:1.35}
 body.iq #content table td img{max-height:26px}
+/* Cells that stack a value over a status — the odometer on Fleet, for
+   instance — sit the second line beside the first so the row stays one
+   line tall instead of two. */
+body.iq #content table td > div{line-height:1.3}
+body.iq #content table td > div + div{
+  display:inline-block;
+  margin-left:8px;
+  font-size:10.5px;
+  opacity:.9;
+}
+body.iq #content table td > div:first-child{display:inline-block;vertical-align:middle}
+body.iq #content table td > br{display:none}
+/* Fleet's odometer cell stacks a reading, a wear bar and a status; laid
+   out in a row it says the same thing in a third of the height. */
+body.iq #content table td > div[style*="min-width:120px"]{
+  display:flex;align-items:center;gap:7px;min-width:150px!important;
+}
+body.iq #content table td > div[style*="min-width:120px"] > div{margin:0!important;display:block}
+body.iq #content table td > div[style*="min-width:120px"] > div[style*="height:4px"]{
+  flex:1;min-width:34px;
+}
 
 /* ── Card lists read as rows too ─────────────────────────────────
    Operations, Quality, Control Room and Security list work as stacked
@@ -3272,7 +3293,7 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · compact';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · rows3';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -7291,6 +7312,69 @@ function subNR(){
 
 // QUALITY
 var CHK=['Cooling unit running & verified','Pre-cooling at target','Load secured & sealed','Temp logger placed & calibrated','Door seals intact','Interior clean','GPS active','Driver briefed'];
+// ══════════════════════════════════════════════════════════════════
+// TRIP ROWS
+// Operations, Quality, Control Room and Finance all answer the same
+// question — which shipments are waiting on me — so they all show the same
+// thing: one compact line per shipment, clicked to open the work. The card
+// that used to fill the screen now appears only for the shipment you chose.
+// ══════════════════════════════════════════════════════════════════
+function _tripRowStatus(t){
+  var st=(typeof stB==='function')?stB(t.status):t.status;
+  return st;
+}
+function _tripRowsHTML(trips,opts){
+  opts=opts||{};
+  if(!trips.length)return _emptyState(opts.icon||'✅',opts.emptyTitle||'Nothing waiting on you',
+    opts.emptyHint||'Shipments appear here when they reach your step.','');
+  var open=opts.open||'_rowOpen';
+  return '<div class="card" style="padding:0;overflow:hidden">'+
+    '<div style="overflow-x:auto"><table class="tbl" style="font-size:12px">'+
+    '<thead><tr>'+
+      '<th>Trip</th><th>Customer</th><th>Date</th><th>Type</th><th>Truck</th>'+
+      '<th style="text-align:center">KM</th>'+
+      '<th style="text-align:center" title="Damage report">⚠</th>'+
+      '<th>Status</th><th style="width:1%"></th>'+
+    '</tr></thead><tbody>'+
+    trips.map(function(t){
+      var ct=t.contract||{};
+      var dmg=(typeof _dmgRaised==='function')&&_dmgRaised(t);
+      var dmgDone=dmg&&(typeof _formLocked==='function')&&_formLocked(t,INSPECTION_FORMS.damage);
+      return '<tr style="cursor:pointer" onclick="'+open+'(\''+t.id+'\')">'+
+        '<td style="font-weight:700;color:var(--c1);white-space:nowrap">'+t.id+'</td>'+
+        '<td>'+(t.customer||'—')+'</td>'+
+        '<td style="font-size:11px;color:var(--t2);white-space:nowrap">'+(ct.date||t.ts||'')+'</td>'+
+        '<td>'+(t.type||'')+'</td>'+
+        '<td style="white-space:nowrap">'+(t.truck||'—')+'</td>'+
+        '<td style="text-align:center">'+(t.km||'—')+'</td>'+
+        // the damage report is one click from the row, and says its state
+        '<td style="text-align:center" onclick="event.stopPropagation();_dmgOpen(\''+t.id+'\')" '+
+          'title="'+(dmg?(dmgDone?'تقرير توالف معتمد':'تقرير توالف غير مكتمل'):'تسجيل تلف')+'">'+
+          '<span style="font-size:15px;cursor:pointer;opacity:'+(dmg?'1':'.28')+'">'+(dmg?(dmgDone?'🚨':'⚠️'):'⚠')+'</span></td>'+
+        '<td>'+_tripRowStatus(t)+'</td>'+
+        '<td style="text-align:right;white-space:nowrap"><span style="font-size:15px;color:var(--t3)">›</span></td>'+
+      '</tr>';
+    }).join('')+
+    '</tbody></table></div></div>';
+}
+// Opening a row: the shipment's own card, with a way back to the list
+function _rowBackBar(id,label,back){
+  return '<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">'+
+    '<button class="btn btn-outline btn-sm" onclick="'+back+'">‹ كل الرحلات</button>'+
+    '<span style="font-size:13px;font-weight:800;color:var(--t)">'+id+'</span>'+
+    (label?'<span style="font-size:11.5px;color:var(--t2)">'+label+'</span>':'')+
+  '</div>';
+}
+function _rowOpen(id){ S._opsOpen=id; rOperation(); }
+function _rowClose(){ S._opsOpen=null; rOperation(); }
+function _qcRowOpen(id){ S._qcOpen=id; rQuality(); }
+function _qcRowClose(){ S._qcOpen=null; rQuality(); }
+function _ctrlRowOpen(id){ S._ctrlOpen=id; rCtrl(); }
+function _ctrlRowClose(){ S._ctrlOpen=null; rCtrl(); }
+// every other role's approval queue (supervisor, security, …)
+function _wfRowOpen(id){ S._wfOpen=id; try{nav(S.page);}catch(e){} }
+function _wfRowClose(){ S._wfOpen=null; try{nav(S.page);}catch(e){} }
+
 function rQuality(){
   var c=document.getElementById('content');
   var pend=S.trips.filter(function(t){return t.status==='awaiting_quality';});
@@ -7701,8 +7785,36 @@ function _finCustRow(cu,comp){
       '<div style="font-size:13px;font-weight:800;color:#10B981">EGP '+Math.round(rev/1000*10)/10+'K</div>'+
       '<div style="font-size:10px;color:var(--t3)">'+trips.length+' trips</div>'+
     '</div>'+
+    (canPriceEdit()
+      ? '<span onclick="event.stopPropagation();_finDelCust(\''+cu.replace(/'/g,"\\'")+'\')" '+
+        'title="حذف العميل" style="flex-shrink:0;color:#EF4444;font-size:17px;font-weight:800;padding:0 8px;cursor:pointer;opacity:.55" '+
+        'onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=.55">×</span>'
+      : '')+
     '<span style="font-size:18px;color:var(--t3);flex-shrink:0">‹</span>'+
   '</div>';
+}
+// Removing a customer takes their pricing with them — but never one that
+// still has shipments on the record.
+function _finDelCust(cu){
+  if(!canPriceEdit()){toast(_pxDenyMsg(),'err');return;}
+  var used=(S.trips||[]).filter(function(t){return t.customer===cu;});
+  if(used.length){
+    toast('لا يمكن حذف «'+cu+'» — مرتبط بـ '+used.length+' رحلة','err');return;
+  }
+  if(!confirm('حذف العميل «'+cu+'» نهائياً؟\nتُحذف معه بطاقة الأسعار وقوائم الأسعار الخاصة به.'))return;
+  requirePwd('حذف العميل '+cu,function(){
+    var i=CUSTOMERS.indexOf(cu); if(i>=0)CUSTOMERS.splice(i,1);
+    try{var cards=_slaLoad(); delete cards[cu]; _slaSave();}catch(e){}
+    if(S.priceLists)delete S.priceLists[cu];
+    if(S.custModifiers)delete S.custModifiers[cu];
+    if(S.qaAgr)delete S.qaAgr[cu];
+    if(S._finCust===cu)S._finCust='';
+    audit('DEL_CUST',cu+' (from Finance)','');
+    _lcSave&&_lcSave();
+    if(_sb&&_tenantId){try{_sb.from('customers').delete().eq('name',cu).eq('tenant_id',_tenantId);}catch(e){}}
+    toast('🗑️ حُذف '+cu,'ok');
+    rFin();
+  });
 }
 function _finOpen(cu){
   S._finCust=cu;
@@ -7863,7 +7975,8 @@ function rFin(){
       : '<div style="padding:34px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عميل بهذا الاسم</div>')+
     '</div>'+
     '<div style="font-size:11px;color:var(--t3);margin-top:10px">اضغط على أي عميل لفتح بطاقة الأسعار التعاقدية الخاصة به. أي عميل يُضاف يظهر هنا تلقائياً.</div>'+
-    _finTemplateHTML(mayEdit)+
+    // the standard-contract card is hidden — new customers still start on
+    // the template, it just does not need a panel explaining itself
     _finGlobalHTML(mayEdit)+
     buildForecastSection();
 }
@@ -14377,9 +14490,15 @@ function rOperation(){
     '<button class="btn btn-outline btn-sm" onclick="exportInspectionsByLeg(\'outbound\')">⬇ نماذج الشحن</button>'+
     '<button class="btn btn-outline btn-sm" onclick="exportInspectionsByLeg(\'inbound\')">⬇ نماذج الاستلام</button>'+
     '<button class="btn btn-outline btn-sm" onclick="rOperation()">↻ Refresh</button></div>'+
-    (trips.length===0
-      ? _emptyState('✅','Nothing to process','Shipments reach you at OUT-1 (loading) and IN-2 (unloading).','')
-      : '<div style="display:flex;flex-direction:column;gap:14px">'+trips.map(_opsCard).join('')+'</div>');
+    (function(){
+      // one shipment open: its card, and a way back to the list
+      var sel=S._opsOpen&&trips.find(function(x){return x.id===S._opsOpen;});
+      if(sel)return _rowBackBar(sel.id,sel.customer,'_rowClose()')+_opsCard(sel);
+      return _tripRowsHTML(trips,{icon:'✅',
+        emptyTitle:'Nothing to process',
+        emptyHint:'Shipments reach you at OUT-1 (loading) and IN-2 (unloading).',
+        open:'_rowOpen'});
+    })();
 }
 
 // ══ Operations card — the form is the whole process ══
@@ -23256,11 +23375,18 @@ function _wfAdvanceNow(id,note){
 function wfQueueHTML(role,title){
   var q=_wfMyQueue(role);
   var stageIds=_wfForRole(role);
-  if(!q.length){
-    return _emptyState('✅','Nothing waiting on you',
-      'Shipments will appear here when they reach your step of the workflow.','');
+  // the queue reads as compact lines; a shipment opens to its own card
+  var selId=(role==='control_room')?S._ctrlOpen:S._wfOpen;
+  var sel=selId&&q.find(function(x){return x.id===selId;});
+  if(!sel){
+    return _tripRowsHTML(q,{icon:'✅',
+      emptyTitle:'Nothing waiting on you',
+      emptyHint:'Shipments will appear here when they reach your step of the workflow.',
+      open:(role==='control_room')?'_ctrlRowOpen':'_wfRowOpen'});
   }
-  return '<div style="display:flex;flex-direction:column;gap:10px">'+q.map(function(t){
+  q=[sel];
+  return _rowBackBar(sel.id,sel.customer,(role==='control_room')?'_ctrlRowClose()':'_wfRowClose()')+
+  '<div style="display:flex;flex-direction:column;gap:10px">'+q.map(function(t){
     var st=_wfStage(t.status);var ct=t.contract||{};
     return '<div class="card" style="border-left:4px solid var(--c1);margin:0">'+
       '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;margin-bottom:8px">'+
@@ -23288,11 +23414,12 @@ function wfQueueHTML(role,title){
 // ══════════════════════════════════════════════════════════════════
 function _qcQueueHTML(){
   var q=_wfMyQueue('quality');
-  if(!q.length){
-    return _emptyState('✅','Nothing awaiting quality',
-      'Shipments appear here when they reach a quality step of the workflow.','');
-  }
-  return '<div style="display:flex;flex-direction:column;gap:12px">'+q.map(_qcCard).join('')+'</div>';
+  var sel=S._qcOpen&&q.find(function(x){return x.id===S._qcOpen;});
+  if(sel)return _rowBackBar(sel.id,sel.customer,'_qcRowClose()')+_qcCard(sel);
+  return _tripRowsHTML(q,{icon:'✅',
+    emptyTitle:'Nothing awaiting quality',
+    emptyHint:'Shipments appear here when they reach a quality step of the workflow.',
+    open:'_qcRowOpen'});
 }
 function _qcCard(t){
   var st=_wfStage(t.status)||{step:'',label:'Quality'};
