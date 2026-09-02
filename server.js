@@ -637,7 +637,7 @@ app.get('/{*path}', (req, res) => {
 // ═══════════════════════════════════════════════════════
 // START
 // ═══════════════════════════════════════════════════════
-app.listen(PORT, () => {
+const _server = app.listen(PORT, () => {
   const cfg = (val, label) => val ? `✅ ${label}` : `⚠️  ${label} (not set)`;
   console.log('');
   console.log('  🚀 InstaPort TMS Server');
@@ -665,4 +665,17 @@ app.listen(PORT, () => {
   console.log('  SSE Stream : /api/stream ✅');
   console.log('  ══════════════════════════════════════════════════');
   console.log('');
+});
+
+// A second copy of the server starting on a taken port used to fail
+// silently, leaving two processes and nothing listening. Say so plainly
+// and exit, so the supervisor's backoff can do its job.
+_server.on('error', (err) => {
+  if (err && err.code === 'EADDRINUSE') {
+    console.error('\n  ❌ Port ' + PORT + ' is already in use — another InstaPort server is running.');
+    console.error('     Stop it first, or let keep-alive.js manage the server.\n');
+  } else {
+    console.error('\n  ❌ Server failed to start:', err && err.message, '\n');
+  }
+  process.exit(1);
 });

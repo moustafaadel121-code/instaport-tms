@@ -42,9 +42,31 @@ function rotateLogIfBig() {
   } catch (e) { /* ignore */ }
 }
 
+// Whatever is already holding the port is a leftover from a previous run —
+// two servers on one port means neither serves reliably, so clear it first.
+function freePort(cb) {
+  if (process.platform !== 'win32') return cb();
+  const { exec } = require('child_process');
+  exec('netstat -ano -p tcp | findstr :' + PORT + ' | findstr LISTENING', (err, out) => {
+    const pids = new Set();
+    String(out || '').split('\n').forEach(line => {
+      const m = line.trim().match(/(\d+)\s*$/);
+      if (m && +m[1] !== process.pid) pids.add(m[1]);
+    });
+    if (!pids.size) return cb();
+    const list = [...pids];
+    log('port ' + PORT + ' held by pid(s) ' + list.join(',') + ' — clearing');
+    exec('taskkill /F ' + list.map(p => '/PID ' + p).join(' '), () => setTimeout(cb, 900));
+  });
+}
+
 function start() {
   if (stopping) return;
   rotateLogIfBig();
+  freePort(function () { if (!stopping) spawnServer(); });
+}
+
+function spawnServer() {
   const startedAt = Date.now();
 
   child = spawn(process.execPath, [ENTRY], {
