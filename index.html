@@ -3005,6 +3005,49 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
 var IP_BUILD='2026-09-02 · start-over';   // build stamp — shown in the sidebar so the running version is verifiable
+
+// ══════════════════════════════════════════════════
+// STALE BUILD SELF-HEAL
+// A browser holding an old page from its cache or an old service worker
+// will never see an update, and nobody should have to paste console
+// commands to fix that. On startup the page asks the server which build it
+// serves. If that is not the build running here, the page throws away every
+// cache and service worker and reloads itself, once.
+// ══════════════════════════════════════════════════
+(function(){
+  var FLAG='ip_selfheal';           // guards against a reload loop
+  function heal(serverBuild){
+    if(sessionStorage.getItem(FLAG)===serverBuild)return;   // already tried
+    sessionStorage.setItem(FLAG,serverBuild);
+    console.warn('InstaPort: running build "'+IP_BUILD+'" but server has "'+serverBuild+'" — refreshing.');
+    var done=function(){ location.reload(); };
+    var jobs=[];
+    if(navigator.serviceWorker&&navigator.serviceWorker.getRegistrations){
+      jobs.push(navigator.serviceWorker.getRegistrations()
+        .then(function(rs){return Promise.all(rs.map(function(r){return r.unregister();}));})
+        .catch(function(){}));
+    }
+    if(window.caches&&caches.keys){
+      jobs.push(caches.keys().then(function(ks){
+        return Promise.all(ks.map(function(k){return caches.delete(k);}));
+      }).catch(function(){}));
+    }
+    Promise.all(jobs).then(done,done);
+    setTimeout(done,2500);           // never hang on a wedged cache API
+  }
+  function check(){
+    fetch('/api/version',{cache:'no-store'})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(j){
+        if(!j||!j.build||j.build==='unknown')return;         // server can't tell us
+        if(j.build!==IP_BUILD)heal(j.build);
+        else sessionStorage.removeItem(FLAG);
+      })
+      .catch(function(){});                                   // offline: carry on
+  }
+  if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',check);
+  else check();
+})();
 var _IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
 var _IS_LOCAL        = !_IS_GITHUB_PAGES;
 var INSTAPORT_API    = ''; // always relative on local; unused on GH Pages (Supabase handles auth)

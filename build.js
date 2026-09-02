@@ -131,6 +131,11 @@ async function build() {
   // The cache name carries the build stamp, so activating a new worker
   // deletes every cache from an older build instead of serving from it.
   const stamp = (src.match(/IP_BUILD\s*=\s*'([^']*)'/) || [])[1] || String(Date.now());
+  // Record the stamp for the server, so /api/version reports it exactly
+  // rather than guessing it out of minified code.
+  fs.writeFileSync(path.join(__dirname, 'dist', 'build.json'),
+    JSON.stringify({ build: stamp, at: new Date().toISOString() }, null, 2), 'utf8');
+  console.log('  build.json →', stamp);
   const swSrc = path.join(__dirname, 'sw.js');
   if (fs.existsSync(swSrc)) {
     let sw = fs.readFileSync(swSrc, 'utf8');

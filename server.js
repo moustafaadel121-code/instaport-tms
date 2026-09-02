@@ -314,10 +314,13 @@ app.get('/api/version', (req, res) => {
   res.set('Cache-Control', 'no-store');
   let build = 'unknown', size = 0, mtime = null, features = {};
   try {
+    // the build writes its stamp beside index.html; read it, don't guess
+    try {
+      build = JSON.parse(fs.readFileSync(path.join(ROOT, 'build.json'), 'utf8')).build || 'unknown';
+    } catch (e) { build = 'unknown'; }
     const html = fs.readFileSync(_indexPath, 'utf8');
     size = html.length;
     mtime = fs.statSync(_indexPath).mtime.toISOString();
-    build = (html.match(/'(\d{4}-\d{2}-\d{2}[^']*)'/) || [])[1] || 'unknown';
     features = {
       startOver: html.includes('Start Over'),
       purgeTrips: html.includes('purgeTrips'),
