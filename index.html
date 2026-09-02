@@ -21257,7 +21257,306 @@ function _drvTripCard(t){
           '<button class="btn btn-success btn-sm" onclick="drvEndTrip(\''+t.id+'\')">✅ Complete Trip</button>'+
         '</div></div>'
       : '')+
+  '</div>'+
+  // the operation sheet travels with the trip
+  _drvSheetHTML(t);
+}
+// ══════════════════════════════════════════════════════════════════
+// VEHICLE OPERATION SHEET — TR2001A-I/04
+// بيان تشغيل سيارة و متابعة درجات الحرارة و بيان مصروفات السيارة
+// و إيصال استلام العهدة
+//
+// What the driver records, and what the plan already knows. Anything the
+// transport plan settled — the date, the driver, the vehicle, its type, the
+// temperature grade, the customer and the stops — is shown locked: the
+// driver reads it, never retypes it, so the sheet cannot disagree with the
+// plan it belongs to.
+// ══════════════════════════════════════════════════════════════════
+var DRV_SHEET_DOC='TR2001A-I/04';
+// Yes/no questions asked before the vehicle is allowed to load
+var DRV_CHECKS=[
+  {k:'photoSent',  label:'تصوير الداتا لوجر والسنسور ووحدة التبريد في مكانها الصحيح وإرسال الصورة إلى غرفة التحكم'},
+  {k:'unifiedApp', label:'استخدام تطبيق هيئة الشراء الموحد'},
+  {k:'ctrlOk',     label:'الاتصال بغرفة المراقبة لاعتماد درجة الحرارة وأخذ الإذن بالتحميل'},
+  {k:'loadOk',     label:'الحمولة مطابقة للحد المسموح'}
+];
+// The hourly temperature log across the working day
+function _drvTempSlots(){
+  var out=[];
+  for(var h=2;h<=11;h++){out.push(h+':00');out.push(h+':30');}
+  return out;
+}
+function _drvSheet(t){
+  if(!t.sheet)t.sheet={checks:{},temps:{},expenses:[],logger:'',rms:'',tempOut:'',custody:{}};
+  if(!t.sheet.checks)t.sheet.checks={};
+  if(!t.sheet.temps)t.sheet.temps={};
+  if(!t.sheet.expenses)t.sheet.expenses=[];
+  if(!t.sheet.custody)t.sheet.custody={};
+  return t.sheet;
+}
+function drvSheetSet(id,k,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  if(sh.signed){toast('البيان معتمد — لا يمكن التعديل','err');return;}
+  sh[k]=v;_lcSave&&_lcSave();
+}
+function drvSheetCheck(id,k,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  if(sh.signed){toast('البيان معتمد — لا يمكن التعديل','err');return;}
+  sh.checks[k]=v;
+  var s=_tc();sh.checks[k+'_at']=s.at;
+  _lcSave&&_lcSave();
+  ['y','n'].forEach(function(o){
+    var el=document.getElementById('dsc-'+k+'-'+o);
+    if(!el)return;
+    var on=(v==='نعم'&&o==='y')||(v==='لا'&&o==='n');
+    var col=o==='y'?'#059669':'#DC2626';
+    el.style.border='1.5px solid '+(on?col:'var(--bd)');
+    el.style.background=on?col:'var(--surf)';
+    el.style.color=on?'#fff':'var(--t2)';
+  });
+}
+function drvSheetTemp(id,slot,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  if(sh.signed){toast('البيان معتمد — لا يمكن التعديل','err');return;}
+  if(v===''){delete sh.temps[slot];}
+  else{var s=_tc();sh.temps[slot]={v:+v,at:s.at,src:s.src,by:S.user?S.user.name:''};}
+  _lcSave&&_lcSave();
+}
+function drvExpAdd(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  if(sh.signed){toast('البيان معتمد — لا يمكن التعديل','err');return;}
+  sh.expenses.push({amount:'',payee:'',desc:'',company:''});
+  _lcSave&&_lcSave();rDriverContract();
+}
+function drvExpSet(id,i,k,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  if(sh.signed||!sh.expenses[i])return;
+  sh.expenses[i][k]=v;_lcSave&&_lcSave();
+  if(k==='amount')_drvExpTotalRefresh(t);
+}
+function drvExpDel(id,i){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  if(sh.signed){toast('البيان معتمد — لا يمكن التعديل','err');return;}
+  sh.expenses.splice(i,1);_lcSave&&_lcSave();rDriverContract();
+}
+function _drvExpTotal(t){
+  return (_drvSheet(t).expenses||[]).reduce(function(s,e){return s+(+e.amount||0);},0);
+}
+function _drvExpTotalRefresh(t){
+  var el=document.getElementById('drv-exp-total');
+  if(el)el.textContent='EGP '+_drvExpTotal(t).toLocaleString();
+}
+// The driver signs the sheet; the supervisor signs after them
+function drvSheetSign(id,who){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  if(who==='driver'){
+    if(sh.signed){toast('وقّعت بالفعل','err');return;}
+    var miss=DRV_CHECKS.find(function(c){return !sh.checks[c.k];});
+    if(miss){toast('أجب على: '+miss.label,'err');return;}
+    if(!sh.logger){toast('سجّل حالة الداتا لوجر','err');return;}
+    if(!sh.rms){toast('سجّل حالة الـRMS','err');return;}
+    if(sh.tempOut===''||sh.tempOut===undefined){toast('سجّل درجة حرارة السيارة عند الخروج','err');return;}
+  }else{
+    if(!sh.signed){toast('يوقّع السائق أولاً','err');return;}
+    if(sh.supSigned){toast('المشرف وقّع بالفعل','err');return;}
+  }
+  requirePwd('توقيع بيان التشغيل — '+(who==='driver'?'السائق':'المشرف'),function(){
+    _tcSync(function(){
+      var s=_tc();s.by=S.user.name;s.role=S.role;
+      if(who==='driver')sh.signed=s; else sh.supSigned=s;
+      if(!t.tl)t.tl=[];
+      t.tl.push({ts:s.at,user:s.by,action:'✍️ بيان تشغيل السيارة — '+(who==='driver'?'توقيع السائق':'توقيع المشرف'),
+        detail:DRV_SHEET_DOC+' · مصروفات '+_drvExpTotal(t)+' ج.م'});
+      audit('DRV_SHEET_SIGN',DRV_SHEET_DOC+' '+who+' @ '+s.at+' ('+s.src+')',id);
+      _lcSave&&_lcSave();syncTrip&&syncTrip(t);
+      rDriverContract();
+      toast('✅ تم التوقيع '+s.time,'ok');
+    });
+  });
+}
+// The sheet as the driver sees it
+function _drvSheetHTML(t){
+  var sh=_drvSheet(t);
+  var ct=t.contract||{};
+  var lock=!!sh.signed;
+  var ro=lock?'disabled ':'';
+  // ── everything the plan already decided
+  var planned=[
+    ['التاريخ',        t.ts||''],
+    ['اسم السائق',     t.driver||''],
+    ['اسم الشركة',     t.customer||''],
+    ['نوع السيارة',    t.truckType||''],
+    ['رقم السيارة',    t.truck||''],
+    ['الدرجة المطلوبة',t.condition||''],
+    ['رقم غرفة التحكم','01099330052']
+  ];
+  var yn=function(k,label,v){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:9px;padding:8px 11px;margin-bottom:6px">'+
+      '<span style="font-size:11.5px;line-height:1.6;flex:1">'+label+'</span>'+
+      '<div style="display:flex;gap:5px;flex-shrink:0">'+
+      ['نعم','لا'].map(function(o){
+        var on=v===o, id2='dsc-'+k+'-'+(o==='نعم'?'y':'n'), col=o==='نعم'?'#059669':'#DC2626';
+        return '<span id="'+id2+'" onclick="'+(lock?'':'drvSheetCheck(\''+t.id+'\',\''+k+'\',\''+o+'\')')+'" style="cursor:'+(lock?'default':'pointer')+';font-size:11.5px;font-weight:700;padding:5px 14px;border-radius:8px;border:1.5px solid '+(on?col:'var(--bd)')+';background:'+(on?col:'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o+'</span>';
+      }).join('')+'</div></div>';
+  };
+  var slots=_drvTempSlots();
+  return '<div class="card" style="direction:rtl">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">'+
+      '<div style="font-size:14px;font-weight:800">📋 بيان تشغيل السيارة ومتابعة درجات الحرارة</div>'+
+      (lock?'<span style="font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:20px;background:#F0FDF4;color:#059669">🔒 موقّع</span>':'')+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--t2);margin-bottom:12px">'+DRV_SHEET_DOC+' — وبيان مصروفات السيارة وإيصال استلام العهدة</div>'+
+
+    // ── from the plan, read-only
+    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin-bottom:6px">بيانات الرحلة <span style="font-weight:600;color:var(--t3)">— من خطة النقل، غير قابلة للتعديل</span></div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:14px">'+
+    planned.map(function(p){
+      return '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:9px;padding:7px 10px">'+
+        '<div style="font-size:10px;color:var(--t3);font-weight:700">'+p[0]+' 🔒</div>'+
+        '<div style="font-size:12.5px;font-weight:700;color:var(--t);margin-top:1px">'+(p[1]||'—')+'</div></div>';
+    }).join('')+'</div>'+
+
+    // ── what the driver records before loading
+    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin-bottom:6px">قبل التحميل</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-bottom:8px">'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">حالة الداتا لوجر</label>'+
+        '<select '+ro+'onchange="drvSheetSet(\''+t.id+'\',\'logger\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:12.5px;background:var(--bg);color:var(--t)">'+
+        ['','سليم','غير سليم','غير موجود'].map(function(o){return '<option'+(sh.logger===o?' selected':'')+'>'+(o||'— اختر —')+'</option>';}).join('')+'</select></div>'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">حالة الـ RMS</label>'+
+        '<select '+ro+'onchange="drvSheetSet(\''+t.id+'\',\'rms\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:12.5px;background:var(--bg);color:var(--t)">'+
+        ['','سليم','غير سليم','غير موجود'].map(function(o){return '<option'+(sh.rms===o?' selected':'')+'>'+(o||'— اختر —')+'</option>';}).join('')+'</select></div>'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">درجة حرارة السيارة عند الخروج (°C)</label>'+
+        '<input '+ro+'type="number" step="0.1" value="'+(sh.tempOut===undefined?'':sh.tempOut)+'" onchange="drvSheetSet(\''+t.id+'\',\'tempOut\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:14px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+    '</div>'+
+    DRV_CHECKS.map(function(c){return yn(c.k,c.label,sh.checks[c.k]);}).join('')+
+
+    // ── hourly temperature log
+    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin:14px 0 6px">بيان التشغيل اليومي — درجات الحرارة</div>'+
+    '<div style="overflow-x:auto;border:1px solid var(--bd);border-radius:10px;padding:8px;margin-bottom:14px">'+
+    '<div style="display:flex;gap:5px;min-width:max-content">'+
+    slots.map(function(sl){
+      var v=sh.temps[sl];
+      return '<div style="flex:0 0 auto;width:56px;text-align:center">'+
+        '<div style="font-size:9.5px;color:var(--t3);font-weight:700;margin-bottom:3px">'+sl+'</div>'+
+        '<input '+ro+'type="number" step="0.1" value="'+(v?v.v:'')+'" onchange="drvSheetTemp(\''+t.id+'\',\''+sl+'\',this.value)" '+
+        'style="width:100%;padding:6px 2px;border:1.5px solid '+(v?'#A7F3D0':'var(--bd)')+';border-radius:7px;font-size:12px;font-weight:700;text-align:center;background:'+(v?'#F0FDF4':'var(--bg)')+';color:var(--t)"/>'+
+      '</div>';
+    }).join('')+'</div></div>'+
+
+    // ── custody and expenses
+    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin-bottom:6px">إيصال استلام العهدة ومصروفات السيارة</div>'+
+    '<div style="font-size:11px;color:var(--t2);line-height:1.9;background:var(--bg);border-radius:9px;padding:9px 12px;margin-bottom:8px">'+
+      'استلمت أنا / <b>'+(t.driver||'—')+'</b> من شركة إى بى إكس لخدمات النقل مبلغ وقدره '+
+      '<b style="color:var(--c1)" id="drv-exp-total">EGP '+_drvExpTotal(t).toLocaleString()+'</b> جنيهاً مصرياً فقط، '+
+      'وذلك قيمة مصروفات السيارة عن يوم <b>'+(t.ts||'—')+'</b>، وهى كالتالي:'+
+    '</div>'+
+    (sh.expenses.length?sh.expenses.map(function(e,i){
+      return '<div style="display:flex;gap:6px;align-items:flex-end;margin-bottom:6px;flex-wrap:wrap">'+
+        '<div style="width:92px"><label style="font-size:10px;color:var(--t2);font-weight:700">المبلغ</label>'+
+          '<input '+ro+'type="number" value="'+(e.amount||'')+'" onchange="drvExpSet(\''+t.id+'\','+i+',\'amount\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+        '<div style="width:120px"><label style="font-size:10px;color:var(--t2);font-weight:700">جهة الصرف</label>'+
+          '<input '+ro+'value="'+String(e.payee||'').replace(/"/g,'&quot;')+'" onchange="drvExpSet(\''+t.id+'\','+i+',\'payee\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);color:var(--t)"/></div>'+
+        '<div style="flex:1;min-width:150px"><label style="font-size:10px;color:var(--t2);font-weight:700">وصف المصروف (مدعم بالفواتير)</label>'+
+          '<input '+ro+'value="'+String(e.desc||'').replace(/"/g,'&quot;')+'" onchange="drvExpSet(\''+t.id+'\','+i+',\'desc\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);color:var(--t)"/></div>'+
+        '<div style="width:120px"><label style="font-size:10px;color:var(--t2);font-weight:700">خاص بشركة</label>'+
+          '<input '+ro+'value="'+String(e.company||'').replace(/"/g,'&quot;')+'" onchange="drvExpSet(\''+t.id+'\','+i+',\'company\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;background:var(--bg);color:var(--t)"/></div>'+
+        (lock?'':'<span onclick="drvExpDel(\''+t.id+'\','+i+')" style="cursor:pointer;color:#EF4444;font-size:17px;font-weight:800;padding:0 5px 7px">×</span>')+
+      '</div>';
+    }).join(''):'<div style="font-size:11.5px;color:var(--t3);padding:10px;text-align:center;border:1.5px dashed var(--bd);border-radius:9px;margin-bottom:6px">لا توجد مصروفات مسجّلة</div>')+
+    (lock?'':'<button class="btn btn-outline btn-sm" onclick="drvExpAdd(\''+t.id+'\')">＋ إضافة مصروف</button>')+
+
+    // ── signatures
+    '<div style="display:flex;gap:8px;margin-top:14px;flex-wrap:wrap">'+
+    [['driver','توقيع السائق',sh.signed],['sup','توقيع المشرف',sh.supSigned]].map(function(x){
+      var s=x[2];
+      var mine=(x[0]==='driver')?(S.role==='driver'||can('all')):(S.role==='supervisor'||can('all'));
+      return '<div style="flex:1;min-width:150px;border:1.5px solid '+(s?'#A7F3D0':'var(--bd)')+';background:'+(s?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:9px 11px">'+
+        '<div style="font-size:11.5px;font-weight:800;color:'+(s?'#059669':'var(--t2)')+'">'+(s?'✓ ':'')+x[1]+'</div>'+
+        (s?'<div style="font-size:10.5px;color:var(--t2);margin-top:3px">'+s.by+'<br>'+s.at+' '+_tcMark(s)+'</div>'
+          :(mine?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px" onclick="drvSheetSign(\''+t.id+'\',\''+x[0]+'\')">توقيع</button>'
+                :'<div style="font-size:10.5px;color:var(--t3);margin-top:4px">بانتظار التوقيع</div>'))+
+      '</div>';
+    }).join('')+'</div>'+
+    '<button class="btn btn-outline btn-sm" style="width:100%;margin-top:10px" onclick="printDriverSheet(\''+t.id+'\')">📄 PDF بيان التشغيل</button>'+
   '</div>';
+}
+// The sheet on the shared letterhead, for the customer and the file
+function printDriverSheet(id){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var sh=_drvSheet(t);
+  var ct=t.contract||{};
+  var ds=ct.destinations||[];
+  var esc=function(s){return String(s==null?'':s).replace(/</g,'&lt;');};
+  var slots=_drvTempSlots();
+  var w=_docOpen({
+    title:'بيان تشغيل سيارة ومتابعة درجات الحرارة',
+    sub:esc(t.id)+' — '+esc(t.customer),
+    docNo:DRV_SHEET_DOC+' / '+t.id,
+    status:sh.signed?'موقّع':'غير موقّع',
+    rtl:true, width:1050, height:820,
+    css:'body{direction:rtl}'+
+      'table{width:100%;border-collapse:collapse;margin-bottom:9px;font-size:11px}td,th{border:1px solid #999;padding:4px 6px}'+
+      'th{background:#eee}.hdr td{border:none;padding:3px 6px;font-size:11.5px}'+
+      '.ev{border:1px solid #999;border-radius:6px;padding:8px 10px;margin-bottom:9px}'+
+      '.sig{display:flex;gap:14px;margin-top:14px}.sig div{flex:1;border:1px solid #999;border-radius:6px;padding:9px}'+
+      '.tmp td{text-align:center;font-size:10px;padding:3px}'
+  },
+    // plan data
+    '<table class="hdr"><tr>'+
+      '<td><b>التاريخ:</b> '+esc(t.ts)+'</td><td><b>اسم السائق:</b> '+esc(t.driver)+'</td>'+
+      '<td><b>اسم الشركة:</b> '+esc(t.customer)+'</td></tr><tr>'+
+      '<td><b>نوع السيارة:</b> '+esc(t.truckType)+'</td><td><b>رقم السيارة:</b> '+esc(t.truck)+'</td>'+
+      '<td><b>الدرجة المطلوبة:</b> '+esc(t.condition)+'</td></tr></table>'+
+    '<div class="ev"><b>قبل التحميل</b><br><span style="font-size:11px">'+
+      'حالة الداتا لوجر: <b>'+esc(sh.logger||'—')+'</b> &nbsp;·&nbsp; حالة الـRMS: <b>'+esc(sh.rms||'—')+'</b>'+
+      ' &nbsp;·&nbsp; درجة حرارة السيارة عند الخروج: <b>'+esc(sh.tempOut===''?'—':sh.tempOut)+'°C</b>'+
+      ' &nbsp;·&nbsp; رقم غرفة التحكم: <b>01099330052</b><br>'+
+      DRV_CHECKS.map(function(c){return esc(c.label)+': <b>'+esc(sh.checks[c.k]||'—')+'</b>';}).join('<br>')+
+    '</span></div>'+
+    // stops
+    '<table><tr><th>ملاحظات</th><th>عدد الفواتير</th>'+
+      DRV_STAMPS.slice().reverse().map(function(s){return '<th>'+s.label+'</th>';}).join('')+
+      '<th>محمل / فارغ</th><th>اسم العميل</th><th style="width:26px">م</th></tr>'+
+    (ds.length?ds.map(function(d,i){
+      return '<tr><td>'+esc(d.notes)+'</td><td style="text-align:center">'+esc(d.invoices)+'</td>'+
+        DRV_STAMPS.slice().reverse().map(function(s){
+          var v=_drvStampOf(d,s.k);
+          return '<td style="text-align:center">'+(v?esc(v.time):'—')+'</td>';
+        }).join('')+
+        '<td style="text-align:center">'+esc(d.loading)+'</td><td>'+esc(d.name)+'</td>'+
+        '<td style="text-align:center">'+(i+1)+'</td></tr>';
+    }).join(''):'<tr><td colspan="11" style="text-align:center;color:#777">لا توجد محطات</td></tr>')+
+    '</table>'+
+    // temperatures
+    '<div style="font-size:12px;font-weight:800;margin:8px 0 4px">بيان التشغيل اليومي — درجات الحرارة</div>'+
+    '<table class="tmp"><tr>'+slots.slice().reverse().map(function(s){return '<th style="font-size:9px">'+s+'</th>';}).join('')+'</tr>'+
+    '<tr>'+slots.slice().reverse().map(function(s){var v=sh.temps[s];return '<td>'+(v?v.v:'')+'</td>';}).join('')+'</tr></table>'+
+    // custody
+    '<div class="ev"><b>إيصال استلام العهدة ومصروفات السيارة</b><br>'+
+      '<span style="font-size:11px">استلمت أنا / <b>'+esc(t.driver)+'</b> من شركة إى بى إكس لخدمات النقل مبلغ وقدره '+
+      '<b>'+_drvExpTotal(t).toLocaleString()+'</b> جنيهاً مصرياً فقط، وذلك قيمة مصروفات السيارة عن يوم <b>'+esc(t.ts)+'</b>.</span></div>'+
+    '<table><tr><th>خاص بشركة</th><th>وصف المصروف مدعم بالفواتير</th><th>جهة الصرف</th><th style="width:80px">المبلغ</th></tr>'+
+    ((sh.expenses||[]).length?sh.expenses.map(function(e){
+      return '<tr><td>'+esc(e.company)+'</td><td>'+esc(e.desc)+'</td><td>'+esc(e.payee)+'</td>'+
+        '<td style="text-align:center;font-weight:700">'+esc(e.amount)+'</td></tr>';
+    }).join(''):'<tr><td colspan="4" style="text-align:center;color:#777">لا توجد مصروفات</td></tr>')+
+    '<tr><td colspan="3" style="text-align:left;font-weight:800">الإجمالي</td><td style="text-align:center;font-weight:800">'+_drvExpTotal(t).toLocaleString()+'</td></tr>'+
+    '</table>'+
+    // signatures
+    '<div class="sig">'+
+    [['توقيع السائق',sh.signed],['توقيع المشرف',sh.supSigned]].map(function(x){
+      var s=x[1];
+      return '<div><b>'+x[0]+'</b><br><br>'+(s?'وقّع: '+esc(s.by)+'<br><span style="font-size:10px;color:#666">'+esc(s.at)+(s.src==='server'?' 🔒':'')+'</span>':'التوقيع/التاريخ: ....................')+'</div>';
+    }).join('')+'</div>');
+  if(!w)return;
+  audit('DRV_SHEET_PDF',DRV_SHEET_DOC,id);
 }
 function _drvDestRow(t,d,i,started,isActive){
   var ok=!!d.completed;
@@ -21298,7 +21597,14 @@ function _drvDestRow(t,d,i,started,isActive){
       }).join('')+
     '</div>'+
 
-    '<div id="dd-ts-'+t.id+'-'+i+'" style="margin-bottom:13px">'+_drvStampRow(t,d,i)+'</div>'+
+    '<div id="dd-ts-'+t.id+'-'+i+'" style="margin-bottom:11px">'+_drvStampRow(t,d,i)+'</div>'+
+
+    '<div style="display:flex;gap:8px;margin-bottom:13px;direction:rtl">'+
+      '<div style="width:120px"><label style="font-size:11px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px">عدد الفواتير</label>'+
+        '<input type="number" inputmode="numeric" value="'+(d.invoices||'')+'" onchange="drvStopField(\''+t.id+'\','+i+',\'invoices\',this.value)" style="width:100%;padding:9px;border:1.5px solid var(--bd);border-radius:9px;font-size:15px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+      '<div style="flex:1"><label style="font-size:11px;font-weight:700;color:var(--t2);display:block;margin-bottom:4px">ملاحظات</label>'+
+        '<input value="'+String(d.notes||'').replace(/"/g,'&quot;')+'" onchange="drvStopField(\''+t.id+'\','+i+',\'notes\',this.value)" style="width:100%;padding:9px;border:1.5px solid var(--bd);border-radius:9px;font-size:13px;background:var(--bg);color:var(--t)"/></div>'+
+    '</div>'+
 
     '<div id="dd-pod-'+t.id+'-'+i+'" style="margin-bottom:8px">'+(d.podPhoto?'<img src="'+d.podPhoto+'" style="height:60px;border-radius:8px;border:1px solid var(--bd)"/>':'')+'</div>'+
     '<label class="btn btn-outline" style="width:100%;cursor:pointer;margin-bottom:9px;padding:13px;display:block;text-align:center">📷 '+(d.podPhoto?'Retake POD photo':'Take POD photo')+
@@ -21316,50 +21622,69 @@ function _drvPickLoad(el){
   row.dataset.picked=el.dataset.v;
 }
 // ══ Driver time stamps ═════════════════════════════════════════════
-// The driver does not type a time. One tap on Arrived, one on Departed, and
-// the moment is taken from the trusted clock. A stamp is written once and
-// cannot be re-tapped, so a recorded arrival cannot be moved later — and
-// changing the clock on the phone does not move it either.
+// The vehicle operation sheet (TR2001A-I/04) records six moments at every
+// customer. The driver does not type any of them: one tap each, taken from
+// the trusted clock, written once and never re-tapped — so a recorded time
+// cannot be moved later, and changing the phone's clock does not move it.
+var DRV_STAMPS=[
+  {k:'outWh',    label:'خروج المخزن',  en:'Left warehouse'},
+  {k:'arrive',   label:'وصول العميل',  en:'Arrived at customer'},
+  {k:'doorOpen', label:'فتح الباب',    en:'Door opened'},
+  {k:'doorClose',label:'غلق الباب',    en:'Door closed'},
+  {k:'depart',   label:'خروج العميل',  en:'Left customer'},
+  {k:'backWh',   label:'وصول المخزن',  en:'Back at warehouse'}
+];
+function _drvStampOf(d,k){
+  if(k==='arrive')return d.arriveStamp||(d.arriveTime?{time:d.arriveTime}:null);
+  if(k==='depart')return d.departStamp||(d.departTime?{time:d.departTime}:null);
+  return d[k+'Stamp']||null;
+}
 function _drvStampRow(t,d,i){
-  var cell=function(label,stamp,legacy,btn,hint){
-    var has=!!(stamp||legacy);
-    return '<div style="flex:1;border:1.5px solid '+(has?'#A7F3D0':'var(--bd)')+';background:'+(has?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:9px 11px">'+
-      '<div style="font-size:11px;font-weight:800;color:'+(has?'#065F46':'var(--t2)')+'">'+label+'</div>'+
-      (has
-        ? '<div style="font-size:17px;font-weight:800;color:var(--t);margin-top:3px">'+((stamp&&stamp.time)||legacy)+' '+(stamp?_tcMark(stamp):'')+'</div>'
-        : (btn||'<div style="font-size:11px;color:var(--t3);margin-top:5px">'+(hint||'—')+'</div>'))+
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:7px;direction:rtl">'+
+    DRV_STAMPS.map(function(sp,n){
+      var s=_drvStampOf(d,sp.k);
+      var prev=n===0?null:DRV_STAMPS[n-1];
+      var ready=!prev||!!_drvStampOf(d,prev.k);
+      return '<div style="border:1.5px solid '+(s?'#A7F3D0':'var(--bd)')+';background:'+(s?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:8px 9px">'+
+        '<div style="font-size:10.5px;font-weight:800;color:'+(s?'#065F46':'var(--t2)')+'">'+sp.label+'</div>'+
+        (s
+          ? '<div style="font-size:16px;font-weight:800;color:var(--t);margin-top:2px;direction:ltr;text-align:center">'+s.time+' '+(s.src?_tcMark(s):'')+'</div>'
+          : (ready
+            ? '<button class="btn btn-primary btn-sm" style="width:100%;margin-top:5px;padding:9px" onclick="drvStamp(\''+t.id+'\','+i+',\''+sp.k+'\')">🕒 تسجيل</button>'
+            : '<div style="font-size:10px;color:var(--t3);margin-top:5px;text-align:center">سجّل «'+prev.label+'» أولاً</div>'))+
       '</div>';
-  };
-  return '<div style="display:flex;gap:8px">'+
-    cell('Arrived',d.arriveStamp,d.arriveTime,
-      '<button class="btn btn-primary btn-sm" style="width:100%;margin-top:6px;padding:11px" onclick="drvStamp(\''+t.id+'\','+i+',\'arrive\')">🕒 Tap on arrival</button>')+
-    cell('Departed',d.departStamp,d.departTime,
-      (d.arriveStamp||d.arriveTime)
-        ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:6px;padding:11px" onclick="drvStamp(\''+t.id+'\','+i+',\'depart\')">🕒 Tap on departure</button>'
-        :null,'Stamp arrival first')+
+    }).join('')+
   '</div>';
 }
 function drvStamp(id,i,which){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var c=_shipNormalize(t),d=c.destinations[i];if(!d)return;
-  var key=which==='arrive'?'arriveStamp':'departStamp';
-  var lbl=which==='arrive'?'Arrival':'Departure';
-  if(d[key]){toast(lbl+' is already stamped — it cannot be changed','err');return;}
-  if(which==='depart'&&!(d.arriveStamp||d.arriveTime)){toast('Stamp the arrival first','err');return;}
+  var sp=DRV_STAMPS.find(function(x){return x.k===which;});if(!sp)return;
+  if(_drvStampOf(d,which)){toast(sp.label+' — مسجّل بالفعل ولا يمكن تغييره','err');return;}
+  // the six moments happen in order; you cannot record one out of sequence
+  var n=DRV_STAMPS.indexOf(sp);
+  if(n>0&&!_drvStampOf(d,DRV_STAMPS[n-1].k)){toast('سجّل «'+DRV_STAMPS[n-1].label+'» أولاً','err');return;}
   _tcSync(function(){
     var s=_tc();s.by=S.user?S.user.name:'';
-    d[key]=s;
-    if(which==='arrive')d.arriveTime=s.time; else d.departTime=s.time;
+    if(which==='arrive'){d.arriveStamp=s;d.arriveTime=s.time;}
+    else if(which==='depart'){d.departStamp=s;d.departTime=s.time;}
+    else d[which+'Stamp']=s;
     if(!t.tl)t.tl=[];
-    t.tl.push({ts:s.at,user:s.by,action:'🕒 '+lbl+' — stop '+(i+1)+' '+(d.name||''),
-      detail:s.time+' · '+(s.src==='server'?'server clock':'device clock')+(s.trusted?'':' · ⚠ device clock off by '+s.drift+'s')});
-    audit('DRV_STAMP',lbl+' '+(d.name||'')+' @ '+s.at+' ('+s.src+')',id);
+    t.tl.push({ts:s.at,user:s.by,action:'🕒 '+sp.label+' — محطة '+(i+1)+' '+(d.name||''),
+      detail:s.time+' · '+(s.src==='server'?'ساعة السيرفر':'ساعة الجهاز')+(s.trusted?'':' · ⚠ ساعة الجهاز منحرفة '+s.drift+'ث')});
+    audit('DRV_STAMP',sp.en+' '+(d.name||'')+' @ '+s.at+' ('+s.src+')',id);
     _drvGeo(function(loc){if(loc){d[which+'Location']=loc;_lcSave&&_lcSave();}});
     _lcSave&&_lcSave();syncTrip&&syncTrip(t);
     var el=document.getElementById('dd-ts-'+id+'-'+i);
     if(el)el.innerHTML=_drvStampRow(t,d,i);
-    toast('🕒 '+lbl+' '+s.time,'ok');
+    toast('🕒 '+sp.label+' '+s.time,'ok');
   });
+}
+// Free-text the sheet asks for at each stop
+function drvStopField(id,i,k,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var d=_shipNormalize(t).destinations[i];if(!d)return;
+  d[k]=v;_lcSave&&_lcSave();
 }
 function drvStartTrip(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
@@ -21416,8 +21741,9 @@ function drvCompleteDest(id,i){
   if(!km){toast('Enter the KM reading at this stop','err');return;}
   var prevKm=i===0?(+c.startKm||0):(+((c.destinations[i-1]||{}).km)||0);
   if(km<prevKm){toast('KM ('+km+') cannot be less than the previous reading ('+prevKm+')','err');return;}
-  if(!(d.arriveStamp||d.arriveTime)){toast('Tap Arrived to stamp the time','err');return;}
-  if(!(d.departStamp||d.departTime)){toast('Tap Departed to stamp the time','err');return;}
+  // every moment the sheet asks for has to be stamped before the stop closes
+  var miss=DRV_STAMPS.find(function(sp){return !_drvStampOf(d,sp.k);});
+  if(miss){toast('سجّل «'+miss.label+'» أولاً','err');return;}
   var now=_tc();
   var _lr=document.querySelector('.drv-load-row[data-tid="'+id+'"][data-idx="'+i+'"]');
   d.loading=(_lr&&_lr.dataset.picked)||d.loading||'Unloading';
