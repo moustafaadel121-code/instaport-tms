@@ -4397,6 +4397,32 @@ function can(action){
 }
 
 // ══════════════════════════════════════════════════
+// PRICING AUTHORITY
+// Two people in Finance are not the same person. A specialist reads the
+// rate cards and works from them; a manager may propose a change and agree
+// to one. Grade is set per user, and the two permissions can also be given
+// to any role from the RBAC matrix.
+// ══════════════════════════════════════════════════
+var USER_GRADES=[{id:'specialist',label:'Specialist'},{id:'manager',label:'Manager'}];
+function _userGrade(u){return ((u||S.user)||{}).grade||'specialist';}
+function _isPriceManager(){return _userGrade()==='manager';}
+function canPriceEdit(){
+  if(can('all'))return true;
+  if(can('pricing_edit'))return true;
+  return _isPriceManager();
+}
+function canPriceApprove(){
+  if(can('all'))return true;
+  if(can('pricing_approve'))return true;
+  return _isPriceManager();
+}
+function _pxDenyMsg(){
+  return _userGrade()==='specialist'
+    ? 'الأخصائي يطّلع على الأسعار ولا يعدّلها — التعديل لمدير الحسابات'
+    : 'ليس لديك صلاحية تعديل الأسعار';
+}
+
+// ══════════════════════════════════════════════════
 // PLAN FEATURE GATES  (Starter / Professional / Enterprise)
 // ══════════════════════════════════════════════════
 const PLAN_FEATURES = {
@@ -7295,11 +7321,117 @@ function autoCreateMaintTicket(trip){
 // FINANCE
 // ══════════════════════════════════════════════════
 // Customers shown in Finance: the master list plus anyone with a rate card
+// Every customer the business actually has: the master list, anyone with a
+// rate card, and anyone who has appeared on a shipment. A customer added
+// anywhere shows up here without being registered twice.
 function _finCustomers(){
   var all=(CUSTOMERS||[]).slice();
-  try{Object.keys(_slaLoad()).forEach(function(c){if(all.indexOf(c)<0)all.push(c);});}catch(e){}
+  var add=function(c){if(c&&all.indexOf(c)<0)all.push(c);};
+  try{Object.keys(_slaLoad()).forEach(add);}catch(e){}
+  try{(S.trips||[]).forEach(function(t){add(t.customer);});}catch(e){}
+  try{Object.keys(S.priceLists||{}).forEach(add);}catch(e){}
   return all.sort();
 }
+// ══════════════════════════════════════════════════════════════════
+// FINANCE & PRICING
+// One screen, one shape: the customers stand in a list, and opening one
+// shows the contract that governs it. Pricing settings live here too —
+// they belong beside the rate cards, not in the admin panel.
+// A specialist reads; a manager proposes and agrees.
+// ══════════════════════════════════════════════════════════════════
+function _finCustRow(cu,comp){
+  var card=_slaCard(cu);
+  var onSla=!!(card&&card.active);
+  var pend=_pxPendingCount(card);
+  var trips=comp.filter(function(t){return t.customer===cu;});
+  var rev=trips.reduce(function(s,t){return s+(+t.cost||0);},0);
+  var n=card?_slaFilledCount(card):0;
+  var lists=(S.priceLists&&S.priceLists[cu])||[];
+  var active=lists.find(function(l){return l.active;})||lists[0]||{};
+  return '<div class="fin-cust-row" onclick="_finOpen(\''+cu.replace(/'/g,"\\'")+'\')" '+
+    'style="display:flex;align-items:center;gap:12px;padding:13px 16px;border-bottom:1px solid var(--dv);cursor:pointer;transition:background .12s" '+
+    'onmouseover="this.style.background=\'var(--bg)\'" onmouseout="this.style.background=\'transparent\'">'+
+    '<div style="width:38px;height:38px;border-radius:11px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:15px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+cu[0]+'</div>'+
+    '<div style="flex:1;min-width:0">'+
+      '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">'+
+        '<span style="font-size:14px;font-weight:800;color:var(--t)">'+cu+'</span>'+
+        (card&&card.code?'<span style="font-size:10.5px;color:var(--t3);font-weight:600">#'+card.code+'</span>':'')+
+        '<span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;background:'+(onSla?'#EEF2FF;color:#6C3FF5':'#F1F5F9;color:#64748B')+'">'+(onSla?'📑 Contract':'📐 Formula')+'</span>'+
+        (pend?'<span style="font-size:10px;font-weight:800;padding:2px 9px;border-radius:20px;background:#FEF3C7;color:#B45309">⏳ '+pend+' بانتظار الموافقة</span>':'')+
+      '</div>'+
+      '<div style="font-size:11.5px;color:var(--t2);margin-top:3px">'+
+        (onSla
+          ? n+' rates set · '+((card.bands||[]).length)+' distance bands · '+((card.trucks||[]).length)+' truck types'+(card.perLeg?' · per-leg':'')
+          : 'EGP '+(+(active.baseRate||8)).toFixed(1)+'/km · min '+(active.minCharge||0)+' · cold '+(active.refrigSurcharge||0)+'%')+
+      '</div>'+
+    '</div>'+
+    '<div style="text-align:right;flex-shrink:0">'+
+      '<div style="font-size:10px;color:var(--t3);text-transform:uppercase;letter-spacing:.5px">Revenue</div>'+
+      '<div style="font-size:13px;font-weight:800;color:#10B981">EGP '+Math.round(rev/1000*10)/10+'K</div>'+
+      '<div style="font-size:10px;color:var(--t3)">'+trips.length+' trips</div>'+
+    '</div>'+
+    '<span style="font-size:18px;color:var(--t3);flex-shrink:0">‹</span>'+
+  '</div>';
+}
+function _finOpen(cu){
+  S._finCust=cu;
+  S._slaSel=cu;
+  if(!S._slaSvc)S._slaSvc='trip';
+  rFin();
+  setTimeout(function(){var e=document.getElementById('fin-detail');if(e)e.scrollIntoView({block:'start',behavior:'smooth'});},60);
+}
+function _finBack(){S._finCust='';S._slaSel='';rFin();}
+function _finSearch(v){S._finQ=v;rFin();
+  setTimeout(function(){var e=document.getElementById('fin-q');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length);}},0);}
+
+// The proposal queue for one customer
+function _pxPendingHTML(cu){
+  var card=_slaCard(cu);
+  var list=(card&&card.pending)||[];
+  if(!list.length)return '';
+  var mayApprove=canPriceApprove();
+  return '<div style="border:1.5px solid #FDE68A;background:#FFFBEB;border-radius:12px;padding:12px 14px;margin-bottom:14px">'+
+    '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">'+
+      '<div style="font-size:13px;font-weight:800;color:#B45309">⏳ تغييرات بانتظار الموافقة ('+list.length+')</div>'+
+      (mayApprove?'<div style="display:flex;gap:6px">'+
+        '<button class="btn btn-success btn-sm" onclick="_pxApprove(\''+cu.replace(/'/g,"\\'")+'\')">✓ الموافقة على الكل</button>'+
+        '<button class="btn btn-danger btn-sm" onclick="_pxReject(\''+cu.replace(/'/g,"\\'")+'\')">✕ رفض الكل</button>'+
+      '</div>':'<span style="font-size:11px;color:#B45309">بانتظار موافقة مدير الحسابات</span>')+
+    '</div>'+
+    '<div style="font-size:11px;color:#92400E;margin-bottom:8px">هذه القيم لم تصبح سارية بعد — الفواتير ما زالت تُحسب بالأسعار المعتمدة.</div>'+
+    list.map(function(p,i){
+      return '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--surf);border:1px solid var(--bd);border-radius:9px;padding:8px 11px;margin-bottom:6px">'+
+        '<div style="flex:1;min-width:180px">'+
+          '<div style="font-size:12px;font-weight:700;color:var(--t)">'+p.label+'</div>'+
+          '<div style="font-size:10.5px;color:var(--t2);margin-top:2px">'+
+            '<span style="text-decoration:line-through;color:#DC2626">'+p.from+'</span>'+
+            ' <b style="color:#059669">→ '+p.to+'</b>'+
+            ' · اقترحه '+p.by+' · '+p.at+(p.src==='server'?' 🔒':'')+
+          '</div>'+
+        '</div>'+
+        (mayApprove?'<div style="display:flex;gap:5px">'+
+          '<button class="btn btn-success btn-sm" onclick="_pxApprove(\''+cu.replace(/'/g,"\\'")+'\','+i+')">✓</button>'+
+          '<button class="btn btn-danger btn-sm" onclick="_pxReject(\''+cu.replace(/'/g,"\\'")+'\','+i+')">✕</button>'+
+        '</div>':'')+
+      '</div>';
+    }).join('')+
+  '</div>';
+}
+// What has actually been agreed, and by whom
+function _pxHistoryHTML(cu){
+  var card=_slaCard(cu);
+  var h=((card&&card.history)||[]).slice(-8).reverse();
+  if(!h.length)return '';
+  return '<div style="margin-top:14px;border-top:1px solid var(--bd);padding-top:12px">'+
+    '<div style="font-size:12px;font-weight:800;color:var(--t2);margin-bottom:7px">سجل التغييرات المعتمدة</div>'+
+    h.map(function(x){
+      return '<div style="font-size:11px;color:var(--t2);padding:5px 0;border-bottom:1px solid var(--dv)">'+
+        '<b style="color:var(--t)">'+x.label+'</b> · '+x.from+' → '+x.to+
+        ' · اقترحه '+x.proposedBy+' · اعتمده <b>'+x.approvedBy+'</b> · '+x.approvedAt+(x.src==='server'?' 🔒':'')+'</div>';
+    }).join('')+
+  '</div>';
+}
+
 function rFin(){
   if(!can('finance_view')&&!can('all')){
     document.getElementById('content').innerHTML='<div style="text-align:center;padding:60px;color:var(--t2)"><div style="font-size:48px;margin-bottom:12px">&#128274;</div><div>Access restricted</div></div>';
@@ -7308,14 +7440,11 @@ function rFin(){
   var c=document.getElementById('content');
   var comp=S.trips.filter(function(t){return t.status==='completed';});
   var rev=comp.reduce(function(s,t){return s+(+t.cost||0);},0);
-  var co2=comp.reduce(function(s,t){return s+(+t.co2||0);},0);
-  var isAdmin=can('all')||S.role==='admin';
+  var mayEdit=canPriceEdit();
+  var grade=_userGrade();
 
-  // Ensure priceLists exists
   if(!S.priceLists)S.priceLists={};
   if(!S.customCriteriaFields)S.customCriteriaFields=[];
-
-  // Initialize default price list per customer if none exist
   CUSTOMERS.forEach(function(cu){
     if(!S.priceLists[cu]||S.priceLists[cu].length===0){
       var m=S.custModifiers[cu]||{};
@@ -7332,230 +7461,146 @@ function rFin(){
     }
   });
 
-  var CRITERIA_FIELDS=[
+  var all=_finCustomers();
+  var q=(S._finQ||'').trim().toLowerCase();
+  var list=q?all.filter(function(x){
+    var cd=(_slaCard(x)||{}).code||'';
+    return x.toLowerCase().indexOf(q)>-1||String(cd).toLowerCase().indexOf(q)>-1;
+  }):all;
+  var totalPending=all.reduce(function(s,x){return s+_pxPendingCount(_slaCard(x));},0);
+
+  var head=
+  '<div class="page-head"><div><h2>&#128176; Finance &amp; Pricing</h2>'+
+  '<div class="page-head-sub">Customers and the contracts that price them</div></div>'+
+  '<div style="display:flex;gap:8px;align-items:center">'+
+    // the badge states the authority actually in force, not just the grade
+    '<span style="font-size:10.5px;font-weight:800;padding:4px 11px;border-radius:20px;background:'+(mayEdit?'#EEF2FF;color:#6C3FF5':'#F1F5F9;color:#64748B')+'">'+
+      (can('all')?'👑 Admin — يعدّل ويعتمد'
+        :(mayEdit?'👑 Manager — يعدّل ويعتمد':'👤 Specialist — للاطّلاع فقط'))+'</span>'+
+    (mayEdit?'<button class="btn btn-outline btn-sm" onclick="openAddCriteria()">+ Criteria</button>':'')+
+    (mayEdit?'<button class="btn btn-primary btn-sm" onclick="_slaNewCard()">+ Rate Card</button>':'')+
+    '<button class="btn btn-outline btn-sm" onclick="rFin()">&#8635;</button>'+
+  '</div></div>'+
+  '<div class="kpi-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#128176;</div><div class="kpi-body"><div class="kpi-label">Total Revenue</div><div class="kpi-val">EGP '+Math.round(rev/1000)+'K</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:#6C3FF5">&#128101;</div><div class="kpi-body"><div class="kpi-label">Customers</div><div class="kpi-val">'+all.length+'</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(6,182,212,.1);color:#06B6D4">&#128203;</div><div class="kpi-body"><div class="kpi-label">On Contract</div><div class="kpi-val">'+all.filter(function(x){return _slaActive(x);}).length+'</div></div></div>'+
+  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(245,158,11,.1);color:#F59E0B">&#9203;</div><div class="kpi-body"><div class="kpi-label">Pending Changes</div><div class="kpi-val">'+totalPending+'</div></div></div>'+
+  '</div>';
+
+  // ── one customer open: its contract fills the screen ──
+  if(S._finCust&&all.indexOf(S._finCust)>-1){
+    var cu=S._finCust;
+    var card=_slaCard(cu);
+    var lists=S.priceLists[cu]||[];
+    var active=lists.find(function(l){return l.active;})||lists[0]||{};
+    c.innerHTML=head+
+      '<div id="fin-detail" style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm)">'+
+      '<div style="padding:15px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:12px;flex-wrap:wrap">'+
+        '<button class="btn btn-outline btn-sm" onclick="_finBack()">‹ كل العملاء</button>'+
+        '<div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center">'+cu[0]+'</div>'+
+        '<div style="flex:1;min-width:140px">'+
+          '<div style="font-size:16px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">'+cu+'</div>'+
+          '<div style="font-size:11px;color:var(--t3)">'+(card?('Contract Rate Card'+(card.code?' #'+card.code:'')):'No contract — priced by formula')+'</div>'+
+        '</div>'+
+        (card&&mayEdit?'<button class="btn btn-outline btn-sm" onclick="openRateImport(\''+cu.replace(/'/g,"\\'")+'\')">⬆ Import</button>':'')+
+        (card?'<button class="btn btn-outline btn-sm" onclick="_slaExportCard()">⬇ Export</button>':'')+
+      '</div>'+
+      '<div style="padding:16px 20px">'+
+        (mayEdit?'':'<div style="border:1px solid var(--bd);background:var(--bg);border-radius:10px;padding:9px 12px;font-size:11.5px;color:var(--t2);margin-bottom:12px">🔒 '+_pxDenyMsg()+'</div>')+
+        _pxPendingHTML(cu)+
+        (card
+          ? _slaCardEditorHTML(card)
+          : '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">هذا العميل يُسعَّر بالمعادلة. الأسعار التعاقدية تحتاج بطاقة أسعار.</div>'+
+            _finFormulaHTML(cu,active,mayEdit)+
+            (mayEdit?'<button class="btn btn-primary btn-sm" style="margin-top:12px" onclick="_slaNewCard(\''+cu.replace(/'/g,"\\'")+'\')">📑 إنشاء بطاقة أسعار تعاقدية</button>':''))+
+        _pxHistoryHTML(cu)+
+      '</div></div>';
+    return;
+  }
+
+  // ── the list ──
+  c.innerHTML=head+
+    '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm)">'+
+    '<div style="padding:14px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+      '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Customers</div>'+
+      '<input id="fin-q" value="'+String(S._finQ||'').replace(/"/g,'&quot;')+'" oninput="_finSearch(this.value)" placeholder="ابحث بالاسم أو الكود…" '+
+        'style="margin-left:auto;min-width:200px;padding:7px 11px;border:1.5px solid var(--bd);border-radius:9px;font-size:12px;background:var(--bg);color:var(--t)"/>'+
+    '</div>'+
+    (list.length
+      ? list.map(function(cu){return _finCustRow(cu,comp);}).join('')
+      : '<div style="padding:34px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عميل بهذا الاسم</div>')+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--t3);margin-top:10px">اضغط على أي عميل لفتح بطاقة الأسعار التعاقدية الخاصة به. أي عميل يُضاف يظهر هنا تلقائياً.</div>'+
+    _finGlobalHTML(mayEdit)+
+    buildForecastSection();
+}
+// Settings that apply across every customer. They used to sit in the admin
+// panel, a screen away from the rates they modify; they belong here.
+function _finGlobalHTML(mayEdit){
+  var G=[
+    {k:'co2Rate',      l:'CO₂ Rate',        u:'kg/km',  d:0.258, step:0.001},
+    {k:'fuelAdjGlobal',l:'Global Fuel Adj', u:'×',      d:1.0,   step:0.01},
+    {k:'waitingRate',  l:'Waiting Rate',    u:'EGP/h',  d:120,   step:1},
+    {k:'stopFee',      l:'Stop Fee',        u:'EGP',    d:50,    step:1}
+  ];
+  return '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm);margin-top:18px">'+
+    '<div style="padding:14px 18px;border-bottom:1px solid var(--bd);display:flex;align-items:center;gap:10px">'+
+      '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Global Pricing Settings</div>'+
+      '<span style="font-size:11px;color:var(--t3)">تسري على كل العملاء</span>'+
+      (mayEdit?'':'<span style="margin-left:auto;font-size:11px;color:var(--t3)">🔒 للاطّلاع فقط</span>')+
+    '</div>'+
+    '<div style="padding:14px 18px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:9px">'+
+    G.map(function(f){
+      var v=(S.priceModifiers&&S.priceModifiers[f.k]!==undefined)?S.priceModifiers[f.k]:f.d;
+      return '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;gap:8px">'+
+        '<span style="font-size:12px;color:var(--t2);font-weight:600">'+f.l+'</span>'+
+        (mayEdit
+          ?'<span style="display:flex;align-items:center;gap:5px"><input type="number" step="'+f.step+'" value="'+v+'" onchange="_finSetGlobal(\''+f.k+'\',this.value)" style="width:74px;padding:5px 7px;border:1.5px solid var(--bd);border-radius:7px;font-size:12px;font-weight:700;text-align:center;background:var(--surf);color:var(--t)"/><span style="font-size:10px;color:var(--t3)">'+f.u+'</span></span>'
+          :'<span style="font-size:13px;font-weight:800;color:var(--t)">'+v+' <span style="font-size:10px;color:var(--t3);font-weight:400">'+f.u+'</span></span>')+
+      '</div>';
+    }).join('')+
+    '</div></div>';
+}
+function _finSetGlobal(k,v){
+  if(!canPriceEdit()){toast(_pxDenyMsg(),'err');rFin();return;}
+  if(!S.priceModifiers)S.priceModifiers={};
+  var from=S.priceModifiers[k];
+  S.priceModifiers[k]=+v;
+  audit('PRICE_GLOBAL',k+': '+from+' → '+v,'');
+  _lcSave&&_lcSave();
+  toast('✅ تم الحفظ — '+k,'ok');
+}
+// Formula pricing for a customer with no contract
+function _finFormulaHTML(cu,active,mayEdit){
+  var F=[
     {key:'baseRate',label:'Base Rate',unit:'EGP/km',step:0.5},
     {key:'minCharge',label:'Min Charge',unit:'EGP',step:50},
     {key:'wtFactor',label:'Wt Factor',unit:'EGP/kg',step:0.01},
-    {key:'refrigSurcharge',label:'Cold %',unit:'%',step:1},
-    {key:'frozenExtra',label:'Frozen+%',unit:'%',step:1},
-    {key:'emergencySurcharge',label:'Emergency %',unit:'%',step:1},
-    {key:'waitingRate',label:'Wait/hr',unit:'EGP',step:10},
+    {key:'refrigSurcharge',label:'Cold',unit:'%',step:1},
+    {key:'frozenExtra',label:'Frozen extra',unit:'%',step:1},
+    {key:'emergencySurcharge',label:'Emergency',unit:'%',step:1},
+    {key:'waitingRate',label:'Waiting',unit:'EGP/h',step:10},
     {key:'stopFee',label:'Stop Fee',unit:'EGP',step:5},
-    {key:'discountPct',label:'Discount %',unit:'%',step:1},
-    {key:'seasonal',label:'Seasonal %',unit:'%',step:1},
+    {key:'discountPct',label:'Discount',unit:'%',step:1},
+    {key:'seasonal',label:'Seasonal',unit:'%',step:1},
     {key:'bonus',label:'Bonus',unit:'EGP',step:10},
     {key:'slaMin',label:'SLA Min',unit:'°C',step:1},
     {key:'slaMax',label:'SLA Max',unit:'°C',step:1}
   ].concat(S.customCriteriaFields||[]);
-
-  c.innerHTML=
-  '<div class="page-head"><div><h2>&#128176; Finance &amp; Pricing</h2>'+
-  '<div class="page-head-sub">Multi-list pricing per customer · Truck type multipliers</div></div>'+
-  '<div style="display:flex;gap:8px">'+
-  (isAdmin?'<button class="btn btn-primary btn-sm" onclick="openAddCriteria()">+ Criteria</button>':'')  +
-  '<div style="display:flex;gap:4px">'+
-  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'csv\')">&#128202; CSV</button>'+
-  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'excel\')">&#128196; XLS</button>'+
-  '<button class="btn btn-outline btn-sm" onclick="_pageExport(\'pdf\')">&#128444;&#65039; PDF</button>'+
-  '</div></div></div>'+
-
-  '<div class="kpi-row" style="grid-template-columns:repeat(4,1fr);margin-bottom:20px">'+
-  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(16,185,129,.1);color:#10B981">&#128176;</div><div class="kpi-body"><div class="kpi-label">Total Revenue</div><div class="kpi-val">EGP '+Math.round(rev/1000)+'K</div></div></div>'+
-  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(108,63,245,.1);color:#6C3FF5">&#128203;</div><div class="kpi-body"><div class="kpi-label">Completed Trips</div><div class="kpi-val">'+comp.length+'</div></div></div>'+
-  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(6,182,212,.1);color:#06B6D4">&#127807;</div><div class="kpi-body"><div class="kpi-label">CO&#178; Total</div><div class="kpi-val">'+co2.toFixed(0)+' kg</div></div></div>'+
-  '<div class="kpi-card"><div class="kpi-icon-wrap" style="background:rgba(245,158,11,.1);color:#F59E0B">&#128202;</div><div class="kpi-body"><div class="kpi-label">Avg Trip Cost</div><div class="kpi-val">EGP '+(comp.length>0?Math.round(rev/comp.length):0)+'</div></div></div>'+
-  '</div>'+
-
-  // Tabs — underline style
-  '<div class="fin-tabs">'+
-  '<div class="fin-tab on" id="fin-t0" onclick="finTab(0)">&#128202; Rate Table</div>'+
-  '<div class="fin-tab" id="fin-t1" onclick="finTab(1)">&#127775; Per Customer</div>'+
-  '<div class="fin-tab" id="fin-t2" onclick="finTab(2)">&#128200; CO&#178;</div>'+
-  '</div>'+
-
-  // ── TAB 0: Rate Table (per active list) ──
-  '<div id="fin-p0">'+
-  '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm)">'+
-  '<div style="padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between">'+
-  '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Rate Table — Active Price Lists</div>'+
-  '<div style="display:flex;gap:4px">'+
-  '<button class="btn btn-outline btn-sm" onclick="_expRateTable(\'csv\')">&#128202; CSV</button>'+
-  '<button class="btn btn-outline btn-sm" onclick="_expRateTable(\'excel\')">&#128196; XLS</button>'+
-  '<button class="btn btn-outline btn-sm" onclick="_expRateTable(\'pdf\')">&#128444;&#65039; PDF</button>'+
-  '</div>'+
-  '</div>'+
-  '<div style="overflow-x:auto"><table class="tbl" style="font-size:11px;min-width:1200px">'+
-  '<thead><tr>'+
-  '<th style="min-width:100px;position:sticky;left:0;background:var(--bg);z-index:2">Customer</th>'+
-  '<th style="min-width:110px">Price Plan</th>'+
-  CRITERIA_FIELDS.map(function(f){
-    return '<th style="min-width:76px;text-align:center">'+f.label+'<br><span style="font-size:9px;font-weight:400;color:var(--t3)">('+f.unit+')</span></th>';
-  }).join('')+
-  '<th style="min-width:160px">Truck Multipliers (editable)</th>'+
-  '</tr></thead><tbody>'+
-  _finCustomers().map(function(cu){
-    var lists=S.priceLists[cu]||[];
-    var active=lists.find(function(l){return l.active;})||lists[0]||{};
-    var inp='width:58px;padding:3px 5px;border:1.5px solid var(--bd);border-radius:6px;font-size:11px;font-weight:700;text-align:center;color:var(--t);background:var(--bg);outline:none;font-family:inherit';
-    // Contract customers are priced from their rate card, not these criteria —
-    // show what actually governs them instead of misleading formula inputs.
-    if(typeof _slaActive==='function'&&_slaActive(cu)){
-      var _c=_slaCard(cu);
-      var _n=(typeof _slaFilledCount==='function')?_slaFilledCount(_c):0;
-      return '<tr data-cu="'+cu+'">'+
-        '<td style="font-weight:800;color:var(--t);position:sticky;left:0;background:var(--surf);z-index:1;border-right:1px solid var(--bd)">'+
-        '<div style="display:flex;align-items:center;gap:7px">'+
-        '<div style="width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center">'+cu[0]+'</div>'+
-        cu+'</div></td>'+
-        '<td colspan="'+(CRITERIA_FIELDS.length+1)+'" style="background:rgba(108,63,245,.05)">'+
-          '<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
-          '<span style="font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:20px;background:#EEF2FF;color:#6C3FF5">📑 Contract '+(_c.code?'#'+_c.code:'')+'</span>'+
-          '<span style="font-size:11px;color:var(--t2)">'+(_c.bands||[]).length+' distance bands · '+(_c.trucks||[]).length+' truck types · '+_n+' rates set'+(_c.perLeg?' · per-leg':'')+'</span>'+
-          '<button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="_finToggleCard(\''+cu.replace(/'/g,"\\'")+'\')">'+(S._finCard===cu?'Hide rates ▲':'Show rates ▼')+'</button>'+
-          '</div></td></tr>'+
-        (S._finCard===cu?'<tr><td colspan="'+(CRITERIA_FIELDS.length+2)+'" style="padding:0;background:var(--bg)">'+
-          '<div style="padding:12px">'+_finRateCardHTML(_c)+'</div></td></tr>':'');
-    }
-    return '<tr data-cu="'+cu+'">'+
-      '<td style="font-weight:800;color:var(--t);position:sticky;left:0;background:var(--surf);z-index:1;border-right:1px solid var(--bd)">'+
-      '<div style="display:flex;align-items:center;gap:7px">'+
-      '<div style="width:26px;height:26px;border-radius:7px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center">'+cu[0]+'</div>'+
-      cu+'</div></td>'+
-      '<td><select data-cu="'+cu+'" onchange="switchActiveList(this)" style="font-size:11px;padding:4px 6px;border:1.5px solid var(--bd);border-radius:7px;color:var(--t);background:var(--bg);outline:none;font-family:inherit;width:100%">'+
-      lists.map(function(l){return '<option value="'+l.id+'"'+(l.active?' selected':'')+'>'+l.name+'</option>';}).join('')+
-      '</select></td>'+
-      CRITERIA_FIELDS.map(function(f){
-        var val=active[f.key]!==undefined?active[f.key]:0;
-        return '<td style="text-align:center">'+
-          (isAdmin?'<input type="number" step="'+f.step+'" value="'+(+val).toFixed(f.step<0.1?3:f.step<1?2:0)+'" data-cu="'+cu+'" data-field="'+f.key+'" onchange="updateActiveList(this)" style="'+inp+'" onfocus="this.style.borderColor=\'#6C3FF5\'" onblur="this.style.borderColor=\'var(--bd)\'"/>':
-          '<span style="font-weight:700;color:var(--t)">'+(+val).toFixed(f.step<0.1?3:0)+'</span>')+
-          '</td>';
-      }).join('')+
-      // Truck multipliers column - editable
-      '<td><div style="display:flex;flex-direction:column;gap:3px;padding:4px">'+
-      getTruckTypeIds().map(function(tt){
-        var mult=(active.truckMult&&active.truckMult[tt]!==undefined)?active.truckMult[tt]:getTruckTypeMult(tt);
-        return '<div style="display:flex;align-items:center;gap:4px">'+
-          '<span style="font-size:10px;color:var(--t3);width:62px">'+tt+'</span>'+
-          (isAdmin?'<input type="number" step="0.05" min="0.1" max="5" value="'+(+(mult)||1).toFixed(2)+'" data-cu="'+cu+'" data-truck="'+tt+'" onchange="updateTruckMult(this)" style="width:48px;padding:3px 4px;border:1.5px solid var(--bd);border-radius:5px;font-size:10px;font-weight:700;text-align:center;color:var(--t);background:var(--bg);outline:none" onfocus="this.style.borderColor=\'#6C3FF5\'" onblur="this.style.borderColor=\'var(--bd)\'"/>':
-          '<span style="font-weight:700;font-size:11px;color:var(--t)">'+(+(mult)||1).toFixed(2)+'</span>')+
-          '<span style="font-size:10px;color:var(--t3)">x</span>'+
-          '</div>';
-      }).join('')+
-      '</div></td>'+
-      '</tr>';
-  }).join('')+
-  '</tbody></table></div>'+
-  (isAdmin?'<div style="padding:12px 20px;border-top:1px solid var(--bd);background:rgba(108,63,245,.02)">'+
-    '<span style="font-size:11px;color:var(--t3)">&#128161; Edit any cell. Switch active list to change the default for new shipments. </span>'+
-    '</div>':'')+
-  '</div></div>'+
-
-  // ── TAB 1: Per-Customer Lists ──
-  '<div id="fin-p1" style="display:none">'+
-  '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">'+
-  '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">Customer Price Lists</div>'+
-  (isAdmin?'<div style="display:flex;gap:8px"><button class="btn btn-primary btn-sm" onclick="openAddCriteria()">+ Add Criteria Field</button></div>':'')+
-  '</div>'+
-  '<div style="display:flex;flex-direction:column;gap:16px">'+
-  _finCustomers().map(function(cu){
-    var lists=S.priceLists[cu]||[];
-    var compCu=comp.filter(function(t){return t.customer===cu;});
-    var cuRev=compCu.reduce(function(s,t){return s+(+t.cost||0);},0);
-    return '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:16px;overflow:hidden;box-shadow:var(--sh-sm)">'+
-      // Customer header
-      '<div style="padding:14px 18px;background:linear-gradient(135deg,rgba(108,63,245,.06),rgba(108,63,245,.02));border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between">'+
-      '<div style="display:flex;align-items:center;gap:10px">'+
-      '<div style="width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:14px;font-weight:800;display:flex;align-items:center;justify-content:center">'+cu[0]+'</div>'+
-      '<div><div style="font-size:14px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">'+cu+'</div>'+
-      '<div style="font-size:11px;color:var(--t3)">'+compCu.length+' trips &bull; EGP '+Math.round(cuRev/1000*10)/10+'K revenue &bull; '+lists.length+' price list(s)</div>'+
-      '</div></div>'+
-      (isAdmin?
-      '<div class="pl-add-btn" data-cu="'+cu+'" onclick="addPriceList(this.dataset.cu)">'+
-      '<span style="font-size:22px;opacity:.5">+</span>'+
-      '<span style="font-size:12px;font-weight:700">Add Price List</span>'+
-      '</div>':'')+
-      '</div>'+
-      // Price lists for this customer
-      '<div style="padding:14px 18px">'+
-      '<div class="pl-cards-row">'+
-      lists.map(function(pl,pi){
-        return '<div class="pl-card">' +
-          // List header
-          '<div class="pl-card-hd">'+
-          '<div>'+
-          (isAdmin?'<input value="'+pl.name+'" data-cu="'+cu+'" data-plid="'+pl.id+'" onchange="renamePriceList(this)" style="font-size:13px;font-weight:800;color:var(--t);background:transparent;border:none;outline:none;font-family:inherit;width:120px" onfocus="this.style.border=\'1px solid #6C3FF5\';this.style.borderRadius=\'5px\';this.style.padding=\'2px 5px\'" onblur="this.style.border=\'none\'"/>':
-          '<span style="font-size:13px;font-weight:800;color:var(--t)">'+pl.name+'</span>')+
-          '</div>'+
-          '<div style="display:flex;gap:4px">'+
-
-          (isAdmin&&lists.length>1?'<button class="btn btn-danger btn-sm" style="font-size:10px;padding:3px 8px" data-cu="'+cu+'" data-plid="'+pl.id+'" onclick="deletePriceList(this.dataset.cu,this.dataset.plid)">&#10005;</button>':'')+
-          '</div></div>'+
-          // Criteria fields
-          '<div style="padding:10px 14px">'+
-          CRITERIA_FIELDS.slice(0,6).map(function(f){
-            var val=pl[f.key]!==undefined?pl[f.key]:0;
-            return '<div class="pl-card-row">'+
-              '<span style="font-size:12px;color:var(--t2);font-weight:600">'+f.label+'</span>'+
-              (isAdmin?'<div style="display:flex;align-items:center;gap:4px"><input type="number" step="'+f.step+'" value="'+(+val).toFixed(f.step<0.1?3:f.step<1?2:0)+'" data-cu="'+cu+'" data-plid="'+pl.id+'" data-field="'+f.key+'" onchange="updatePlField(this)" class="pl-card-input" onfocus="this.style.borderColor=\'#6C3FF5\'" onblur="this.style.borderColor=\'var(--bd)\'"/><span style="font-size:10px;color:var(--t3)">'+f.unit+'</span></div>':
-              '<span style="font-weight:700;color:var(--t)">'+(+val).toFixed(f.step<0.1?2:0)+' '+f.unit+'</span>')+
-              '</div>';
-          }).join('')+
-          // Truck multipliers
-          '<div style="margin-top:8px;padding-top:8px;border-top:1px solid var(--dv)">'+
-          '<div style="font-size:10px;font-weight:700;color:var(--t3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px">Truck Type Multipliers</div>'+
-          '<div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">'+
-          getTruckTypeIds().map(function(tt){
-            var mult=(pl.truckMult&&pl.truckMult[tt]!==undefined)?pl.truckMult[tt]:getTruckTypeMult(tt);
-            return '<div style="display:flex;align-items:center;gap:4px;background:var(--bg);border-radius:6px;padding:4px 7px">'+
-              '<span style="font-size:10px;color:var(--t3);flex:1">'+tt+'</span>'+
-              (isAdmin?'<input type="number" step="0.05" min="0.1" max="5" value="'+(+(mult)||1).toFixed(2)+'" data-cu="'+cu+'" data-plid="'+pl.id+'" data-truck="'+tt+'" onchange="updatePlTruckMult(this)" style="width:44px;padding:3px 4px;border:1px solid var(--bd);border-radius:5px;font-size:10px;font-weight:700;text-align:center;color:var(--t);background:var(--surf);outline:none"/>':
-              '<span style="font-size:11px;font-weight:700;color:var(--t)">'+(+(mult)||1).toFixed(2)+'</span>')+
-              '<span style="font-size:10px;color:var(--t3)">x</span>'+
-              '</div>';
-          }).join('')+
-          '</div></div>'+
-          '<button class="btn btn-outline btn-sm" style="width:100%;justify-content:center;margin-top:8px;font-size:11px" data-cu="'+cu+'" data-plid="'+pl.id+'" onclick="editFullPriceList(this.dataset.cu,this.dataset.plid)">&#9998; Edit All Criteria</button>'+
-          '</div></div>';
-      }).join('')+
-      '</div></div></div>';
-  }).join('')+
-  '</div></div>'+
-
-  // ── TAB 2: CO₂ ──
-  '<div id="fin-p2" style="display:none">'+
-  '<div style="background:var(--surf);border:1px solid var(--bd);border-radius:20px;overflow:hidden;box-shadow:var(--sh-sm)">'+
-  '<div style="padding:16px 20px;border-bottom:1px solid var(--bd);display:flex;align-items:center;justify-content:space-between">'+
-  '<div style="font-size:15px;font-weight:800;color:var(--t);font-family:Space Grotesk,sans-serif">CO&#178; Emissions by Customer</div>'+
-  '<div style="display:flex;gap:4px">'+
-  '<button class="btn btn-outline btn-sm" onclick="_showCO2ExportModal(\'csv\')">&#128202; CSV</button>'+
-  '<button class="btn btn-outline btn-sm" onclick="_showCO2ExportModal(\'excel\')">&#128196; XLS</button>'+
-  '<button class="btn btn-outline btn-sm" onclick="_showCO2ExportModal(\'pdf\')">&#128444;&#65039; PDF</button>'+
-  '</div></div>'+
-  '<div style="padding:16px 20px">'+
-  _finCustomers().map(function(cu){
-    var cuTrips=comp.filter(function(t){return t.customer===cu;});
-    var cuCo2=cuTrips.reduce(function(s,t){return s+(+t.co2||0);},0);
-    var cuRev2=cuTrips.reduce(function(s,t){return s+(+t.cost||0);},0);
-    var allCo2=CUSTOMERS.map(function(c){return comp.filter(function(t){return t.customer===c;}).reduce(function(s,t){return s+(+t.co2||0);},0);});
-    var maxCo2=Math.max.apply(null,allCo2.concat([1]));
-    return '<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--dv)">'+
-      '<div style="width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,#6C3FF5,#4F1FD4);color:#fff;font-size:10px;font-weight:800;display:flex;align-items:center;justify-content:center;flex-shrink:0">'+cu[0]+'</div>'+
-      '<div style="flex:1;min-width:0">'+
-      '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'+
-      '<span style="font-size:12px;font-weight:700;color:var(--t)">'+cu+'</span>'+
-      '<span style="font-size:12px;font-weight:700;color:var(--t)">'+cuCo2.toFixed(1)+' kg</span>'+
-      '</div>'+
-      '<div class="co2bar"><div class="co2fill" style="width:'+(maxCo2>0?Math.round(cuCo2/maxCo2*100):0)+'%"></div></div>'+
-      '</div>'+
-      '<div style="text-align:right;min-width:70px"><div style="font-size:10px;color:var(--t3)">Revenue</div>'+
-      '<div style="font-size:12px;font-weight:700;color:#10B981">EGP '+Math.round(cuRev2/1000*10)/10+'K</div></div>'+
+  return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:8px">'+
+    F.map(function(f){
+      var v=active[f.key]!==undefined?active[f.key]:0;
+      return '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:10px;padding:9px 11px;display:flex;align-items:center;justify-content:space-between;gap:8px">'+
+        '<span style="font-size:11.5px;color:var(--t2);font-weight:600">'+f.label+'</span>'+
+        (mayEdit
+          ?'<span style="display:flex;align-items:center;gap:4px"><input type="number" step="'+f.step+'" value="'+(+v)+'" data-cu="'+cu+'" data-field="'+f.key+'" onchange="updateActiveList(this)" style="width:64px;padding:4px 6px;border:1.5px solid var(--bd);border-radius:7px;font-size:12px;font-weight:700;text-align:center;background:var(--surf);color:var(--t)"/><span style="font-size:10px;color:var(--t3)">'+f.unit+'</span></span>'
+          :'<span style="font-size:12.5px;font-weight:800;color:var(--t)">'+(+v)+' <span style="font-size:10px;color:var(--t3);font-weight:400">'+f.unit+'</span></span>')+
       '</div>';
-  }).join('')+
-  '</div></div></div>';
-
-  c.innerHTML += buildForecastSection();
+    }).join('')+
+  '</div>';
 }
+
 
 function finTab(n){
   for(var i=0;i<3;i++){
@@ -9522,7 +9567,8 @@ function rAdmin(){
   '<div class="tabs" style="flex-wrap:wrap;gap:4px"><div class="tab'+(tab==='users'?' on':'')+'" onclick="S.adminTab=\'users\';rAdmin()">👥 Users</div>'+
   '<div class="tab'+(tab==='customers'?' on':'')+'" onclick="S.adminTab=\'customers\';rAdmin()">🏢 Customers</div>'+
   '<div class="tab'+(tab==='trucks'?' on':'')+'" onclick="S.adminTab=\'trucks\';rAdmin()">🚛 Trucks</div>'+
-  '<div class="tab'+(tab==='pricing'?' on':'')+'" onclick="S.adminTab=\'pricing\';rAdmin()">💰 Pricing</div>'+
+  // Pricing lives in Finance now, beside the customers it prices
+  '<div class="tab" onclick="nav(\'finance\')">💰 Pricing →</div>'+
   '<div class="tab'+(tab==='rbac'?' on':'')+'" onclick="S.adminTab=\'rbac\';rAdmin()">🔐 Role Access</div>'+
   '<div class="tab'+(tab==='pages'?' on':'')+'" onclick="S.adminTab=\'pages\';rAdmin()">📋 Page Access</div>'+
   '<div class="tab'+(tab==='dashboard'?' on':'')+'" onclick="S.adminTab=\'dashboard\';rAdmin()">📊 Dashboard</div>'+
@@ -10528,6 +10574,12 @@ function editUser(uid){
     Object.keys(RL).map(function(k){return '<option value="'+k+'"'+(u.role===k?' selected':'')+'>'+RL[k]+'</option>';}).join('')+
     '</select></div>'+
     '<div class="fg f1"><label>Email</label><input id="eu-email" value="'+(u.email||'')+'"/></div>'+
+    // Grade decides pricing authority: a specialist reads rate cards, a
+    // manager may propose a change and agree to one.
+    '<div class="fg f1"><label>Grade</label><select id="eu-grade">'+
+    USER_GRADES.map(function(g){return '<option value="'+g.id+'"'+(_userGrade(u)===g.id?' selected':'')+'>'+g.label+'</option>';}).join('')+
+    '</select>'+
+    '<div style="font-size:10.5px;color:var(--t3);margin-top:4px">Manager may change prices and approve changes. Specialist has read-only pricing.</div></div>'+
     '<div class="fg f1" id="eu-cust-row" style="display:'+(isClient?'block':'none')+'">'+
     '<label>Customer Account <span style="color:#EF4444">*</span></label>'+
     '<select id="eu-cust-sel"><option value="">— Select —</option>'+custOpts+'</select>'+
@@ -10546,6 +10598,10 @@ async function saveUser(uid){
   var newName=(document.getElementById('eu-name')||{}).value||u.name;
   var newRole=(document.getElementById('eu-role')||{}).value||u.role;
   var newEmail=(document.getElementById('eu-email')||{}).value;
+  var newGrade=(document.getElementById('eu-grade')||{}).value||_userGrade(u);
+  if(newGrade!==_userGrade(u))audit('USER_GRADE',u.name+' → '+newGrade,'');
+  u.grade=newGrade;
+  if(S.user&&S.user.id===u.id)S.user.grade=newGrade;
   // Handle customer account for client role
   var newCust=u.customerAccount||'';
   if(newRole==='client'){
@@ -10746,6 +10802,8 @@ var RBAC_ITEMS=[
   {key:'rate_table',label:'View Rate Table',cat:'Finance'},
   {key:'trip_cost',label:'View Trip Cost',cat:'Finance'},
   {key:'finance_view',label:'Finance Dashboard',cat:'Finance'},
+  {key:'pricing_edit',label:'Change Prices (propose)',cat:'Finance'},
+  {key:'pricing_approve',label:'Approve Price Changes',cat:'Finance'},
   {key:'maintenance_view',label:'View Maintenance',cat:'Maintenance'},
   {key:'maintenance_create',label:'Create Maintenance Ticket',cat:'Maintenance'},
   {key:'spare_parts',label:'Manage Spare Parts',cat:'Maintenance'},
@@ -20305,7 +20363,7 @@ function _slaSectionHTML(){
   if(!card)return '';
   return '<div class="card" id="sla-section">'+
     '<div class="card-hd"><div class="card-title">📑 Contract Rate Card — '+sel+'</div>'+
-    '<button class="btn btn-outline btn-sm" onclick="S._slaSel=\'\';rAdminPricing()">✕ Close</button></div>'+
+    '<button class="btn btn-outline btn-sm" onclick="S._slaSel=\'\';_pxRerender()">✕ Close</button></div>'+
     '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Billed from the contract table — <b>service × truck type × distance band</b> — each line carrying the customer\'s own item code.</div>'+
     _slaCardEditorHTML(card)+
   '</div>';
@@ -20321,15 +20379,22 @@ function _slaCardEditorHTML(card){
     var rr=card.rates[sv.id]||{};
     Object.keys(rr).forEach(function(tk){Object.keys(rr[tk]).forEach(function(b){total++;if(+rr[tk][b].rate>0)filled++;});});
   });
+  var mayEdit=canPriceEdit();
+  var ro=mayEdit?'':'disabled ';
+  // a pending proposal for this cell, if there is one
+  var pendOf=function(sv,tk,bd,fl){
+    return ((card.pending||[]).find(function(p){
+      return p.kind==='rate'&&p.svc===sv&&p.truck===tk&&p.band===bd&&p.field===fl;}))||null;
+  };
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px">'+
     '<span style="font-size:12px;color:var(--t2)">Code <b style="color:var(--t)">'+(card.code||'—')+'</b></span>'+
-    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+(card.active?'checked':'')+' onchange="_slaFlag(\'active\',this.checked)"/> Active</label>'+
-    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+(card.perLeg?'checked':'')+' onchange="_slaFlag(\'perLeg\',this.checked)"/> Price per leg</label>'+
-    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+(card.emptyLegFree?'checked':'')+' onchange="_slaFlag(\'emptyLegFree\',this.checked)"/> Empty legs free</label>'+
+    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+ro+(card.active?'checked':'')+' onchange="_slaFlag(\'active\',this.checked)"/> Active</label>'+
+    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+ro+(card.perLeg?'checked':'')+' onchange="_slaFlag(\'perLeg\',this.checked)"/> Price per leg</label>'+
+    '<label style="font-size:12px;display:flex;align-items:center;gap:6px;cursor:pointer"><input type="checkbox" '+ro+(card.emptyLegFree?'checked':'')+' onchange="_slaFlag(\'emptyLegFree\',this.checked)"/> Empty legs free</label>'+
     '<span style="margin-left:auto;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:'+(filled===total&&total?'#ECFDF5;color:#059669':'#FEF3C7;color:#B45309')+'">'+filled+'/'+total+' rates set</span>'+
   '</div>'+
   '<div class="tabs" style="flex-wrap:wrap;gap:4px;margin-bottom:12px">'+
-    SLA_SERVICES.map(function(x){return '<div class="tab'+(x.id===svc?' on':'')+'" onclick="S._slaSvc=\''+x.id+'\';rAdminPricing()">'+x.label+'</div>';}).join('')+
+    SLA_SERVICES.map(function(x){return '<div class="tab'+(x.id===svc?' on':'')+'" onclick="S._slaSvc=\''+x.id+'\';_pxRerender()">'+x.label+'</div>';}).join('')+
   '</div>'+
   '<div style="overflow-x:auto"><table class="tbl"><thead><tr><th style="min-width:120px">'+(s.perTruck?'Truck':'Service')+'</th>'+
     bands.map(function(b){return '<th style="text-align:center;font-size:11px">'+b.label+'</th>';}).join('')+'</tr></thead><tbody>'+
@@ -20337,9 +20402,13 @@ function _slaCardEditorHTML(card){
       return '<tr><td style="font-weight:700">'+(tk==='*'?s.label:tk)+'</td>'+
         bands.map(function(b){
           var r=_slaGetRate(card,svc,tk,b.id)||{scm:'',rate:0};
+          var pr=pendOf(svc,tk,b.id,'rate'), ps=pendOf(svc,tk,b.id,'scm');
           return '<td style="text-align:center;padding:4px">'+
-            '<input value="'+(r.scm||'')+'" placeholder="SCM code" onchange="_slaEdit(\''+svc+'\',\''+tk+'\',\''+b.id+'\',\'scm\',this.value)" style="width:96px;padding:4px 6px;border:1px solid var(--bd);border-radius:6px;font-size:10.5px;text-align:center;margin-bottom:3px"/><br>'+
-            '<input type="number" step="0.01" value="'+(r.rate||0)+'" onchange="_slaEdit(\''+svc+'\',\''+tk+'\',\''+b.id+'\',\'rate\',this.value)" style="width:96px;padding:5px 6px;border:1.5px solid '+(+r.rate>0?'#059669':'var(--bd)')+';border-radius:6px;font-size:12px;text-align:center;font-weight:700"/></td>';
+            '<input '+ro+'value="'+((ps?ps.to:r.scm)||'')+'" placeholder="SCM code" onchange="_slaEdit(\''+svc+'\',\''+tk+'\',\''+b.id+'\',\'scm\',this.value)" style="width:96px;padding:4px 6px;border:1px solid '+(ps?'#F59E0B':'var(--bd)')+';border-radius:6px;font-size:10.5px;text-align:center;margin-bottom:3px"/><br>'+
+            '<input '+ro+'type="number" step="0.01" value="'+((pr?pr.to:r.rate)||0)+'" onchange="_slaEdit(\''+svc+'\',\''+tk+'\',\''+b.id+'\',\'rate\',this.value)" style="width:96px;padding:5px 6px;border:1.5px solid '+(pr?'#F59E0B':(+r.rate>0?'#059669':'var(--bd)'))+';border-radius:6px;font-size:12px;text-align:center;font-weight:700"/>'+
+            // a proposed value shows what it would replace, until it is agreed
+            (pr?'<div style="font-size:9px;color:#B45309;margin-top:2px">⏳ حالياً '+pr.from+'</div>':'')+
+            '</td>';
         }).join('')+'</tr>';
     }).join('')+
   '</tbody></table></div>'+
@@ -20349,39 +20418,45 @@ function _slaCardEditorHTML(card){
     '<div><div style="font-size:11.5px;font-weight:800;color:var(--t2);margin-bottom:6px">Distance Bands</div>'+
       (card.bands||[]).map(function(b,i){
         return '<div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">'+
-          '<input value="'+b.label+'" onchange="_slaBandEdit('+i+',\'label\',this.value)" style="flex:1;min-width:0;padding:5px 7px;border:1px solid var(--bd);border-radius:6px;font-size:11px"/>'+
-          '<input type="number" value="'+b.min+'" title="from km" onchange="_slaBandEdit('+i+',\'min\',this.value)" style="width:58px;padding:5px;border:1px solid var(--bd);border-radius:6px;font-size:11px;text-align:center"/>'+
-          '<input type="number" value="'+b.max+'" title="to km" onchange="_slaBandEdit('+i+',\'max\',this.value)" style="width:58px;padding:5px;border:1px solid var(--bd);border-radius:6px;font-size:11px;text-align:center"/>'+
-          '<span onclick="_slaBandDel('+i+')" style="cursor:pointer;color:#EF4444;font-size:15px;padding:0 3px">×</span></div>';
+          '<input '+ro+'value="'+b.label+'" onchange="_slaBandEdit('+i+',\'label\',this.value)" style="flex:1;min-width:0;padding:5px 7px;border:1px solid var(--bd);border-radius:6px;font-size:11px"/>'+
+          '<input '+ro+'type="number" value="'+b.min+'" title="from km" onchange="_slaBandEdit('+i+',\'min\',this.value)" style="width:58px;padding:5px;border:1px solid var(--bd);border-radius:6px;font-size:11px;text-align:center"/>'+
+          '<input '+ro+'type="number" value="'+b.max+'" title="to km" onchange="_slaBandEdit('+i+',\'max\',this.value)" style="width:58px;padding:5px;border:1px solid var(--bd);border-radius:6px;font-size:11px;text-align:center"/>'+
+          (mayEdit?'<span onclick="_slaBandDel('+i+')" style="cursor:pointer;color:#EF4444;font-size:15px;padding:0 3px">×</span>':'')+'</div>';
       }).join('')+
-      '<button class="btn btn-outline btn-sm" onclick="_slaBandAdd()">+ Add band</button></div>'+
+      (mayEdit?'<button class="btn btn-outline btn-sm" onclick="_slaBandAdd()">+ Add band</button>':'')+'</div>'+
     '<div><div style="font-size:11.5px;font-weight:800;color:var(--t2);margin-bottom:6px">Truck Types</div>'+
       (card.trucks||[]).map(function(tk,i){
         return '<div style="display:flex;gap:5px;align-items:center;margin-bottom:5px">'+
-          '<input value="'+tk+'" onchange="_slaTruckEdit('+i+',this.value)" style="flex:1;min-width:0;padding:5px 7px;border:1px solid var(--bd);border-radius:6px;font-size:11px"/>'+
-          '<span onclick="_slaTruckDel('+i+')" style="cursor:pointer;color:#EF4444;font-size:15px;padding:0 3px">×</span></div>';
+          '<input '+ro+'value="'+tk+'" onchange="_slaTruckEdit('+i+',this.value)" style="flex:1;min-width:0;padding:5px 7px;border:1px solid var(--bd);border-radius:6px;font-size:11px"/>'+
+          (mayEdit?'<span onclick="_slaTruckDel('+i+')" style="cursor:pointer;color:#EF4444;font-size:15px;padding:0 3px">×</span>':'')+'</div>';
       }).join('')+
-      '<button class="btn btn-outline btn-sm" onclick="_slaTruckAdd()">+ Add truck type</button></div>'+
+      (mayEdit?'<button class="btn btn-outline btn-sm" onclick="_slaTruckAdd()">+ Add truck type</button>':'')+'</div>'+
   '</div>'+
   '<div style="margin-top:12px;display:flex;gap:8px;flex-wrap:wrap">'+
     '<button class="btn btn-outline btn-sm" onclick="_slaExportCard()">⬇ Export rate card (CSV)</button>'+
-    '<button class="btn btn-outline btn-sm" onclick="openRateImport(S._slaSel)">⬆ Import / re-import sheet</button>'+
-    '<button class="btn btn-danger btn-sm" onclick="_slaDeleteCard()">Delete card</button></div>';
+    (mayEdit?'<button class="btn btn-outline btn-sm" onclick="openRateImport(S._slaSel)">⬆ Import / re-import sheet</button>':'')+
+    (mayEdit?'<button class="btn btn-danger btn-sm" onclick="_slaDeleteCard()">Delete card</button>':'')+'</div>';
 }
-function _slaFlag(k,v){var c=_slaCard(S._slaSel);if(!c)return;c[k]=v;_slaSave();rAdminPricing();}
+function _slaFlag(k,v){
+  var c=_slaCard(S._slaSel);if(!c)return;
+  if(!canPriceEdit()){toast(_pxDenyMsg(),'err');_pxRerender();return;}
+  var lbl={active:'تفعيل البطاقة',perLeg:'تسعير لكل رجل',emptyLegFree:'الأرجل الفارغة مجاناً'}[k]||k;
+  _pxPropose(c,{kind:'flag',key:k,from:!!c[k],to:!!v,label:lbl});
+  _pxRerender();
+}
 // ── Per-customer contract shape: bands & truck types ──
 function _slaBandEdit(i,field,val){
   var c=_slaCard(S._slaSel);if(!c||!c.bands[i])return;
   c.bands[i][field]=(field==='label')?val:(+val||0);
   c.bands.sort(function(a,b){return a.max-b.max;});
-  _slaSave();rAdminPricing();
+  _slaSave();_pxRerender();
 }
 function _slaBandAdd(){
   var c=_slaCard(S._slaSel);if(!c)return;
   var last=c.bands[c.bands.length-1];
   var min=last?last.max:0, max=min+100;
   c.bands.push({id:'b'+(Date.now()%100000),label:min+' KM To '+max+' KM',min:min,max:max});
-  _slaBuildGrid(c);_slaSave();rAdminPricing();
+  _slaBuildGrid(c);_slaSave();_pxRerender();
 }
 function _slaBandDel(i){
   var c=_slaCard(S._slaSel);if(!c||!c.bands[i])return;
@@ -20392,7 +20467,7 @@ function _slaBandDel(i){
   Object.keys(c.rates||{}).forEach(function(s){
     Object.keys(c.rates[s]).forEach(function(tk){delete c.rates[s][tk][id];});
   });
-  _slaSave();rAdminPricing();
+  _slaSave();_pxRerender();
 }
 function _slaTruckEdit(i,val){
   var c=_slaCard(S._slaSel);if(!c)return;
@@ -20402,7 +20477,7 @@ function _slaTruckEdit(i,val){
   Object.keys(c.rates||{}).forEach(function(s){
     if(c.rates[s][old]){c.rates[s][nv]=c.rates[s][old];delete c.rates[s][old];}
   });
-  _slaSave();rAdminPricing();
+  _slaSave();_pxRerender();
 }
 function _slaTruckAdd(){
   var c=_slaCard(S._slaSel);if(!c)return;
@@ -20410,7 +20485,7 @@ function _slaTruckAdd(){
   if(!n||!n.trim())return;
   n=n.trim();
   if(c.trucks.indexOf(n)>-1){toast('That truck type already exists','err');return;}
-  c.trucks.push(n);_slaBuildGrid(c);_slaSave();rAdminPricing();
+  c.trucks.push(n);_slaBuildGrid(c);_slaSave();_pxRerender();
 }
 function _slaTruckDel(i){
   var c=_slaCard(S._slaSel);if(!c||!c.trucks[i])return;
@@ -20419,19 +20494,97 @@ function _slaTruckDel(i){
   if(!confirm('Remove the truck type "'+tk+'"? Its rates will be deleted.'))return;
   c.trucks.splice(i,1);
   Object.keys(c.rates||{}).forEach(function(s){delete c.rates[s][tk];});
-  _slaSave();rAdminPricing();
+  _slaSave();_pxRerender();
 }
+// A price change is a proposal, not an edit. It sits on the card until
+// somebody senior agrees to it, and only then does it govern an invoice.
 function _slaEdit(svc,truck,band,field,val){
   var c=_slaCard(S._slaSel);if(!c)return;
+  if(!canPriceEdit()){toast(_pxDenyMsg(),'err');_pxRerender();return;}
   var cur=_slaGetRate(c,svc,truck,band)||{scm:'',rate:0};
-  _slaSetRate(c,svc,truck,band,field==='scm'?val:cur.scm,field==='rate'?val:cur.rate);
+  var from=field==='rate'?(+cur.rate||0):(cur.scm||'');
+  var to=field==='rate'?(+val||0):String(val||'');
+  if(String(from)===String(to))return;
+  var sv=SLA_SERVICES.find(function(x){return x.id===svc;})||{label:svc};
+  var bl=(c.bands||[]).find(function(b){return b.id===band;});
+  _pxPropose(c,{
+    kind:'rate', svc:svc, truck:truck, band:band, field:field,
+    from:from, to:to,
+    label:sv.label+' · '+(truck==='*'?'—':truck)+' · '+(bl?bl.label:band)+' · '+(field==='rate'?'السعر':'كود SCM')
+  });
+  _pxRerender();
+}
+// ── Pricing changes: propose, then agree ──────────────────────────
+function _pxPropose(card,ch){
+  if(!card.pending)card.pending=[];
+  // one live proposal per cell — a re-edit replaces the earlier one
+  card.pending=card.pending.filter(function(p){
+    return !(p.kind===ch.kind&&p.svc===ch.svc&&p.truck===ch.truck&&p.band===ch.band&&p.field===ch.field&&p.key===ch.key);
+  });
+  var s=_tc();
+  ch.by=S.user?S.user.name:''; ch.byId=S.user?S.user.id:''; ch.at=s.at; ch.ms=s.ms; ch.src=s.src;
+  // proposing the value it already has is a no-op
+  if(String(ch.from)!==String(ch.to))card.pending.push(ch);
   _slaSave();
-  if(field==='rate')rAdminPricing();
+  audit('PRICE_PROPOSE',card.customer+' · '+ch.label+' : '+ch.from+' → '+ch.to,'');
+  toast('📝 اقتراح تغيير — بانتظار الموافقة','info');
+}
+function _pxPendingCount(card){return ((card&&card.pending)||[]).length;}
+function _pxApplyOne(card,ch){
+  if(ch.kind==='rate'){
+    var cur=_slaGetRate(card,ch.svc,ch.truck,ch.band)||{scm:'',rate:0};
+    _slaSetRate(card,ch.svc,ch.truck,ch.band,
+      ch.field==='scm'?ch.to:cur.scm,
+      ch.field==='rate'?ch.to:cur.rate);
+  }else if(ch.kind==='flag'){
+    card[ch.key]=ch.to;
+  }
+}
+function _pxApprove(cu,idx){
+  var card=_slaCard(cu);if(!card||!card.pending)return;
+  var list=(idx===undefined||idx===null)?card.pending.slice():[card.pending[idx]];
+  if(!list.length)return;
+  if(!canPriceApprove()){toast('الموافقة على الأسعار لمدير الحسابات فقط','err');return;}
+  // the person who proposed a change cannot be the one who agrees to it
+  var mine=list.filter(function(p){return p&&p.byId&&S.user&&p.byId===S.user.id;});
+  if(mine.length&&!can('all')){
+    toast('لا يمكنك الموافقة على تغيير اقترحته بنفسك','err');return;}
+  requirePwd('موافقة على تغيير أسعار '+cu,function(){
+    var s=_tc();
+    list.forEach(function(ch){
+      if(!ch)return;
+      _pxApplyOne(card,ch);
+      if(!card.history)card.history=[];
+      card.history.push({label:ch.label,from:ch.from,to:ch.to,
+        proposedBy:ch.by,proposedAt:ch.at,approvedBy:S.user.name,approvedAt:s.at,src:s.src});
+      audit('PRICE_APPROVE',cu+' · '+ch.label+' : '+ch.from+' → '+ch.to,'');
+    });
+    card.pending=(idx===undefined||idx===null)?[]:card.pending.filter(function(_,i){return i!==idx;});
+    card.approvedBy=S.user.name;card.approvedAt=s.at;
+    _slaSave();_pxRerender();
+    toast('✅ اعتُمد التغيير — أصبح سارياً على الفواتير','ok');
+  });
+}
+function _pxReject(cu,idx){
+  var card=_slaCard(cu);if(!card||!card.pending)return;
+  if(!canPriceApprove()){toast('الرفض لمدير الحسابات فقط','err');return;}
+  var why=prompt('سبب الرفض؟');
+  if(why===null)return;
+  var gone=(idx===undefined||idx===null)?card.pending.slice():[card.pending[idx]];
+  gone.forEach(function(ch){if(ch)audit('PRICE_REJECT',cu+' · '+ch.label+' — '+(why||''),'');});
+  card.pending=(idx===undefined||idx===null)?[]:card.pending.filter(function(_,i){return i!==idx;});
+  _slaSave();_pxRerender();
+  toast('✕ رُفض التغيير','err');
+}
+// Redraw whichever pricing screen is open
+function _pxRerender(){
+  if(S.page==='finance'){rFin();return;}
+  if(document.getElementById('admin-content')){rAdminPricing();return;}
 }
 function _slaDeleteCard(){
   var c=S._slaSel;if(!c)return;
   if(!confirm('Delete the SLA rate card for '+c+'? They will fall back to the formula engine.'))return;
-  delete _slaLoad()[c];_slaSave();rAdminPricing();toast('Rate card deleted','ok');
+  delete _slaLoad()[c];_slaSave();_pxRerender();toast('Rate card deleted','ok');
 }
 function _slaExportCard(){
   var c=_slaCard(S._slaSel);if(!c)return;
@@ -20469,7 +20622,7 @@ function _slaImportRun(){
       if(map[scm]!==undefined){r[tk][b].rate=map[scm];n++;}
     });});
   });
-  _slaSave();closeM();rAdminPricing();
+  _slaSave();closeM();_pxRerender();
   toast(n?('✅ '+n+' rates updated'):'No matching item numbers found',n?'ok':'err');
 }
 function _csvDownload(rows,filename){
@@ -21628,7 +21781,7 @@ function _rcRun(){
   if(custCode&&typeof _custSetCode==='function')_custSetCode(cust,custCode);
   if((CUSTOMERS||[]).indexOf(cust)<0)CUSTOMERS.push(cust);
   audit('RATE_IMPORT',cust+' · '+applied+' lines','');
-  S._slaSel=cust;closeM();rAdminPricing();
+  S._slaSel=cust;closeM();_pxRerender();
   setTimeout(function(){var e=document.getElementById('sla-section');if(e)e.scrollIntoView({behavior:'smooth'});},80);
   toast('✅ '+applied+' rate lines imported · '+bands.length+' bands · '+trucks.length+' truck types'+(skipped?' ('+skipped+' rows skipped)':''),'ok');
 }
@@ -21897,9 +22050,11 @@ function invoiceApprovedSheets(){
 var WF_DEFAULT=[
   {id:'awaiting_operation',  leg:'out', step:'OUT-1', label:'Operations Check',    role:'operation',  icon:'📷', next:'awaiting_quality'},
   {id:'awaiting_quality',    leg:'out', step:'OUT-2', label:'Quality Approval',    role:'quality',    icon:'🧪', next:'in_transit'},
-  {id:'in_transit',          leg:'transit', step:'—', label:'In Transit',          role:'driver',     icon:'🚚', next:'inbound_operation'},
-  {id:'inbound_operation',   leg:'in',  step:'IN-1',  label:'Operations Unloading',role:'operation',  icon:'📷', next:'inbound_supervisor'},
-  {id:'inbound_supervisor',  leg:'in',  step:'IN-2',  label:'Supervisor Approval', role:'supervisor', icon:'👤', next:'completed'}
+  {id:'in_transit',          leg:'transit', step:'—', label:'In Transit',          role:'driver',     icon:'🚚', next:'inbound_security'},
+  // the vehicle comes back through the gate before anyone unloads it
+  {id:'inbound_security',    leg:'in',  step:'IN-1',  label:'Security Gate In',    role:'security',   icon:'🔒', next:'inbound_operation'},
+  {id:'inbound_operation',   leg:'in',  step:'IN-2',  label:'Operations Unloading',role:'operation',  icon:'📷', next:'inbound_supervisor'},
+  {id:'inbound_supervisor',  leg:'in',  step:'IN-3',  label:'Supervisor Approval', role:'supervisor', icon:'👤', next:'completed'}
 ];
 var WF_CHAIN=WF_DEFAULT.map(function(s){return Object.assign({},s);});
 
@@ -22271,7 +22426,7 @@ function _finRateCardHTML(card){
       }).join('')+'</tbody></table></div>';
   });
   out+='<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">'+
-    '<button class="btn btn-outline btn-sm" onclick="S.adminTab=\'pricing\';S._slaSel=\''+card.customer.replace(/'/g,"\'")+'\';nav(\'admin_mgmt\')">✎ Edit in Pricing</button>'+
+    '<button class="btn btn-outline btn-sm" onclick="S._finCust=\''+card.customer.replace(/'/g,"\'")+'\';nav(\'finance\')">✎ Open in Finance</button>'+
     '<button class="btn btn-outline btn-sm" onclick="S._slaSel=\''+card.customer.replace(/'/g,"\'")+'\';_slaExportCard()">⬇ Export</button></div>';
   return out;
 }
@@ -22287,7 +22442,6 @@ var WF_LEGACY_MAP={
   awaiting_ops:      'awaiting_operation',
   awaiting_ctrl:     'awaiting_quality',      // control room left the outbound chain
   awaiting_security: 'awaiting_quality',      // security gate left the outbound chain
-  inbound_security:  'inbound_operation',     // security gate left the inbound chain
   inbound_ctrl:      'inbound_supervisor',
   inbound_quality:   'inbound_supervisor'     // quality left the inbound chain
 };
@@ -22661,20 +22815,12 @@ function openInspectionForm(id,formId){
       '<div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;direction:rtl">'+
       (locked?'':'<button class="btn btn-outline btn-sm" onclick="opsScan(\''+id+'\',\'unit\')">📷 مسح بالكاميرا</button>')+
       '<div><label style="font-size:10.5px;font-weight:600;color:var(--t2);display:block;margin-bottom:3px">العدد المتوقع</label>'+
-        '<input '+(locked?'disabled':'')+' type="number" min="0" value="'+(expected||'')+'" placeholder="مثال 33" onchange="_opsSetUnits(\''+id+'\',this.value);openInspectionForm(\''+id+'\',\''+form.id+'\')" style="width:110px;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
-      '<span style="font-size:12.5px;font-weight:700;color:'+(expected&&units.length<expected?'#B45309':'#059669')+'">'+units.length+(expected?' / '+expected:'')+' ممسوحة'+(expected&&units.length<expected?' (باقي '+(expected-units.length)+')':'')+'</span>'+
+        '<input '+(locked?'disabled':'')+' type="number" min="0" value="'+(expected||'')+'" placeholder="مثال 33" onchange="_opsSetUnits(\''+id+'\',this.value);_formUnitsRefresh(\''+id+'\',\''+form.id+'\')" style="width:110px;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+      '<span id="form-unitcount" style="font-size:12.5px;font-weight:700;color:'+(expected&&units.length<expected?'#B45309':'#059669')+'">'+units.length+(expected?' / '+expected:'')+' ممسوحة'+(expected&&units.length<expected?' (باقي '+(expected-units.length)+')':'')+'</span>'+
       '</div>'+
       (units.length?'<div style="font-size:10.5px;color:var(--t2);margin-top:6px;direction:ltr;text-align:right">'+units.slice(-6).map(function(s){return s.code;}).join(' · ')+(units.length>6?' …':'')+'</div>':'')+
       '<div style="font-size:10px;color:var(--t3);margin-top:5px">يمكن لاحقاً استقبال الأرقام تلقائياً من نظام المخازن (JD Edwards / SAP) عبر الـ API.</div>')+
-    box('صور السيارة والشحنة',photos.length>=cfg.minPhotos,
-      '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;direction:rtl">'+
-      (locked?'':'<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 إضافة صورة<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+id+'\',this);setTimeout(function(){openInspectionForm(\''+id+'\',\''+form.id+'\');},600)"/></label>')+
-      '<span style="font-size:11.5px;color:var(--t2)">'+photos.length+' من '+cfg.minPhotos+' مطلوبة</span></div>'+
-      (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">'+photos.map(function(ph,i){
-        return '<div style="position:relative"><img src="'+ph.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/>'+
-          (locked?'':'<span onclick="opsDelPhoto(\''+id+'\','+i+');setTimeout(function(){openInspectionForm(\''+id+'\',\''+form.id+'\');},150)" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span>')+
-          '</div>';
-      }).join('')+'</div>':''))+
+    '<div id="form-photobox">'+_formPhotoBoxHTML(t,form,locked)+'</div>'+
     '</div>')+
 
     // ── the checklist items
@@ -22704,15 +22850,7 @@ function openInspectionForm(id,formId){
        '<div id="dmg-totals">'+_dmgTotalsHTML(t)+'</div>'+
        // photographic evidence of the damage itself
        '<div style="direction:rtl;font-size:12px;font-weight:800;color:var(--c1);margin:4px 0 7px">صور التلف</div>'+
-       '<div style="direction:rtl;display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:10px">'+
-         (locked?'':'<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 إضافة صورة<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+id+'\',this);setTimeout(function(){openInspectionForm(\''+id+'\',\''+form.id+'\');},600)"/></label>')+
-         '<span style="font-size:11.5px;color:var(--t2)">'+photos.length+' صورة</span>'+
-         (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;width:100%;margin-top:6px">'+photos.map(function(ph,i){
-           return '<div style="position:relative"><img src="'+ph.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/>'+
-             (locked?'':'<span onclick="opsDelPhoto(\''+id+'\','+i+');setTimeout(function(){openInspectionForm(\''+id+'\',\''+form.id+'\');},150)" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span>')+
-             '</div>';
-         }).join('')+'</div>':'')+
-       '</div>'
+       '<div id="form-photobox">'+_formPhotoBoxHTML(t,form,locked)+'</div>'
       :'')+
 
     // ── الإجراء المتخذ
@@ -22919,6 +23057,47 @@ function _dmgTableHTML(t,locked){
     '</div>';
   }).join('');
 }
+// ══ In-place refreshes ═════════════════════════════════════════════
+// Adding a photo or changing the expected count used to rebuild the whole
+// document, which threw the inspector back to the top of a long form. Only
+// the part that changed is repainted now.
+function _formPhotoBoxHTML(t,form,locked){
+  var photos=(t.ops&&t.ops.photos)||[];
+  var cfg=_opsCfg();
+  var dmg=!!form.damageTable;
+  var need=dmg?0:cfg.minPhotos;
+  var ok=photos.length>=need;
+  var body=
+    '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;direction:rtl">'+
+    (locked?'':'<label class="btn btn-outline btn-sm" style="cursor:pointer">📷 إضافة صورة<input type="file" accept="image/*" capture="environment" multiple style="display:none" onchange="opsAddPhoto(\''+t.id+'\',this);_formPhotoLater(\''+t.id+'\',\''+form.id+'\')"/></label>')+
+    '<span style="font-size:11.5px;color:var(--t2)">'+photos.length+(dmg?' صورة':' من '+need+' مطلوبة')+'</span></div>'+
+    (photos.length?'<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px;direction:rtl">'+photos.map(function(ph,i){
+      return '<div style="position:relative"><img src="'+ph.data+'" style="width:56px;height:56px;object-fit:cover;border-radius:8px;border:1px solid var(--bd)"/>'+
+        (locked?'':'<span onclick="opsDelPhoto(\''+t.id+'\','+i+');_formPhotoRefresh(\''+t.id+'\',\''+form.id+'\')" style="position:absolute;top:-6px;right:-6px;background:#EF4444;color:#fff;width:17px;height:17px;border-radius:50%;font-size:11px;display:flex;align-items:center;justify-content:center;cursor:pointer">×</span>')+
+        '</div>';
+    }).join('')+'</div>':'');
+  if(dmg)return '<div style="margin-bottom:10px">'+body+'</div>';
+  return '<div style="border:1.5px solid '+(ok?'#A7F3D0':'var(--bd)')+';background:'+(ok?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:10px 12px;margin-bottom:8px">'+
+    '<div style="font-size:12px;font-weight:800;color:'+(ok?'#065F46':'var(--t)')+';margin-bottom:7px">'+(ok?'✓ ':'')+'صور السيارة والشحنة</div>'+body+'</div>';
+}
+function _formPhotoRefresh(id,fid){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var form=INSPECTION_FORMS[fid];if(!form)return;
+  var el=document.getElementById('form-photobox');
+  if(el)el.innerHTML=_formPhotoBoxHTML(t,form,_formLocked(t,form));
+}
+// the file reader needs a moment before the photo exists
+function _formPhotoLater(id,fid){setTimeout(function(){_formPhotoRefresh(id,fid);},700);}
+function _formUnitsRefresh(id,fid){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var el=document.getElementById('form-unitcount');
+  if(!el)return;
+  var op=t.ops||{};
+  var n=(op.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';}).length;
+  var exp=op.expectedUnits||0;
+  el.textContent=n+(exp?' / '+exp:'')+' ممسوحة'+(exp&&n<exp?' (باقي '+(exp-n)+')':'');
+  el.style.color=(exp&&n<exp)?'#B45309':'#059669';
+}
 function _formStampCell(label,stamp,locked,btn){
   return '<div style="flex:1;min-width:118px;border:1.5px solid '+(stamp?'#A7F3D0':'var(--bd)')+';background:'+(stamp?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:8px 10px">'+
     '<div style="font-size:10.5px;font-weight:800;color:'+(stamp?'#065F46':'var(--t2)')+'">'+label+'</div>'+
@@ -22976,10 +23155,9 @@ function _dmgOpen(id){
 // they work — and once it is raised it stays visible to the end of the leg.
 function _dmgCardHTML(t){
   if(!t)return '';
-  var leg=/^inbound/.test(t.status||'')||t.status==='completed';
+  // Damage can be found on any journey, loading or unloading, so the report
+  // is offered on every shipment — and once raised it stays visible.
   var raised=_dmgRaised(t);
-  if(!leg&&!raised)return '';
-  if(t.status==='completed'&&!raised)return '';
   var done=_formLocked(t,INSPECTION_FORMS.damage);
   var st=_formState(t,INSPECTION_FORMS.damage);
   var sigs=INSPECTION_FORMS.damage.signatures.map(function(sg){
