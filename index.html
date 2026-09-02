@@ -3004,7 +3004,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · start-over';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · cycle';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -14272,6 +14272,12 @@ function opsScan(id,kind){
   else{_opsManualScan(id,kind,multi);}
 }
 function _opsUnitCount(t){return (t.ops&&t.ops.scans||[]).filter(function(s){return s.kind==='unit'||s.kind==='carton';}).length;}
+// Closing the scanner returns to the document the operator opened it from,
+// instead of dumping them back on the Operations list mid-inspection.
+function _opsBackToForm(){
+  if(typeof _formReturn==='function'&&_formReturn())return;
+  if(typeof rOperation==='function')rOperation();
+}
 function _opsRecordScan(id,kind,code,silent){
   var t=_opsGet(id);if(!t)return false;
   // a damaged-carton scan belongs to its row in the damage report
@@ -14357,8 +14363,8 @@ function _opsCameraScan(id,kind,multi){
     '<div id="ops-scan-status" style="font-size:12px;color:var(--t2);text-align:center;margin-top:8px">Point the camera at the barcode…</div>'+
     '<div class="m-foot"><button class="btn btn-outline" onclick="_opsStopScan();closeM();_opsManualScan(\''+id+'\',\''+kind+'\','+(multi?'true':'false')+')">⌨ Manual</button>'+
     (multi
-      ?'<button class="btn btn-primary" onclick="_opsStopScan();closeM();rOperation()">Done</button>'
-      :'<button class="btn btn-outline" onclick="_opsStopScan();closeM()">Cancel</button>')+'</div>');
+      ?'<button class="btn btn-primary" onclick="_opsStopScan();closeM();_opsBackToForm()">Done</button>'
+      :'<button class="btn btn-outline" onclick="_opsStopScan();closeM();_opsBackToForm()">Cancel</button>')+'</div>');
   if(multi){var cc=document.getElementById('ops-scan-count');if(cc)cc.textContent=_opsUnitCount(t)+(t.ops.expectedUnits?' / '+t.ops.expectedUnits:'')+' scanned';}
   var formats=kind==='plate'?['code_39','code_128','qr_code']:['ean_13','ean_8','upc_a','upc_e','code_128','code_39','qr_code','data_matrix'];
   var detector=null;
@@ -21439,8 +21445,8 @@ function _drvTripCard(t){
       : '<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
         '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Start the trip</div>'+
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
-          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Start KM *</label><input type="number" id="drv-skm-'+t.id+'" value="'+(ct.startKm||'')+'"/></div>'+
-          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Loading</label><select id="drv-sload-'+t.id+'">'+
+          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Start KM *</label><input type="number" id="drv-skm-'+t.id+'" value="'+(ct.startKm||'')+'" onchange="drvTripField(\''+t.id+'\',\'startKm\',this.value)"/></div>'+
+          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Loading</label><select id="drv-sload-'+t.id+'" onchange="drvTripField(\''+t.id+'\',\'startLoading\',this.value)">'+
             LOADING_TYPES.map(function(x){return '<option'+(ct.startLoading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
           '<button class="btn btn-primary btn-sm" onclick="drvStartTrip(\''+t.id+'\')">▶ Start</button>'+
         '</div></div>')+
@@ -21452,7 +21458,7 @@ function _drvTripCard(t){
       ? '<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 12px;margin-top:10px">'+
         '<div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:8px">All stops done — close the trip</div>'+
         '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
-          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">End KM *</label><input type="number" id="drv-ekm-'+t.id+'" value="'+(ct.endKm||'')+'"/></div>'+
+          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">End KM *</label><input type="number" id="drv-ekm-'+t.id+'" value="'+(ct.endKm||'')+'" onchange="drvTripField(\''+t.id+'\',\'endKm\',this.value)"/></div>'+
           '<button class="btn btn-success btn-sm" onclick="drvEndTrip(\''+t.id+'\')">✅ Complete Trip</button>'+
         '</div></div>'
       : '')+
@@ -21916,7 +21922,7 @@ function _drvDestRow(t,d,i,started,isActive){
       '<div style="font-size:16px;font-weight:800;color:var(--t)">'+(d.name||'—')+'</div></div>'+
 
     '<label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Odometer reading *</label>'+
-    '<input type="number" inputmode="numeric" id="dd-k-'+t.id+'-'+i+'" value="'+(d.km||'')+'" placeholder="e.g. 12055" style="'+big+';margin-bottom:13px"/>'+
+    '<input type="number" inputmode="numeric" id="dd-k-'+t.id+'-'+i+'" value="'+(d.km||'')+'" placeholder="e.g. 12055" onchange="drvStopField(\''+t.id+'\','+i+',\'km\',this.value)" style="'+big+';margin-bottom:13px"/>'+
 
     '<label style="font-size:11.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:5px">Loading type</label>'+
     '<div class="drv-load-row" data-tid="'+t.id+'" data-idx="'+i+'" style="display:flex;gap:6px;margin-bottom:13px">'+
@@ -22002,19 +22008,35 @@ function drvStamp(id,i,which){
     toast('🕒 '+sp.label+' '+s.time,'ok');
   });
 }
-// Free-text the sheet asks for at each stop
+// What the driver types is saved as it is typed. It used to live only in
+// the input on screen, so any re-render threw it away and the trip could
+// not be closed — the reading has to belong to the shipment, not the page.
 function drvStopField(id,i,k,v){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var d=_shipNormalize(t).destinations[i];if(!d)return;
-  d[k]=v;_lcSave&&_lcSave();
+  d[k]=(k==='km'||k==='invoices')?(+v||0):v;
+  _lcSave&&_lcSave();
+}
+function drvTripField(id,k,v){
+  var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
+  var c=_shipNormalize(t);
+  c[k]=(k==='startKm'||k==='endKm')?(+v||0):v;
+  _lcSave&&_lcSave();
+}
+// Read what the driver entered: the saved value, or the box on screen if
+// they typed and pressed the button without leaving the field.
+function _drvNum(domId,saved){
+  var el=document.getElementById(domId);
+  var live=el?+el.value:0;
+  return live||(+saved||0);
 }
 function drvStartTrip(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var c=_shipNormalize(t);
-  var km=+((document.getElementById('drv-skm-'+id)||{}).value||0);
+  var km=_drvNum('drv-skm-'+id,c.startKm);
   if(!km){toast('Enter the start KM','err');return;}
   c.startKm=km;
-  c.startLoading=(document.getElementById('drv-sload-'+id)||{}).value||'Loading';
+  c.startLoading=((document.getElementById('drv-sload-'+id)||{}).value)||c.startLoading||'Loading';
   var now=_tc();
   c.actualStartTime=now.time;
   c.startStamp=now;
@@ -22059,7 +22081,7 @@ function drvCompleteDest(id,i){
   var c=_shipNormalize(t);
   var d=c.destinations[i];if(!d)return;
   var g=function(p){var e=document.getElementById('dd-'+p+'-'+id+'-'+i);return e?e.value:'';};
-  var km=+g('k');
+  var km=_drvNum('dd-k-'+id+'-'+i,d.km);
   if(!km){toast('Enter the KM reading at this stop','err');return;}
   var prevKm=i===0?(+c.startKm||0):(+((c.destinations[i-1]||{}).km)||0);
   if(km<prevKm){toast('KM ('+km+') cannot be less than the previous reading ('+prevKm+')','err');return;}
@@ -22086,7 +22108,7 @@ function drvCompleteDest(id,i){
 function drvEndTrip(id){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var c=_shipNormalize(t);
-  var km=+((document.getElementById('drv-ekm-'+id)||{}).value||0);
+  var km=_drvNum('drv-ekm-'+id,c.endKm);
   if(!km){toast('Enter the end KM','err');return;}
   var pend=(c.destinations||[]).filter(function(d){return !d.completed;});
   if(pend.length){toast(pend.length+' stop(s) still open','err');return;}
@@ -22699,7 +22721,11 @@ function invoiceApprovedSheets(){
 // ══════════════════════════════════════════════════════════════════
 var WF_DEFAULT=[
   {id:'awaiting_operation',  leg:'out', step:'OUT-1', label:'Operations Check',    role:'operation',  icon:'📷', next:'awaiting_quality'},
-  {id:'awaiting_quality',    leg:'out', step:'OUT-2', label:'Quality Approval',    role:'quality',    icon:'🧪', next:'in_transit'},
+  {id:'awaiting_quality',    leg:'out', step:'OUT-2', label:'Quality Approval',    role:'quality',    icon:'🧪', next:'awaiting_ctrl'},
+  // quality releases the load; the control room authorises the journey and
+  // the gate lets the vehicle out
+  {id:'awaiting_ctrl',       leg:'out', step:'OUT-3', label:'Control Room',        role:'control_room',icon:'🎛', next:'awaiting_security'},
+  {id:'awaiting_security',   leg:'out', step:'OUT-4', label:'Security Gate Out',   role:'security',   icon:'🔒', next:'in_transit'},
   {id:'in_transit',          leg:'transit', step:'—', label:'In Transit',          role:'driver',     icon:'🚚', next:'inbound_security'},
   // the vehicle comes back through the gate before anyone unloads it
   {id:'inbound_security',    leg:'in',  step:'IN-1',  label:'Security Gate In',    role:'security',   icon:'🔒', next:'inbound_operation'},
@@ -23090,8 +23116,6 @@ var WF_LEGACY_MAP={
   in_progress:       'awaiting_operation',
   awaiting_truck:    'awaiting_operation',
   awaiting_ops:      'awaiting_operation',
-  awaiting_ctrl:     'awaiting_quality',      // control room left the outbound chain
-  awaiting_security: 'awaiting_quality',      // security gate left the outbound chain
   inbound_ctrl:      'inbound_supervisor',
   inbound_quality:   'inbound_supervisor'     // quality left the inbound chain
 };
