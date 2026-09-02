@@ -2683,6 +2683,202 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
   border-bottom: 2px solid rgba(249,115,22,.45);
   border-right: 2px solid rgba(249,115,22,.45);
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   INSTAQ SHELL + COMPACT DENSITY
+   The frame and rail follow InstaQ's language — a white rail on a light
+   page, one solid accent for the active item, hairline borders instead of
+   glow — and every row, card and table is tightened so more of the work
+   fits on screen. Presentation only: no markup, no behaviour, no data.
+   ══════════════════════════════════════════════════════════════════ */
+:root{
+  --iq-rail:#ffffff;      --iq-rail2:#f1f4f8;   --iq-rail-text:#5f6b7a;
+  /* the chrome follows whichever skin is chosen — one accent, everywhere */
+  --iq-page:#f2f4f6;      --iq-border:#d8dde4;
+  --iq-text:#1f2d3d;      --iq-faint:#9aa5b1;   --iq-surface2:#f4f6f8;
+  --iq-shadow:0 1px 3px rgba(15,35,60,.10);
+}
+/* the app marks dark on the body, not the root — match both */
+[data-theme=dark],
+body[data-dark="1"]{
+  --iq-rail:#0f1320;      --iq-rail2:#1b2033;   --iq-rail-text:#8b93ad;
+  --iq-page:#0d0f19;      --iq-border:#2a3049;  --iq-text:#e6e9f3;
+  --iq-faint:#5d6584;     --iq-surface2:#1b1f31;
+  --iq-shadow:0 4px 20px rgba(0,0,0,.45);
+}
+
+/* ── The rail ─────────────────────────────────────────────────── */
+body.iq .sidebar{
+  background:var(--iq-rail)!important;
+  border-right:1px solid var(--iq-border);
+  width:212px;
+}
+/* dark mode: the rail and the page darken, the accent stays the accent */
+body.iq[data-dark="1"] .sidebar{background:var(--iq-rail)!important}
+body.iq[data-dark="1"] #sidebar,
+body.iq[data-dark="1"] #sidebar.sb-light{color:var(--iq-rail-text)}
+body.iq[data-dark="1"] #sidebar.sb-light .sbi{color:var(--iq-rail-text)}
+body.iq[data-dark="1"] #sidebar.sb-light .sb-user-name,
+body.iq[data-dark="1"] #sb-tenant-name,
+body.iq[data-dark="1"] #sidebar.sb-light #sb-tenant-name{color:var(--iq-text)!important}
+body.iq[data-dark="1"] .sb-logo-box svg path,
+body.iq[data-dark="1"] #sidebar.sb-light .sb-logo-box svg path{fill:var(--c1,#1a64b7)!important}
+body.iq[data-dark="1"] #sidebar.sb-light .sb-section-title{color:var(--iq-faint)}
+body.iq .sidebar::after{display:none}            /* no purple glow */
+body.iq #sidebar,
+body.iq #sidebar.sb-light{color:var(--iq-rail-text)}
+body.iq .sbi,
+body.iq #sidebar.sb-light .sbi{
+  color:var(--iq-rail-text);
+  font-size:13px; font-weight:600;
+  padding:10px 14px; margin:1px 6px;
+  border-radius:4px; gap:11px;
+}
+body.iq .sbi:hover,
+body.iq #sidebar.sb-light .sbi:hover{
+  background:var(--iq-rail2)!important;
+  color:var(--iq-text)!important;
+}
+body.iq .sbi.active,
+body.iq #sidebar.sb-light .sbi.active{
+  background:var(--c1,#1a64b7)!important;
+  color:#fff!important;
+  box-shadow:none;
+  border-left:3px solid rgba(255,255,255,.55);
+  padding-left:10px;
+}
+body.iq .sbi-icon{
+  width:18px; height:18px; font-size:13px;
+  background:none; border-radius:0;
+}
+body.iq .sbi.active .sbi-icon{background:none}
+body.iq .sbi-label{font-size:13px;font-weight:600}
+body.iq .sb-section-title,
+body.iq #sidebar.sb-light .sb-section-title{
+  font-size:10px; font-weight:800; letter-spacing:1.1px;
+  text-transform:uppercase; color:var(--iq-faint);
+  padding:9px 14px 3px;
+}
+body.iq .sb-divider{background:var(--iq-border)}
+body.iq .sb-user{border-top:1px solid var(--iq-border)}
+body.iq .sb-user:hover{background:var(--iq-rail2)}
+body.iq .sb-user-name{color:var(--iq-text)!important}
+body.iq .sb-user-role{color:var(--iq-rail-text)!important}
+body.iq .sb-logo-box svg path{fill:var(--c1,#1a64b7)!important}
+body.iq #sb-tenant-name{color:var(--iq-text)!important}
+body.iq .sb-theme-row{border-top:1px solid var(--iq-border)}
+body.iq .sb-sw-lbl{color:var(--iq-faint)!important}
+
+/* ── The command bar ──────────────────────────────────────────────
+   Solid accent across the top, the way InstaQ reads: the chrome is one
+   confident band and the content below it is quiet. */
+body.iq .main,body.iq #main{background:var(--iq-page)}
+body.iq .topbar{
+  height:auto;
+  min-height:0;
+  background:var(--c1,#1a64b7);
+  border-bottom:none;
+  box-shadow:0 1px 6px rgba(0,0,0,.14);
+  padding:11px 24px;
+}
+body.iq .topbar .tb-brand-name,
+body.iq .topbar #tb-tenant-name{color:#fff}
+body.iq .tb-logo-box svg path{fill:#fff!important}
+body.iq .tb-search{
+  background:#fff;
+  border:1px solid rgba(255,255,255,.35);
+  border-radius:6px;
+  height:32px;
+  padding:0 10px;
+}
+body.iq .tb-search input{font-size:12.5px}
+body.iq .tb-brand-name{font-size:14px}
+body.iq .tb-logo-box{width:26px;height:26px}
+body.iq .tb-icon-btn{width:30px;height:30px;font-size:14px}
+body.iq .tb-theme-toggle{padding:4px 9px;height:30px}
+body.iq .tb-profile{padding:3px 9px;gap:8px;border-radius:6px}
+body.iq .tb-divider{height:22px}
+body.iq .tb-search:focus-within{border-color:#fff}
+body.iq .tb-icon-btn,
+body.iq .tb-theme-toggle{
+  background:rgba(255,255,255,.14);
+  border-color:rgba(255,255,255,.25);
+  color:#fff;
+  border-radius:6px;
+}
+body.iq .tb-icon-btn:hover,
+body.iq .tb-theme-toggle:hover{
+  background:rgba(255,255,255,.26);
+  border-color:rgba(255,255,255,.5);
+  color:#fff;
+}
+body.iq .tb-theme-lbl{color:rgba(255,255,255,.92)}
+body.iq .tb-divider{background:rgba(255,255,255,.25)}
+body.iq .tb-profile:hover{background:rgba(255,255,255,.14)}
+body.iq .tb-profile .tb-name{color:#fff!important}
+body.iq .tb-profile .tb-role,
+body.iq .topbar #tb-role{color:rgba(255,255,255,.8)!important}
+body.iq #tb-uname{color:#fff!important}
+body.iq .tb-avatar{
+  background:rgba(255,255,255,.22);
+  border:1px solid rgba(255,255,255,.4);
+  width:32px;height:32px;
+}
+
+/* ── Density: cards, tables, forms, buttons ───────────────────── */
+body.iq .card{
+  padding:13px 15px;
+  border-radius:8px;
+  border:1px solid var(--iq-border);
+  box-shadow:var(--iq-shadow);
+}
+body.iq .card:hover{box-shadow:var(--iq-shadow)}
+body.iq .card-hd{margin-bottom:9px;padding-bottom:0}
+body.iq .card-title{font-size:13.5px}
+body.iq .page-head{margin-bottom:13px}
+body.iq .page-head h2{font-size:19px}
+body.iq .page-head-sub{font-size:12px;margin-top:2px}
+body.iq .kpi-row{gap:9px;margin-bottom:13px}
+body.iq .kpi-card{padding:11px 13px;border-radius:8px;box-shadow:var(--iq-shadow)}
+body.iq .kpi-card:hover{transform:none;box-shadow:var(--iq-shadow)}
+body.iq .kpi-val{font-size:19px}
+body.iq .kpi-label{font-size:10.5px}
+body.iq .kpi-icon-wrap{width:32px;height:32px;font-size:15px}
+body.iq .tbl th{
+  padding:8px 10px;font-size:10.5px;letter-spacing:.5px;
+  text-transform:uppercase;background:var(--iq-surface2);
+  border-bottom:1px solid var(--iq-border);
+}
+body.iq .tbl td{padding:7px 10px;font-size:12.5px;line-height:1.45;border-bottom:1px solid var(--iq-border)}
+body.iq .tbl tr:hover td{background:var(--iq-surface2)}
+/* buttons living inside a row must not set the row's height */
+body.iq .tbl td .btn,
+body.iq .tbl td .btn-sm{padding:4px 9px;font-size:11px;line-height:1.35}
+/* status pills read as InstaQ's stage chips */
+body.iq .tbl td span[style*="border-radius:20px"]{
+  border-radius:3px!important;
+  text-transform:uppercase;
+  font-size:9.5px!important;
+  letter-spacing:.4px;
+  font-weight:800!important;
+}
+body.iq .btn{padding:7px 13px;font-size:12.5px;border-radius:4px}
+body.iq .btn-sm{padding:5px 10px;font-size:11.5px;border-radius:4px}
+body.iq .fg{margin-bottom:9px}
+body.iq .fg label{font-size:11.5px;margin-bottom:3px}
+body.iq .fg input,body.iq .fg select,body.iq .fg textarea{padding:7px 9px;font-size:12.5px;border-radius:4px}
+body.iq .tabs .tab{padding:6px 12px;font-size:12px;border-radius:4px}
+
+/* ── Density: the operational cards, which carry inline padding ── */
+body.iq #content [style*="padding:14px"]{padding:10px 12px!important}
+body.iq #content [style*="padding:12px"]{padding:9px 11px!important}
+body.iq #content [style*="padding:10px 13px"]{padding:8px 11px!important}
+body.iq #content [style*="padding:10px 12px"]{padding:8px 11px!important}
+body.iq #content [style*="padding:11px 12px"]{padding:8px 11px!important}
+body.iq #content [style*="padding:9px 11px"]{padding:7px 10px!important}
+body.iq #content [style*="margin-bottom:14px"]{margin-bottom:10px!important}
+body.iq #content [style*="margin-bottom:12px"]{margin-bottom:9px!important}
+body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
@@ -3004,7 +3200,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · finance-sheet';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · compact';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -6113,7 +6309,26 @@ function toggleDark(){
 function applyTheme(){
   var dark=S.settings&&S.settings.darkMode;
   document.body.dataset.dark=dark?'1':'0';
+  _iqApply();
 }
+// ══════════════════════════════════════════════════
+// COMPACT SHELL
+// The InstaQ frame and the tighter row spacing. On by default; it is a
+// stylesheet and nothing else, so turning it off restores the old look
+// exactly. Toggle from Admin → Settings → Appearance.
+// ══════════════════════════════════════════════════
+function _iqOn(){
+  try{ return localStorage.getItem('ip_compact')!=='0'; }catch(e){ return true; }
+}
+function _iqApply(){
+  document.body.classList.toggle('iq',_iqOn());
+}
+function _iqToggle(on){
+  try{ localStorage.setItem('ip_compact',on?'1':'0'); }catch(e){}
+  _iqApply();
+  toast(on?'✅ العرض المضغوط مفعّل':'العرض الكلاسيكي','ok');
+}
+document.addEventListener('DOMContentLoaded',_iqApply);
 
 // ══════════════════════════════════════════════════
 // TRIP COST CALCULATOR (Per Customer Modifiers)
@@ -11046,7 +11261,12 @@ function rAdminSettings(){
   '<div class="card"><div class="card-hd"><div class="card-title">🎨 Theme</div></div>'+
   '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
   '<button class="btn btn-primary" onclick="document.body.dataset.dark=\'0\';applyTheme()">☀️ Light</button>'+
-  '<button class="btn btn-outline" onclick="document.body.dataset.dark=\'1\';applyTheme()">🌙 Dark</button></div></div>'+
+  '<button class="btn btn-outline" onclick="document.body.dataset.dark=\'1\';applyTheme()">🌙 Dark</button></div>'+
+  '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-top:12px;padding-top:12px;border-top:1px solid var(--tb)">'+
+    '<div><div style="font-size:13px;font-weight:600">Compact view</div>'+
+    '<div style="font-size:11.5px;color:var(--t2);margin-top:2px">Tighter rows and the InstaQ frame. Turn it off for the classic look.</div></div>'+
+    '<input type="checkbox" '+(_iqOn()?'checked':'')+' onchange="_iqToggle(this.checked)" style="width:18px;height:18px;cursor:pointer"/>'+
+  '</div></div>'+
   '<div class="card"><div class="card-hd"><div class="card-title">💾 Backup & Restore</div></div>'+
   '<div style="font-size:12px;color:var(--t2);margin-bottom:12px">Export a full backup of all data (trips, users, trucks, invoices, settings…) to a file, or restore from a previous backup. Keep regular backups in a safe place.</div>'+
   '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
