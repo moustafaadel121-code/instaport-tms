@@ -8,3 +8,6 @@ dist/
 start-server.js
 *.docx
 server.log
+
+server.log
+server.1.log
