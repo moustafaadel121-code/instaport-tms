@@ -3004,7 +3004,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · cycle';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · finance-sheet';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -14309,7 +14309,7 @@ function opsSetExpected(id){
     '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">How many pallets / cartons should this shipment contain? (e.g. a trailer may hold 33 pallets). The counter turns green when all are scanned.</div>'+
     '<div class="fg"><label>Expected count</label><input id="ops-exp" type="number" min="0" value="'+cur+'" placeholder="e.g. 33" autofocus/></div>'+
     '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
-    '<button class="btn btn-primary" onclick="var v=+(document.getElementById(\'ops-exp\')||{}).value||0;var tt=_opsGet(\''+id+'\');tt.ops.expectedUnits=v;_lcSave();closeM();rOperation();">Save</button></div>');
+    '<button class="btn btn-primary" onclick="var v=+(document.getElementById(\'ops-exp\')||{}).value||0;var tt=_opsGet(\''+id+'\');tt.ops.expectedUnits=v;_lcSave();closeM();_opsBackToForm();">Save</button></div>');
 }
 function _opsManualScan(id,kind,multi){
   if(multi){
@@ -14318,7 +14318,7 @@ function _opsManualScan(id,kind,multi){
   openM('<div class="m-title">🔖 Enter Plate Number</div>'+
     '<div style="font-size:12px;color:var(--t2);margin-bottom:10px">Camera scanning isn\'t available — enter the code manually.</div>'+
     '<div class="fg"><input id="ops-code" placeholder="e.g. 4789 أ ج ي" style="font-size:16px" autofocus/></div>'+
-    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM()">Cancel</button>'+
+    '<div class="m-foot"><button class="btn btn-outline" onclick="closeM();_opsBackToForm()">Cancel</button>'+
     '<button class="btn btn-primary" onclick="var v=(document.getElementById(\'ops-code\')||{}).value.trim();if(v){closeM();_opsRecordScan(\''+id+'\',\''+kind+'\',v);}else{toast(\'Enter a code\',\'err\');}">Save</button></div>');
 }
 // Manual batch entry for pallets/cartons (scanner guns type + Enter)
@@ -14331,7 +14331,7 @@ function _opsManualBatch(id,kind){
       '<div class="fg"><input id="ops-bcode" placeholder="Scan or type a code, then Enter" style="font-size:16px" autofocus '+
         'onkeydown="if(event.key===\'Enter\'){var v=this.value.trim();if(v&&_opsRecordScan(\''+id+'\',\'unit\',v,true)){this.value=\'\';_opsBatchRefresh(\''+id+'\');}else{this.value=\'\';}}"/></div>'+
       '<div id="ops-batch-list" style="max-height:160px;overflow:auto;margin-bottom:8px"></div>'+
-      '<div class="m-foot"><button class="btn btn-primary" onclick="closeM();rOperation()">Done ('+cnt+')</button></div>');
+      '<div class="m-foot"><button class="btn btn-primary" onclick="closeM();_opsBackToForm()">Done ('+cnt+')</button></div>');
     _opsBatchRefresh(id);
   };
   render();
@@ -21439,29 +21439,11 @@ function _drvTripCard(t){
     '</div>'+
     '<div style="height:6px;background:var(--bg);border-radius:20px;overflow:hidden;margin-bottom:12px">'+
       '<div style="height:100%;width:'+pct+'%;background:linear-gradient(90deg,#6C3FF5,#059669);transition:.3s"></div></div>'+
-    // Trip start
-    (started
-      ? '<div style="font-size:11.5px;color:var(--t2);margin-bottom:10px">▶ Started '+ct.actualStartTime+' · Start KM <b>'+(ct.startKm||'—')+'</b></div>'
-      : '<div style="background:var(--bg);border-radius:10px;padding:10px 12px;margin-bottom:12px">'+
-        '<div style="font-size:12px;font-weight:700;margin-bottom:8px">Start the trip</div>'+
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
-          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Start KM *</label><input type="number" id="drv-skm-'+t.id+'" value="'+(ct.startKm||'')+'" onchange="drvTripField(\''+t.id+'\',\'startKm\',this.value)"/></div>'+
-          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">Loading</label><select id="drv-sload-'+t.id+'" onchange="drvTripField(\''+t.id+'\',\'startLoading\',this.value)">'+
-            LOADING_TYPES.map(function(x){return '<option'+(ct.startLoading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
-          '<button class="btn btn-primary btn-sm" onclick="drvStartTrip(\''+t.id+'\')">▶ Start</button>'+
-        '</div></div>')+
+    // Trip start and end are fields of the operation sheet, not loose blocks
+    _drvSheetTopHTML(t)+
     // Destinations
     '<div style="font-size:11px;font-weight:800;color:var(--t2);text-transform:uppercase;letter-spacing:.6px;margin-bottom:8px">Destinations</div>'+
     (function(){var act=ds.findIndex(function(x){return !x.completed;});return ds.map(function(d,i){return _drvDestRow(t,d,i,started,i===act);}).join('');})()+
-    // Trip end
-    (done===ds.length&&ds.length&&started
-      ? '<div style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 12px;margin-top:10px">'+
-        '<div style="font-size:12px;font-weight:700;color:#059669;margin-bottom:8px">All stops done — close the trip</div>'+
-        '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
-          '<div class="fg" style="width:110px;margin:0"><label style="font-size:11px">End KM *</label><input type="number" id="drv-ekm-'+t.id+'" value="'+(ct.endKm||'')+'" onchange="drvTripField(\''+t.id+'\',\'endKm\',this.value)"/></div>'+
-          '<button class="btn btn-success btn-sm" onclick="drvEndTrip(\''+t.id+'\')">✅ Complete Trip</button>'+
-        '</div></div>'
-      : '')+
   '</div>'+
   // the operation sheet travels with the trip
   _drvSheetHTML(t);
@@ -21485,7 +21467,7 @@ function _drvTripCard(t){
 var DRV_CFG_DEFAULT={
   doc:'TR2001A-I/04',
   ctrlPhone:'01099330052',
-  tempFrom:2, tempTo:11, tempStep:30,     // hours of the day, minutes per slot
+  tempFrom:0, tempTo:23, tempStep:30,     // the whole day, 00:00 to 23:30
   checks:[
     {k:'photoSent',  label:'تصوير الداتا لوجر والسنسور ووحدة التبريد في مكانها الصحيح وإرسال الصورة إلى غرفة التحكم'},
     {k:'unifiedApp', label:'استخدام تطبيق هيئة الشراء الموحد'},
@@ -21617,7 +21599,8 @@ function _drvTempSlots(){
   var out=[];
   for(var m=from*60;m<(to+1)*60;m+=step){
     var h=Math.floor(m/60), mm=m%60;
-    out.push(h+':'+('0'+mm).slice(-2));
+    // zero-padded, so 00:00 reads as midnight rather than "0:00"
+    out.push(('0'+h).slice(-2)+':'+('0'+mm).slice(-2));
   }
   return out;
 }
@@ -21716,6 +21699,72 @@ function drvSheetSign(id,who){
     });
   });
 }
+// ── The sheet, split around the stops the way the paper reads ──────
+// Header, pre-loading checks and the odometer at departure come before the
+// journey; the closing odometer, temperatures, expenses and signatures come
+// after it. It is one document either way — start and end KM are fields of
+// the sheet, not loose buttons floating above it.
+function _drvSheetTopHTML(t){
+  var sh=_drvSheet(t), ct=_shipNormalize(t);
+  var started=!!ct.actualStartTime;
+  var lock=!!sh.signed;
+  var planned=[
+    ['التاريخ',        t.ts||''],
+    ['اسم السائق',     t.driver||''],
+    ['اسم الشركة',     t.customer||''],
+    ['نوع السيارة',    t.truckType||''],
+    ['رقم السيارة',    t.truck||''],
+    ['الدرجة المطلوبة',t.condition||''],
+    ['رقم غرفة التحكم',_drvCfg().ctrlPhone||'']
+  ];
+  var yn=function(k,label,v){
+    return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:9px;padding:8px 11px;margin-bottom:6px">'+
+      '<span style="font-size:11.5px;line-height:1.6;flex:1">'+label+'</span>'+
+      '<div style="display:flex;gap:5px;flex-shrink:0">'+
+      ['نعم','لا'].map(function(o){
+        var on=v===o, id2='dsc-'+k+'-'+(o==='نعم'?'y':'n'), col=o==='نعم'?'#059669':'#DC2626';
+        return '<span id="'+id2+'" onclick="'+(lock?'':'drvSheetCheck(\''+t.id+'\',\''+k+'\',\''+o+'\')')+'" style="cursor:'+(lock?'default':'pointer')+';font-size:11.5px;font-weight:700;padding:5px 14px;border-radius:8px;border:1.5px solid '+(on?col:'var(--bd)')+';background:'+(on?col:'var(--surf)')+';color:'+(on?'#fff':'var(--t2)')+'">'+o+'</span>';
+      }).join('')+'</div></div>';
+  };
+  var ro=lock?'disabled ':'';
+  return '<div style="direction:rtl;border:1.5px solid var(--bd);border-radius:12px;padding:12px 14px;margin-bottom:12px;background:var(--surf)">'+
+    '<div style="font-size:13px;font-weight:800;margin-bottom:2px">📋 بيان تشغيل السيارة</div>'+
+    '<div style="font-size:10.5px;color:var(--t2);margin-bottom:10px">'+_drvCfg().doc+'</div>'+
+    // plan data, locked
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-bottom:12px">'+
+    planned.map(function(p){
+      return '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:9px;padding:7px 10px">'+
+        '<div style="font-size:10px;color:var(--t3);font-weight:700">'+p[0]+' 🔒</div>'+
+        '<div style="font-size:12.5px;font-weight:700;color:var(--t);margin-top:1px">'+(p[1]||'—')+'</div></div>';
+    }).join('')+'</div>'+
+    // pre-loading
+    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin-bottom:6px">قبل التحميل</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:8px">'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">حالة الداتا لوجر</label>'+
+        '<select '+ro+'onchange="drvSheetSet(\''+t.id+'\',\'logger\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:12.5px;background:var(--bg);color:var(--t)">'+
+        ['','سليم','غير سليم','غير موجود'].map(function(o){return '<option'+(sh.logger===o?' selected':'')+'>'+(o||'— اختر —')+'</option>';}).join('')+'</select></div>'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">حالة الـ RMS</label>'+
+        '<select '+ro+'onchange="drvSheetSet(\''+t.id+'\',\'rms\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:12.5px;background:var(--bg);color:var(--t)">'+
+        ['','سليم','غير سليم','غير موجود'].map(function(o){return '<option'+(sh.rms===o?' selected':'')+'>'+(o||'— اختر —')+'</option>';}).join('')+'</select></div>'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">حرارة السيارة عند الخروج (°C)</label>'+
+        '<input '+ro+'type="number" step="0.1" value="'+(sh.tempOut===undefined?'':sh.tempOut)+'" onchange="drvSheetSet(\''+t.id+'\',\'tempOut\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:14px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+    '</div>'+
+    _drvChecks().map(function(c){return yn(c.k,c.label,sh.checks[c.k]);}).join('')+
+    // departure odometer — a field of the sheet
+    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin:12px 0 6px">بداية الرحلة</div>'+
+    (started
+      ? '<div style="background:#F0FDF4;border:1.5px solid #A7F3D0;border-radius:10px;padding:9px 12px;font-size:12px;color:#065F46">'+
+        '▶ انطلقت '+ct.actualStartTime+' '+(ct.startStamp?_tcMark(ct.startStamp):'')+' · عداد البداية <b>'+(ct.startKm||'—')+'</b> · '+(ct.startLoading||'')+'</div>'
+      : '<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
+          '<div style="width:120px"><label style="font-size:10.5px;font-weight:700;color:var(--t2)">عداد البداية *</label>'+
+            '<input type="number" inputmode="numeric" id="drv-skm-'+t.id+'" value="'+(ct.startKm||'')+'" onchange="drvTripField(\''+t.id+'\',\'startKm\',this.value)" style="width:100%;padding:9px;border:1.5px solid var(--bd);border-radius:9px;font-size:15px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+          '<div style="width:130px"><label style="font-size:10.5px;font-weight:700;color:var(--t2)">الحالة</label>'+
+            '<select id="drv-sload-'+t.id+'" onchange="drvTripField(\''+t.id+'\',\'startLoading\',this.value)" style="width:100%;padding:9px;border:1.5px solid var(--bd);border-radius:9px;font-size:13px;background:var(--bg);color:var(--t)">'+
+            LOADING_TYPES.map(function(x){return '<option'+(ct.startLoading===x?' selected':'')+'>'+x+'</option>';}).join('')+'</select></div>'+
+          '<button class="btn btn-primary" style="padding:11px 20px" onclick="drvStartTrip(\''+t.id+'\')">▶ بدء الرحلة</button>'+
+        '</div>')+
+  '</div>';
+}
 // The sheet as the driver sees it
 function _drvSheetHTML(t){
   var sh=_drvSheet(t);
@@ -21749,28 +21798,24 @@ function _drvSheetHTML(t){
     '</div>'+
     '<div style="font-size:11px;color:var(--t2);margin-bottom:12px">'+_drvCfg().doc+' — وبيان مصروفات السيارة وإيصال استلام العهدة</div>'+
 
-    // ── from the plan, read-only
-    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin-bottom:6px">بيانات الرحلة <span style="font-weight:600;color:var(--t3)">— من خطة النقل، غير قابلة للتعديل</span></div>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:6px;margin-bottom:14px">'+
-    planned.map(function(p){
-      return '<div style="background:var(--bg);border:1px solid var(--bd);border-radius:9px;padding:7px 10px">'+
-        '<div style="font-size:10px;color:var(--t3);font-weight:700">'+p[0]+' 🔒</div>'+
-        '<div style="font-size:12.5px;font-weight:700;color:var(--t);margin-top:1px">'+(p[1]||'—')+'</div></div>';
-    }).join('')+'</div>'+
+    // ── closing odometer — the other half of the journey
+    (function(){
+      var ct=_shipNormalize(t), ds=ct.destinations||[];
+      var done=ds.filter(function(d){return d.completed;}).length;
+      var allDone=ds.length&&done===ds.length;
+      var started=!!ct.actualStartTime;
+      var ended=!!ct.endKm&&t.status!=='in_progress';
+      var body;
+      if(ended)body='<div style="background:#F0FDF4;border:1.5px solid #A7F3D0;border-radius:10px;padding:9px 12px;font-size:12px;color:#065F46">🏭 انتهت '+(ct.endTime||'')+' · عداد النهاية <b>'+(ct.endKm||'—')+'</b> · إجمالي <b>'+(t.km||0)+' كم</b></div>';
+      else if(!started)body='<div style="font-size:11.5px;color:var(--t3)">ابدأ الرحلة أولاً</div>';
+      else if(!allDone)body='<div style="font-size:11.5px;color:var(--t3)">أكمل كل المحطات أولاً ('+done+'/'+ds.length+')</div>';
+      else body='<div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">'+
+        '<div style="width:120px"><label style="font-size:10.5px;font-weight:700;color:var(--t2)">عداد النهاية *</label>'+
+        '<input type="number" inputmode="numeric" id="drv-ekm-'+t.id+'" value="'+(ct.endKm||'')+'" onchange="drvTripField(\''+t.id+'\',\'endKm\',this.value)" style="width:100%;padding:9px;border:1.5px solid var(--bd);border-radius:9px;font-size:15px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+        '<button class="btn btn-success" style="padding:11px 20px" onclick="drvEndTrip(\''+t.id+'\')">✅ إنهاء الرحلة</button></div>';
+      return '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin:4px 0 6px">نهاية الرحلة</div>'+body;
+    })()+
 
-    // ── what the driver records before loading
-    '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin-bottom:6px">قبل التحميل</div>'+
-    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:6px;margin-bottom:8px">'+
-      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">حالة الداتا لوجر</label>'+
-        '<select '+ro+'onchange="drvSheetSet(\''+t.id+'\',\'logger\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:12.5px;background:var(--bg);color:var(--t)">'+
-        ['','سليم','غير سليم','غير موجود'].map(function(o){return '<option'+(sh.logger===o?' selected':'')+'>'+(o||'— اختر —')+'</option>';}).join('')+'</select></div>'+
-      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">حالة الـ RMS</label>'+
-        '<select '+ro+'onchange="drvSheetSet(\''+t.id+'\',\'rms\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:12.5px;background:var(--bg);color:var(--t)">'+
-        ['','سليم','غير سليم','غير موجود'].map(function(o){return '<option'+(sh.rms===o?' selected':'')+'>'+(o||'— اختر —')+'</option>';}).join('')+'</select></div>'+
-      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">درجة حرارة السيارة عند الخروج (°C)</label>'+
-        '<input '+ro+'type="number" step="0.1" value="'+(sh.tempOut===undefined?'':sh.tempOut)+'" onchange="drvSheetSet(\''+t.id+'\',\'tempOut\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:14px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
-    '</div>'+
-    _drvChecks().map(function(c){return yn(c.k,c.label,sh.checks[c.k]);}).join('')+
 
     // ── hourly temperature log
     '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin:14px 0 6px">بيان التشغيل اليومي — درجات الحرارة</div>'+
@@ -24330,6 +24375,225 @@ function openFinalSheet(id){
   S._sheetTrip=id;
   nav('final_sheet');
 }
+// ── Selecting sheets to take out together ─────────────────────────
+function _sheetSelOne(id,on){
+  if(!S._sheetSel)S._sheetSel={};
+  if(on)S._sheetSel[id]=1; else delete S._sheetSel[id];
+  var el=document.getElementById('sheet-selcount');
+  if(el){var n=Object.keys(S._sheetSel).length;el.textContent=n?n+' selected':'none selected';}
+}
+function _sheetSelAll(on){
+  S._sheetSel={};
+  if(on)(S.trips||[]).forEach(function(x){
+    if(x.contract&&(x.status==='completed'||x.review))S._sheetSel[x.id]=1;
+  });
+  rFinalSheet();
+}
+// Which sheets an export covers: the one open, or everything ticked
+function _sheetChosen(){
+  if(S._sheetTrip){
+    var one=(S.trips||[]).find(function(x){return x.id===S._sheetTrip;});
+    return one?[one]:[];
+  }
+  var sel=S._sheetSel||{};
+  return (S.trips||[]).filter(function(x){return sel[x.id];});
+}
+var SHEET_COLS=['Date','Trip','Customer','Code','Truck','Type','Driver','Tx','Item','Service',
+  'Description','From','To','Odo From','Odo To','Leg KM','Band','UM','Qty','Rate','Amount','Justification'];
+function _sheetRows(trips){
+  var rows=[];
+  trips.forEach(function(t){
+    var rv=_finalSheet(t,true), ct=t.contract||{};
+    (rv.lines||[]).filter(function(l){return !l.excluded;}).forEach(function(l){
+      rows.push([ct.date||t.ts||'',t.id,t.customer,_custCode(t.customer),t.truck||'',t.truckType||'',
+        t.driver||'',ct.transactionType||t.dir||'',l.scm||'',l.service||'',l.description||'',
+        l.from||'',l.to||'',l.odoFrom||'',l.odoTo||'',l.legKm||'',l.band||'',l.um||'',
+        l.qty||0,l.rate||0,l.amount||0,l.justification||'']);
+    });
+  });
+  return rows;
+}
+// ══════════════════════════════════════════════════════════════════
+// FINANCE SHEET
+// One row per completed shipment, carrying the Transportation Plan's own
+// columns, everything the crew actually recorded on the journey, and the
+// money worked out from the contract — so Finance receives a single sheet
+// and does not have to reconcile three.
+// ══════════════════════════════════════════════════════════════════
+var FIN_SHEET_COLS=[
+  // ── the plan, as the template names it
+  ['#','#'],
+  ['التاريخ','Date'],
+  ['رقم الشاحنة','Truck Number'],
+  ['نوع الشاحنة','Truck Type'],
+  ['حالة جودة الشاحنة','Truck Quality Status'],
+  ['اسم السائق','Driver Name'],
+  ['اسم العميل','Customers Name'],
+  ['كود العميل','Customers Code'],
+  ['محافظة الجهة (الأبعد)','Entity Governorate (farthest)'],
+  ['ملخص عام يشمل جميع الجهات','Overall summary — all destinations'],
+  ['عدد المندوب','EPx Rep QTY'],
+  ['عدد العمال','EPx Manpower QTY'],
+  ['درجة الحرارة','Temperature'],
+  ['العهدة','Petty Cash'],
+  ['الملاحظات','Notes'],
+  ['حالة الرحلة','Trip Status'],
+  // ── what was actually recorded
+  ['نوع الحركة','Transaction'],
+  ['عدد المحطات','Stops'],
+  ['عدد الفواتير','Invoices'],
+  ['عداد البداية','Odometer Start'],
+  ['عداد النهاية','Odometer End'],
+  ['إجمالي الكيلومترات','Total KM'],
+  ['وقت الانطلاق','Departure'],
+  ['وقت العودة','Return'],
+  ['نموذج الشحن','Shipping Form'],
+  ['نموذج الاستلام','Receiving Form'],
+  ['تقرير التوالف','Damage Report'],
+  ['كراتين تالفة','Damaged Cartons'],
+  ['بيان السائق','Driver Sheet']
+];
+function _finSheetRow(t,n){
+  var ct=_shipNormalize(t), ds=ct.destinations||[];
+  var rv=_finalSheet(t,true);
+  var sh=(t.sheet||{});
+  var dmg=t.damage||null;
+  var fmt2=function(f){
+    var F=INSPECTION_FORMS[f];
+    if(!t.forms||!t.forms[f])return '—';
+    return _formLocked(t,F)?'معتمد':'غير مكتمل';
+  };
+  return [
+    n,
+    ct.date||t.ts||'',
+    t.truck||'',
+    t.truckType||'',
+    (t.qualityVerified?'مطابقة':(t.forms&&t.forms.outbound?'قيد الفحص':'—')),
+    t.driver||'',
+    t.customer||'',
+    _custCode(t.customer)||'',
+    ct.governorate||ct.farthest||(ds.length?ds[ds.length-1].name:''),
+    ds.map(function(d){return d.name;}).filter(Boolean).join(' / '),
+    ct.reps||0,
+    ct.labors||0,
+    t.condition||'',
+    _drvExpTotal(t),
+    [ct.notes,sh.notes].filter(Boolean).join(' · '),
+    t.status||'',
+    ct.transactionType||t.dir||'',
+    ds.length,
+    ds.reduce(function(s,d){return s+(+d.invoices||0);},0),
+    ct.startKm||0,
+    ct.endKm||0,
+    _shipTripKm(t),
+    ct.actualStartTime||'',
+    ct.endTime||'',
+    fmt2('outbound'),
+    fmt2('inbound'),
+    dmg?'معتمد':(t.forms&&t.forms.damage?'غير مكتمل':'—'),
+    dmg?dmg.cartons:0,
+    sh.supSigned?'موقّع (سائق + مشرف)':(sh.signed?'موقّع (سائق)':'—')
+  ];
+}
+// The money: one column per contract service, then the totals
+function _finSheetMoney(t){
+  var rv=_finalSheet(t,true);
+  var by={};
+  (rv.lines||[]).filter(function(l){return !l.excluded;}).forEach(function(l){
+    by[l.service]=(by[l.service]||0)+(+l.amount||0);
+  });
+  var cols=SLA_SERVICES.map(function(s){return +(by[s.id]||0);});
+  var expenses=_drvExpTotal(t);
+  var contract=cols.reduce(function(a,b){return a+b;},0);
+  return cols.concat([expenses, contract, contract+expenses]);
+}
+function _finSheetMoneyCols(){
+  return SLA_SERVICES.map(function(s){return [s.label,s.label];})
+    .concat([['المصروفات','Expenses'],['قيمة العقد','Contract Value'],['الإجمالي','Grand Total']]);
+}
+function _financeSheetExport(fmt){
+  var trips=_sheetChosen();
+  if(!trips.length)trips=(S.trips||[]).filter(function(x){return x.contract&&(x.status==='completed'||x.review);});
+  if(!trips.length){toast('لا توجد رحلات مكتملة','err');return;}
+  var cols=FIN_SHEET_COLS.concat(_finSheetMoneyCols());
+  var rows=trips.map(function(t,i){return _finSheetRow(t,i+1).concat(_finSheetMoney(t)); });
+  var moneyFrom=FIN_SHEET_COLS.length;
+  var totals=cols.map(function(_,i){
+    if(i<moneyFrom)return i===0?'':'';
+    return rows.reduce(function(s,r){return s+(+r[i]||0);},0);
+  });
+  totals[moneyFrom-1]='الإجمالي';
+  var title='Finance Sheet — '+trips.length+' trip(s)';
+  if(fmt==='excel'){
+    var lines=[cols.map(function(c){return c[0]+' / '+c[1];})].concat(rows);
+    lines.push([]);lines.push(totals);
+    var tsv=lines.map(function(r){return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join('\t');}).join('\n');
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob(['﻿'+tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
+    a.download=_expFname(title,'xls');a.click();
+    toast('⬇ '+rows.length+' رحلة — شيت المالية','ok');
+    audit('FIN_SHEET','Excel · '+rows.length+' trips','');
+    return;
+  }
+  var esc=function(v){return String(v==null?'':v).replace(/</g,'&lt;');};
+  var w=_docOpen({
+    title:'شيت المالية', sub:trips.length+' رحلة مكتملة',
+    docNo:'FIN-'+new Date().toISOString().slice(0,10).replace(/-/g,''),
+    status:rows.length+' رحلة · '+(totals[cols.length-1]||0).toLocaleString()+' EGP',
+    rtl:true, width:1250, height:820,
+    css:'body{direction:rtl}table{width:100%;border-collapse:collapse;font-size:8.5px}'+
+        'th{background:#1E1453;color:#fff;padding:5px 3px;white-space:nowrap}'+
+        'td{padding:4px 3px;border-bottom:1px solid #e2e8f0;vertical-align:top}'+
+        'tr:nth-child(even) td{background:#f8fafc}'+
+        'tr.tot td{font-weight:800;background:#f0ecfb;border-top:2px solid #4F1FD4;font-size:10px}'+
+        '@page{size:A3 landscape;margin:7mm}'
+  },
+    '<table><thead><tr>'+cols.map(function(c){return '<th>'+esc(c[0])+'<br><span style="font-weight:400;font-size:7.5px;opacity:.8">'+esc(c[1])+'</span></th>';}).join('')+'</tr></thead><tbody>'+
+    rows.map(function(r){return '<tr>'+r.map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+
+    '<tr class="tot">'+totals.map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>'+
+    '</tbody></table>');
+  if(!w)return;
+  audit('FIN_SHEET','PDF · '+rows.length+' trips','');
+}
+function _sheetExport(fmt){
+  var trips=_sheetChosen();
+  if(!trips.length){toast('اختر رحلة واحدة على الأقل','err');return;}
+  var rows=_sheetRows(trips);
+  if(!rows.length){toast('لا توجد بنود في الشيتات المختارة','err');return;}
+  var total=rows.reduce(function(s,r){return s+(+r[20]||0);},0);
+  var title='Final Sheet'+(trips.length===1?' — '+trips[0].id:' — '+trips.length+' trips');
+  if(fmt==='excel'){
+    var lines=[SHEET_COLS].concat(rows);
+    lines.push([]);lines.push(['','','','','','','','','','','','','','','','','','','','TOTAL',total,'']);
+    var tsv=lines.map(function(r){return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join('\t');}).join('\n');
+    var a=document.createElement('a');
+    a.href=URL.createObjectURL(new Blob(['﻿'+tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
+    a.download=_expFname(title,'xls');a.click();
+    toast('⬇ '+rows.length+' line(s) exported','ok');
+    audit('SHEET_EXPORT','Excel · '+trips.length+' trip(s) · '+rows.length+' lines','');
+    return;
+  }
+  // PDF on the shared letterhead
+  var esc=function(v){return String(v==null?'':v).replace(/</g,'&lt;');};
+  var w=_docOpen({
+    title:'Final Sheet', sub:trips.length===1?trips[0].id+' — '+trips[0].customer:trips.length+' shipments',
+    docNo:'SHEET-'+new Date().toISOString().slice(0,10).replace(/-/g,''),
+    status:rows.length+' lines · '+total.toLocaleString()+' EGP',
+    width:1200, height:820,
+    css:'table{width:100%;border-collapse:collapse;font-size:9px}'+
+        'th{background:#1E1453;color:#fff;padding:5px 4px;text-align:left;white-space:nowrap}'+
+        'td{padding:4px;border-bottom:1px solid #e2e8f0;vertical-align:top}'+
+        'tr:nth-child(even) td{background:#f8fafc}'+
+        'tr.tot td{font-weight:800;background:#f0ecfb;border-top:2px solid #4F1FD4;font-size:11px}'+
+        '@page{size:A4 landscape;margin:8mm}'
+  },
+    '<table><thead><tr>'+SHEET_COLS.map(function(h){return '<th>'+h+'</th>';}).join('')+'</tr></thead><tbody>'+
+    rows.map(function(r){return '<tr>'+r.map(function(v){return '<td>'+esc(v)+'</td>';}).join('')+'</tr>';}).join('')+
+    '<tr class="tot"><td colspan="20" style="text-align:right">TOTAL</td><td>'+total.toLocaleString()+'</td><td></td></tr>'+
+    '</tbody></table>');
+  if(!w)return;
+  audit('SHEET_EXPORT','PDF · '+trips.length+' trip(s) · '+rows.length+' lines','');
+}
 function rFinalSheet(){
   var c=document.getElementById('content');if(!c)return;
   var id=S._sheetTrip;
@@ -24337,17 +24601,31 @@ function rFinalSheet(){
   if(!t){
     // no trip picked: list everything waiting on a sheet
     var pend=(S.trips||[]).filter(function(x){return x.contract&&(x.status==='completed'||x.review);});
-    c.innerHTML=ph('🧾 Final Sheets','Review, adjust and approve before billing','')+
+    if(!S._sheetSel)S._sheetSel={};
+    var selN=pend.filter(function(x){return S._sheetSel[x.id];}).length;
+    c.innerHTML=ph('🧾 Final Sheets','Review and adjust, then export',
+      '<div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">'+
+      '<span id="sheet-selcount" style="font-size:11.5px;color:var(--t2)">'+(selN?selN+' selected':'none selected')+'</span>'+
+      '<button class="btn btn-outline btn-sm" onclick="_sheetSelAll(true)">Select all</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="_sheetSelAll(false)">Clear</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="_sheetExport(\'excel\')">📄 Excel</button>'+
+      '<button class="btn btn-primary btn-sm" onclick="_sheetExport(\'pdf\')">🖼️ PDF</button>'+
+      '<button class="btn btn-primary btn-sm" onclick="_financeSheetExport(\'excel\')">💰 Finance Sheet</button>'+
+      '<button class="btn btn-outline btn-sm" onclick="_financeSheetExport(\'pdf\')">💰 PDF</button>'+
+      '</div>')+
       (pend.length?'<div class="card"><div style="overflow-x:auto"><table class="tbl"><thead><tr>'+
-        '<th>Date</th><th>Trip</th><th>Customer</th><th>Truck</th><th>KM</th><th>Total</th><th>Approval</th><th></th></tr></thead><tbody>'+
+        '<th style="width:40px"><input type="checkbox" onchange="_sheetSelAll(this.checked)" style="width:16px;height:16px;cursor:pointer"/></th>'+
+        '<th>Date</th><th>Trip</th><th>Customer</th><th>Truck</th><th>KM</th><th>Lines</th><th>Total</th><th></th></tr></thead><tbody>'+
         pend.slice().reverse().map(function(x){
-          var st=_apvStatusOf(x);var rv=x.review||{};
-          return '<tr><td style="font-size:11px">'+((x.contract||{}).date||'')+'</td>'+
+          var rv=x.review||{};
+          return '<tr><td style="text-align:center"><input type="checkbox" '+(S._sheetSel[x.id]?'checked':'')+
+              ' onchange="_sheetSelOne(\''+x.id+'\',this.checked)" style="width:16px;height:16px;cursor:pointer"/></td>'+
+            '<td style="font-size:11px">'+((x.contract||{}).date||x.ts||'')+'</td>'+
             '<td style="font-weight:700">'+x.id+'</td><td>'+x.customer+'</td>'+
             '<td style="font-size:11px">'+(x.truck||'—')+'</td>'+
             '<td style="text-align:center">'+_shipTripKm(x)+'</td>'+
+            '<td style="text-align:center">'+((rv.lines||[]).length||'—')+'</td>'+
             '<td style="font-weight:700">'+(+(rv.total||x.cost)||0).toLocaleString()+'</td>'+
-            '<td><span style="font-size:10.5px;font-weight:700;padding:3px 9px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span></td>'+
             '<td><button class="btn btn-primary btn-sm" onclick="openFinalSheet(\''+x.id+'\')">Open sheet ›</button></td></tr>';
         }).join('')+'</tbody></table></div></div>'
         :_emptyState('🧾','No sheets yet','Sheets appear when a shipment completes its workflow.',''));
@@ -24355,38 +24633,29 @@ function rFinalSheet(){
   }
   var rv=_finalSheet(t,true);
   var st=_apvStatusOf(t);
-  var locked=_apvLocked(t);
+  var locked=false;          // approval is off; the sheet stays editable
   var ct=t.contract||{};
-  var steps=_apvSteps();
+  var steps=[];
   var num=function(v){return (+v||0).toLocaleString(undefined,{minimumFractionDigits:0,maximumFractionDigits:2});};
 
   c.innerHTML=
     ph('🧾 Final Sheet — '+t.id, t.customer+' · '+(ct.transactionType||t.dir||'')+' · '+(t.truckType||'')+' · '+_shipTripKm(t)+' km',
       '<div style="display:flex;gap:6px;flex-wrap:wrap">'+
       '<button class="btn btn-outline btn-sm" onclick="S._sheetTrip=null;rFinalSheet()">‹ All sheets</button>'+
-      '<button class="btn btn-outline btn-sm" onclick="exportBillingSheet([S.trips.find(function(x){return x.id===\''+t.id+'\';})])">⬇ Export</button>'+
-      (st.key==='approved'&&can('all')?'<button class="btn btn-outline btn-sm" onclick="_apvReopen(\''+t.id+'\')">↺ Reopen</button>':'')+
+      '<button class="btn btn-outline btn-sm" onclick="_sheetExport(\'excel\')">📄 Excel</button>'+
+      '<button class="btn btn-primary btn-sm" onclick="_sheetExport(\'pdf\')">🖼️ PDF</button>'+
       '</div>')+
 
-    // status + approval bar
+    // Sheet approval is switched off for now at the customer's request —
+    // it neither matched how they work nor functioned end to end. The
+    // machinery is left intact so it can be turned back on.
     '<div class="card" style="margin-bottom:14px">'+
-      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:'+(steps.length?'12px':'0')+'">'+
-        '<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:'+st.bg+';color:'+st.color+'">'+st.label+'</span>'+
-        (locked?'<span style="font-size:11.5px;color:#059669;font-weight:700">🔒 Locked — approved</span>':
-          '<span style="font-size:11.5px;color:var(--t2)">Adjust any line below, then approve</span>')+
+      '<div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">'+
+        '<span style="font-size:12px;font-weight:800;padding:4px 12px;border-radius:20px;background:#EEF2FF;color:#6C3FF5">'+rv.lines.length+' line(s)</span>'+
+        '<span style="font-size:13px;font-weight:800;color:var(--t)">Total: '+num(rv.total||0)+' EGP</span>'+
+        '<span style="font-size:11.5px;color:var(--t2)">Adjust any line below, then export</span>'+
         (rv.missingRates?'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;background:#FEF2F2;color:#DC2626">⚠ '+rv.missingRates+' line(s) with no rate</span>':'')+
-      '</div>'+
-      '<div style="display:flex;gap:10px;flex-wrap:wrap">'+
-      steps.map(function(s){
-        var a=(rv.approvals||{})[s.id];
-        return '<div style="flex:1;min-width:190px;border:1.5px solid '+(a?'#A7F3D0':'var(--bd)')+';background:'+(a?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:10px 12px">'+
-          '<div style="font-size:12px;font-weight:800;color:'+(a?'#059669':'var(--t2)')+'">'+(a?'✓ ':'')+s.label+'</div>'+
-          (a?'<div style="font-size:11px;color:var(--t2);margin-top:3px">'+a.by+' · '+a.at+'</div>'
-            :(_apvCanApprove(s)
-              ?'<button class="btn btn-success btn-sm" style="width:100%;margin-top:7px" onclick="_apvApprove(\''+t.id+'\',\''+s.id+'\')">Approve as '+s.label+'</button>'
-              :'<div style="font-size:11px;color:var(--t3);margin-top:5px">'+(s.roles||[]).map(function(r){return RL[r]||r;}).join(' / ')+' only</div>'))+
-          '</div>';
-      }).join('')+'</div></div>'+
+      '</div></div>'+
 
     // the sheet itself — every column
     '<div class="card" style="padding:0;overflow:hidden">'+
