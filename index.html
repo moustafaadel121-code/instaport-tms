@@ -3296,7 +3296,7 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · brand-dark';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · tidy';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -5251,9 +5251,17 @@ async function doLogin(){
       S.user=u;S.role=u.role;
       var lg=document.getElementById('login');lg.style.cssText='display:none!important';
       var ap=document.getElementById('app');ap.style.display='flex';ap.style.flexDirection='row';
-      document.getElementById('tb-avatar').textContent=u.name.split(' ').map(function(x){return x[0];}).join('');
+      var _initials=u.name.split(' ').map(function(x){return x[0];}).join('');
+      document.getElementById('tb-avatar').textContent=_initials;
       document.getElementById('tb-uname').textContent=u.name;
       document.getElementById('tb-role').textContent=RL[u.role]||u.role;
+      // the block at the foot of the rail sat on "--" because nothing ever
+      // filled it — it shows who is signed in and opens their profile
+      var _sbav=document.getElementById('sb-av');   if(_sbav)_sbav.textContent=_initials;
+      var _sbun=document.getElementById('sb-uname');if(_sbun)_sbun.textContent=u.name;
+      var _sbrl=document.getElementById('sb-role'); if(_sbrl)_sbrl.textContent=RL[u.role]||u.role;
+      var _sbu=document.getElementById('sb-user');
+      if(_sbu&&!_sbu.onclick){_sbu.style.cursor='pointer';_sbu.onclick=function(){openProfile();};}
       var tbn=document.getElementById('tb-tenant-name');if(tbn)tbn.textContent=_tenantName;
       var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=_tenantName;
       var sbb=document.getElementById('sb-tenant-badge-name');if(sbb)sbb.textContent=_tenantName;
@@ -7986,9 +7994,10 @@ function rFin(){
       : '<div style="padding:34px;text-align:center;color:var(--t3);font-size:13px">لا يوجد عميل بهذا الاسم</div>')+
     '</div>'+
     '<div style="font-size:11px;color:var(--t3);margin-top:10px">اضغط على أي عميل لفتح بطاقة الأسعار التعاقدية الخاصة به. أي عميل يُضاف يظهر هنا تلقائياً.</div>'+
-    // the standard-contract card is hidden — new customers still start on
-    // the template, it just does not need a panel explaining itself
-    _finGlobalHTML(mayEdit)+
+    // the standard-contract and global-settings panels are hidden — the
+    // template still governs new customers and the global figures still
+    // apply, they just do not need panels on the customer list
+    ''+
     buildForecastSection();
 }
 // The contract shape every new customer starts on
@@ -25244,6 +25253,10 @@ function _revisionTrips(){
 // The supervisor owns the plan until operations has approved its form
 function _canEditPlan(t){
   if(!t)return false;
+  // A finished shipment is a priced record. Its plan is not editable by
+  // anyone — changing it after the fact would move the numbers the final
+  // sheet and the invoice were built from.
+  if(['completed','cancelled','cancelled_customer','cancelled_org'].indexOf(t.status)>-1)return false;
   if(can('all'))return true;
   if(S.role!=='supervisor')return false;
   return ['awaiting_operation','awaiting_quality',WF_REVISION].indexOf(t.status)>-1;
