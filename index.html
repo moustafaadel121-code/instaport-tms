@@ -3004,7 +3004,7 @@ input[type=file] { padding: 8px; font-size: 12px; border: 1.5px solid var(--bd);
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · trusted clock';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · start-over';   // build stamp — shown in the sidebar so the running version is verifiable
 var _IS_GITHUB_PAGES = window.location.hostname.includes('github.io');
 var _IS_LOCAL        = !_IS_GITHUB_PAGES;
 var INSTAPORT_API    = ''; // always relative on local; unused on GH Pages (Supabase handles auth)
@@ -11054,18 +11054,35 @@ function _purgeGo(){
   var w=((document.getElementById('purge-word')||{}).value||'').trim().toUpperCase();
   if(w!=='DELETE'){toast('اكتب DELETE للتأكيد','err');return;}
   requirePwd('حذف كل الرحلات',function(){
-    var n=(S.trips||[]).length, ni=(S.invoices||[]).length, nf=(S.fuelLogs||[]).length;
+    var ids=(S.trips||[]).map(function(t){return t.id;});
+    var n=ids.length, ni=(S.invoices||[]).length, nf=(S.fuelLogs||[]).length;
     // the backup goes out before anything is destroyed
     try{backupExport();}catch(e){console.warn('backup failed',e);}
-    setTimeout(function(){
-      S.trips=[];S.invoices=[];S.fuelLogs=[];
-      try{localStorage.removeItem('ip_invoices');}catch(e){}
-      try{localStorage.removeItem('ip_fuellogs');}catch(e){}
-      S._sheetTrip='';S._finCust='';S._slaSel='';
+    setTimeout(async function(){
+      // in memory
+      S.trips.length=0;
+      S.invoices=[];S.fuelLogs=[];
+      // notifications and exception rows that only exist because of a trip
+      if(S.notifs)S.notifs=S.notifs.filter(function(x){
+        return !ids.some(function(id){return String(x.msg||'').indexOf(id)>-1;});});
+      // on disk
+      ['ip_invoices','ip_fuellogs','ip_exceptions','ip_trips_backup'].forEach(function(k){
+        try{localStorage.removeItem(k);}catch(e){}
+      });
+      S._sheetTrip='';S._finCust='';S._slaSel='';S._dmgTrip='';
       audit('TRIPS_PURGE','Cleared '+n+' shipments, '+ni+' invoices, '+nf+' fuel logs','');
       _lcSaveNow();
+      // and in the cloud — otherwise the next login pulls them straight back
+      var cloud='local only';
+      if(_sb&&_tenantId){
+        try{
+          await _sb.from('trips').delete().eq('tenant_id',_tenantId);
+          try{await _sb.from('invoices').delete().eq('tenant_id',_tenantId);}catch(e){}
+          cloud='cloud cleared';
+        }catch(e){cloud='cloud unreachable — clear it when back online';console.warn('cloud purge',e);}
+      }
       closeM();
-      toast('🗑️ حُذفت '+n+' رحلة — النظام جاهز من جديد','ok');
+      toast('🗑️ حُذفت '+n+' رحلة ('+cloud+') — النظام جاهز من جديد','ok');
       nav('dashboard');
     },600);
   });
