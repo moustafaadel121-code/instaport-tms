@@ -2803,6 +2803,16 @@ body.iq .sb-mark{
   padding:0;
   filter:none;
   box-shadow:none;
+  object-fit:contain;
+}
+/* A customer's own logo is artwork of any colour, so it gets a white tile
+   to sit on; ours is white and sits straight on the rail. */
+body.iq .sb-mark.sb-mark-custom{
+  height:52px;width:auto;max-width:150px;
+  background:#fff;
+  border-radius:8px;
+  padding:7px 10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.18);
 }
 body.iq #sb-tenant-name,
 body.iq #sidebar.sb-light #sb-tenant-name{
@@ -3192,12 +3202,12 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
     <!-- Sidebar color theme picker -->
     <div class="sb-theme-row" title="Sidebar color">
       <span class="sb-sw-lbl">Skin</span>
-      <span class="sb-sw" id="sw-indigo"    style="background:linear-gradient(135deg,#4F46E5,#312E81)" onclick="setSbTheme('indigo')"    title="Indigo"></span>
-      <span class="sb-sw" id="sw-teal"      style="background:linear-gradient(135deg,#0D9488,#134E4A)" onclick="setSbTheme('teal')"      title="Teal"></span>
-      <span class="sb-sw" id="sw-midnight"  style="background:linear-gradient(135deg,#1D4ED8,#0F172A)" onclick="setSbTheme('midnight')"  title="Midnight"></span>
-      <span class="sb-sw" id="sw-burgundy"  style="background:linear-gradient(135deg,#9F1239,#4C0519)" onclick="setSbTheme('burgundy')"  title="Burgundy"></span>
-      <span class="sb-sw" id="sw-forest"    style="background:linear-gradient(135deg,#15803D,#14532D)" onclick="setSbTheme('forest')"    title="Forest"></span>
-      <span class="sb-sw" id="sw-graphite"  style="background:linear-gradient(135deg,#3F3F46,#18181B)" onclick="setSbTheme('graphite')"  title="Graphite"></span>
+      <span class="sb-sw" id="sw-navy"    style="background:linear-gradient(135deg,#1E3A8A,#0F172A)" onclick="setSbTheme('navy')"    title="Navy"></span>
+      <span class="sb-sw" id="sw-teal"      style="background:linear-gradient(135deg,#0F5F59,#042F2E)" onclick="setSbTheme('teal')"      title="Teal"></span>
+      <span class="sb-sw" id="sw-midnight"  style="background:linear-gradient(135deg,#152238,#020617)" onclick="setSbTheme('midnight')"  title="Midnight"></span>
+      <span class="sb-sw" id="sw-burgundy"  style="background:linear-gradient(135deg,#6B0F26,#2A0310)" onclick="setSbTheme('burgundy')"  title="Burgundy"></span>
+      <span class="sb-sw" id="sw-forest"    style="background:linear-gradient(135deg,#14532D,#052E16)" onclick="setSbTheme('forest')"    title="Forest"></span>
+      <span class="sb-sw" id="sw-graphite"  style="background:linear-gradient(135deg,#27272A,#09090B)" onclick="setSbTheme('graphite')"  title="Graphite"></span>
     </div>
     <div class="sb-user" id="sb-user">
       <div class="sb-user-av" id="sb-av">--</div>
@@ -3286,7 +3296,7 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · sheet-fix';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · brand-dark';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -5806,8 +5816,16 @@ function _applyBrandingLive(br){
   // CSS vars — applied to entire app immediately
   if(br.primaryColor)document.documentElement.style.setProperty('--accent',br.primaryColor);
   if(br.sidebarColor)document.documentElement.style.setProperty('--sidebar-bg',br.sidebarColor);
-  // Logo images throughout the app
-  if(br.logoUrl){document.querySelectorAll('.logo-img,.sb-logo-img').forEach(function(el){el.src=br.logoUrl;el.style.display='block';});}
+  // Logo images throughout the app. The sidebar mark is the customer's own
+  // logo when they have set one, and falls back to ours when they have not
+  // — the product signature at the foot of the rail is what stays fixed.
+  document.querySelectorAll('.logo-img,.sb-logo-img,.sb-mark').forEach(function(el){
+    el.src=br.logoUrl||'logo.png';
+    el.style.display='block';
+    // our own mark is white artwork and sits straight on the coloured rail;
+    // a customer's logo is any colour, so it gets a white tile to read on
+    if(el.classList.contains('sb-mark'))el.classList.toggle('sb-mark-custom',!!br.logoUrl);
+  });
   // Company name in sidebar/topbar
   if(br.companyName){
     var sbn=document.getElementById('sb-tenant-name');if(sbn)sbn.textContent=br.companyName;
@@ -11651,13 +11669,13 @@ function applyLanguage(){
 // ══════════════════════════════════════════════════════════════════
 var _sbThemes = {
   // Deep indigo — the default. Authoritative without being corporate blue.
-  indigo: {
-    bg:'#312E81', bgDark:'#1E1B4B',
-    act:'linear-gradient(135deg,rgba(99,102,241,.95),rgba(79,70,229,.9))',
-    sh:'0 4px 16px rgba(79,70,229,.38)',
-    glow:'rgba(99,102,241,.15)',
-    c1:'#4F46E5', c1l:'#EEF2FF', c1m:'#818CF8',
-    c1d:'#4338CA', c1dp:'#312E81', c1sh:'rgba(79,70,229,.42)'
+  navy: {
+    bg:'#1E293B', bgDark:'#0F172A',
+    act:'linear-gradient(135deg,rgba(30,58,138,.98),rgba(23,37,84,.95))',
+    sh:'0 4px 16px rgba(23,37,84,.4)',
+    glow:'rgba(30,58,138,.14)',
+    c1:'#1E3A8A', c1l:'#EFF3FB', c1m:'#3B5FA8',
+    c1d:'#172554', c1dp:'#0F172A', c1sh:'rgba(23,37,84,.45)'
   },
   // Teal — cool, clinical, right for cold chain.
   teal: {
@@ -11665,8 +11683,8 @@ var _sbThemes = {
     act:'linear-gradient(135deg,rgba(20,184,166,.95),rgba(13,148,136,.9))',
     sh:'0 4px 16px rgba(13,148,136,.38)',
     glow:'rgba(20,184,166,.15)',
-    c1:'#0D9488', c1l:'#ECFDF5', c1m:'#5EEAD4',
-    c1d:'#0F766E', c1dp:'#134E4A', c1sh:'rgba(13,148,136,.42)'
+    c1:'#0F5F59', c1l:'#ECFAF8', c1m:'#3E9A92',
+    c1d:'#0B4A45', c1dp:'#042F2E', c1sh:'rgba(15,95,89,.45)'
   },
   // Midnight — near-black navy, the quietest of the six.
   midnight: {
@@ -11674,8 +11692,8 @@ var _sbThemes = {
     act:'linear-gradient(135deg,rgba(56,116,203,.95),rgba(29,78,166,.9))',
     sh:'0 4px 16px rgba(30,64,175,.4)',
     glow:'rgba(59,130,246,.14)',
-    c1:'#1D4ED8', c1l:'#EFF6FF', c1m:'#60A5FA',
-    c1d:'#1E40AF', c1dp:'#172554', c1sh:'rgba(29,78,216,.42)'
+    c1:'#152238', c1l:'#EEF1F6', c1m:'#3A5578',
+    c1d:'#0D1626', c1dp:'#020617', c1sh:'rgba(21,34,56,.5)'
   },
   // Burgundy — warm and unusual; reads expensive next to the blues.
   burgundy: {
@@ -11683,8 +11701,8 @@ var _sbThemes = {
     act:'linear-gradient(135deg,rgba(190,24,93,.95),rgba(159,18,57,.9))',
     sh:'0 4px 16px rgba(159,18,57,.4)',
     glow:'rgba(190,24,93,.15)',
-    c1:'#9F1239', c1l:'#FFF1F2', c1m:'#FB7185',
-    c1d:'#881337', c1dp:'#4C0519', c1sh:'rgba(159,18,57,.42)'
+    c1:'#6B0F26', c1l:'#FDF0F3', c1m:'#A8455F',
+    c1d:'#4C0519', c1dp:'#2A0310', c1sh:'rgba(107,15,38,.45)'
   },
   // Forest — deep green, calm, good for long sessions.
   forest: {
@@ -11692,8 +11710,8 @@ var _sbThemes = {
     act:'linear-gradient(135deg,rgba(22,163,74,.95),rgba(21,128,61,.9))',
     sh:'0 4px 16px rgba(21,128,61,.38)',
     glow:'rgba(34,197,94,.15)',
-    c1:'#15803D', c1l:'#F0FDF4', c1m:'#4ADE80',
-    c1d:'#166534', c1dp:'#14532D', c1sh:'rgba(21,128,61,.42)'
+    c1:'#14532D', c1l:'#EFF8F1', c1m:'#3F8757',
+    c1d:'#0F3D21', c1dp:'#052E16', c1sh:'rgba(20,83,45,.45)'
   },
   // Graphite — neutral for anyone who wants no colour at all.
   graphite: {
@@ -11701,19 +11719,19 @@ var _sbThemes = {
     act:'linear-gradient(135deg,rgba(82,82,91,.95),rgba(63,63,70,.92))',
     sh:'0 4px 16px rgba(39,39,42,.4)',
     glow:'rgba(113,113,122,.14)',
-    c1:'#3F3F46', c1l:'#F4F4F5', c1m:'#A1A1AA',
-    c1d:'#27272A', c1dp:'#18181B', c1sh:'rgba(63,63,70,.42)'
+    c1:'#27272A', c1l:'#F3F3F4', c1m:'#71717A',
+    c1d:'#18181B', c1dp:'#09090B', c1sh:'rgba(39,39,42,.5)'
   }
 };
 // Skins that were renamed keep working for anyone who had them saved
-var _sbAliases = {purple:'indigo', lime:'forest', slate:'graphite', ocean:'teal', rose:'burgundy'};
+var _sbAliases = {purple:'navy', lime:'forest', slate:'graphite', ocean:'teal', rose:'burgundy'};
 
-var _sbCurrent = 'indigo';
+var _sbCurrent = 'navy';
 
 function setSbTheme(name) {
   // a skin saved under its old name still resolves
   if(!_sbThemes[name] && _sbAliases[name]) name = _sbAliases[name];
-  var t = _sbThemes[name]; if(!t){ name='indigo'; t=_sbThemes.indigo; }
+  var t = _sbThemes[name]; if(!t){ name='navy'; t=_sbThemes.navy; }
   _sbCurrent = name;
   localStorage.setItem('ip_sb', name);
   // Inject / update dynamic style
@@ -11741,14 +11759,14 @@ function setSbTheme(name) {
   var sb = document.getElementById('sidebar');
   if(sb) sb.classList.toggle('sb-light', isLight);
   // Update active swatch ring
-  ['indigo','teal','midnight','burgundy','forest','graphite'].forEach(function(k){
+  ['navy','teal','midnight','burgundy','forest','graphite'].forEach(function(k){
     var sw=document.getElementById('sw-'+k);
     if(sw) sw.classList.toggle('on', k===name);
   });
 }
 
 function _sbThemeInit() {
-  var saved = localStorage.getItem('ip_sb') || 'indigo';
+  var saved = localStorage.getItem('ip_sb') || 'navy';
   if(_sbAliases[saved]) saved = _sbAliases[saved];
   setSbTheme(saved);
 }
