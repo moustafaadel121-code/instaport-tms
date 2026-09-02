@@ -3192,11 +3192,12 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
     <!-- Sidebar color theme picker -->
     <div class="sb-theme-row" title="Sidebar color">
       <span class="sb-sw-lbl">Skin</span>
-      <span class="sb-sw" id="sw-purple" style="background:linear-gradient(135deg,#6C3FF5,#4F1FD4)" onclick="setSbTheme('purple')" title="Purple (default)"></span>
-      <span class="sb-sw" id="sw-lime"   style="background:linear-gradient(135deg,#84CC16,#4D7C0F)"  onclick="setSbTheme('lime')"   title="Lime Green"></span>
-      <span class="sb-sw" id="sw-slate"  style="background:linear-gradient(135deg,#64748B,#334155)"  onclick="setSbTheme('slate')"  title="Slate Grey"></span>
-      <span class="sb-sw" id="sw-ocean"  style="background:linear-gradient(135deg,#06B6D4,#0E7490)"  onclick="setSbTheme('ocean')"  title="Ocean Teal"></span>
-      <span class="sb-sw" id="sw-rose"   style="background:linear-gradient(135deg,#F43F5E,#9F1239)"  onclick="setSbTheme('rose')"   title="Rose Red"></span>
+      <span class="sb-sw" id="sw-indigo"    style="background:linear-gradient(135deg,#4F46E5,#312E81)" onclick="setSbTheme('indigo')"    title="Indigo"></span>
+      <span class="sb-sw" id="sw-teal"      style="background:linear-gradient(135deg,#0D9488,#134E4A)" onclick="setSbTheme('teal')"      title="Teal"></span>
+      <span class="sb-sw" id="sw-midnight"  style="background:linear-gradient(135deg,#1D4ED8,#0F172A)" onclick="setSbTheme('midnight')"  title="Midnight"></span>
+      <span class="sb-sw" id="sw-burgundy"  style="background:linear-gradient(135deg,#9F1239,#4C0519)" onclick="setSbTheme('burgundy')"  title="Burgundy"></span>
+      <span class="sb-sw" id="sw-forest"    style="background:linear-gradient(135deg,#15803D,#14532D)" onclick="setSbTheme('forest')"    title="Forest"></span>
+      <span class="sb-sw" id="sw-graphite"  style="background:linear-gradient(135deg,#3F3F46,#18181B)" onclick="setSbTheme('graphite')"  title="Graphite"></span>
     </div>
     <div class="sb-user" id="sb-user">
       <div class="sb-user-av" id="sb-av">--</div>
@@ -3285,7 +3286,7 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · inverted';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · sheet-fix';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
@@ -11641,52 +11642,78 @@ function applyLanguage(){
 // ══════════════════════════════════════════════════
 // SIDEBAR COLOR THEMES
 // ══════════════════════════════════════════════════
+// ══════════════════════════════════════════════════════════════════
+// SKINS
+// Six deep, saturated colours chosen to carry a whole sidebar without
+// tiring the eye: each is dark enough for white text to sit on it at a
+// comfortable contrast, and rich enough to read as a considered choice
+// rather than a default. The name of each is the colour of the rail.
+// ══════════════════════════════════════════════════════════════════
 var _sbThemes = {
-  purple: {
-    bg:'#1E1453', bgDark:'#0D0B1F',
-    act:'linear-gradient(135deg,rgba(108,63,245,.9),rgba(79,31,212,.8))',
-    sh:'0 4px 16px rgba(108,63,245,.4)',
-    glow:'rgba(108,63,245,.15)',
-    c1:'#6C3FF5', c1l:'#EEE9FD', c1m:'#9B7FF8',
-    c1d:'#4F1FD4', c1dp:'#3B0764', c1sh:'rgba(108,63,245,.45)'
+  // Deep indigo — the default. Authoritative without being corporate blue.
+  indigo: {
+    bg:'#312E81', bgDark:'#1E1B4B',
+    act:'linear-gradient(135deg,rgba(99,102,241,.95),rgba(79,70,229,.9))',
+    sh:'0 4px 16px rgba(79,70,229,.38)',
+    glow:'rgba(99,102,241,.15)',
+    c1:'#4F46E5', c1l:'#EEF2FF', c1m:'#818CF8',
+    c1d:'#4338CA', c1dp:'#312E81', c1sh:'rgba(79,70,229,.42)'
   },
-  lime: {
-    bg:'#1A3A0A', bgDark:'#0B2306',
-    act:'linear-gradient(135deg,rgba(34,197,94,.9),rgba(22,163,74,.85))',
-    sh:'0 4px 16px rgba(34,197,94,.4)',
+  // Teal — cool, clinical, right for cold chain.
+  teal: {
+    bg:'#134E4A', bgDark:'#042F2E',
+    act:'linear-gradient(135deg,rgba(20,184,166,.95),rgba(13,148,136,.9))',
+    sh:'0 4px 16px rgba(13,148,136,.38)',
+    glow:'rgba(20,184,166,.15)',
+    c1:'#0D9488', c1l:'#ECFDF5', c1m:'#5EEAD4',
+    c1d:'#0F766E', c1dp:'#134E4A', c1sh:'rgba(13,148,136,.42)'
+  },
+  // Midnight — near-black navy, the quietest of the six.
+  midnight: {
+    bg:'#0F172A', bgDark:'#020617',
+    act:'linear-gradient(135deg,rgba(56,116,203,.95),rgba(29,78,166,.9))',
+    sh:'0 4px 16px rgba(30,64,175,.4)',
+    glow:'rgba(59,130,246,.14)',
+    c1:'#1D4ED8', c1l:'#EFF6FF', c1m:'#60A5FA',
+    c1d:'#1E40AF', c1dp:'#172554', c1sh:'rgba(29,78,216,.42)'
+  },
+  // Burgundy — warm and unusual; reads expensive next to the blues.
+  burgundy: {
+    bg:'#4C0519', bgDark:'#2A0310',
+    act:'linear-gradient(135deg,rgba(190,24,93,.95),rgba(159,18,57,.9))',
+    sh:'0 4px 16px rgba(159,18,57,.4)',
+    glow:'rgba(190,24,93,.15)',
+    c1:'#9F1239', c1l:'#FFF1F2', c1m:'#FB7185',
+    c1d:'#881337', c1dp:'#4C0519', c1sh:'rgba(159,18,57,.42)'
+  },
+  // Forest — deep green, calm, good for long sessions.
+  forest: {
+    bg:'#14532D', bgDark:'#052E16',
+    act:'linear-gradient(135deg,rgba(22,163,74,.95),rgba(21,128,61,.9))',
+    sh:'0 4px 16px rgba(21,128,61,.38)',
     glow:'rgba(34,197,94,.15)',
-    c1:'#22C55E', c1l:'#DCFCE7', c1m:'#86EFAC',
-    c1d:'#16A34A', c1dp:'#14532D', c1sh:'rgba(34,197,94,.42)'
+    c1:'#15803D', c1l:'#F0FDF4', c1m:'#4ADE80',
+    c1d:'#166534', c1dp:'#14532D', c1sh:'rgba(21,128,61,.42)'
   },
-  slate: {
-    bg:'#1E2633', bgDark:'#0F1520',
-    act:'linear-gradient(135deg,rgba(100,116,139,.9),rgba(51,65,85,.95))',
-    sh:'0 4px 16px rgba(100,116,139,.4)',
-    glow:'rgba(100,116,139,.15)',
-    c1:'#64748B', c1l:'#F1F5F9', c1m:'#94A3B8',
-    c1d:'#475569', c1dp:'#334155', c1sh:'rgba(100,116,139,.42)'
-  },
-  ocean: {
-    bg:'#0A2233', bgDark:'#061520',
-    act:'linear-gradient(135deg,rgba(6,182,212,.85),rgba(14,116,144,.9))',
-    sh:'0 4px 16px rgba(6,182,212,.35)',
-    glow:'rgba(6,182,212,.13)',
-    c1:'#06B6D4', c1l:'#CFFAFE', c1m:'#22D3EE',
-    c1d:'#0E7490', c1dp:'#164E63', c1sh:'rgba(6,182,212,.42)'
-  },
-  rose: {
-    bg:'#3A0A18', bgDark:'#250510',
-    act:'linear-gradient(135deg,rgba(244,63,94,.9),rgba(190,18,60,.85))',
-    sh:'0 4px 16px rgba(244,63,94,.4)',
-    glow:'rgba(244,63,94,.15)',
-    c1:'#F43F5E', c1l:'#FFE4E6', c1m:'#FDA4AF',
-    c1d:'#BE123C', c1dp:'#881337', c1sh:'rgba(244,63,94,.42)'
+  // Graphite — neutral for anyone who wants no colour at all.
+  graphite: {
+    bg:'#27272A', bgDark:'#131316',
+    act:'linear-gradient(135deg,rgba(82,82,91,.95),rgba(63,63,70,.92))',
+    sh:'0 4px 16px rgba(39,39,42,.4)',
+    glow:'rgba(113,113,122,.14)',
+    c1:'#3F3F46', c1l:'#F4F4F5', c1m:'#A1A1AA',
+    c1d:'#27272A', c1dp:'#18181B', c1sh:'rgba(63,63,70,.42)'
   }
 };
-var _sbCurrent = 'purple';
+// Skins that were renamed keep working for anyone who had them saved
+var _sbAliases = {purple:'indigo', lime:'forest', slate:'graphite', ocean:'teal', rose:'burgundy'};
+
+var _sbCurrent = 'indigo';
 
 function setSbTheme(name) {
-  var t = _sbThemes[name]; if(!t) return;
+  // a skin saved under its old name still resolves
+  if(!_sbThemes[name] && _sbAliases[name]) name = _sbAliases[name];
+  var t = _sbThemes[name]; if(!t){ name='indigo'; t=_sbThemes.indigo; }
   _sbCurrent = name;
   localStorage.setItem('ip_sb', name);
   // Inject / update dynamic style
@@ -11714,14 +11741,15 @@ function setSbTheme(name) {
   var sb = document.getElementById('sidebar');
   if(sb) sb.classList.toggle('sb-light', isLight);
   // Update active swatch ring
-  ['purple','lime','slate','ocean','rose'].forEach(function(k){
+  ['indigo','teal','midnight','burgundy','forest','graphite'].forEach(function(k){
     var sw=document.getElementById('sw-'+k);
     if(sw) sw.classList.toggle('on', k===name);
   });
 }
 
 function _sbThemeInit() {
-  var saved = localStorage.getItem('ip_sb') || 'purple';
+  var saved = localStorage.getItem('ip_sb') || 'indigo';
+  if(_sbAliases[saved]) saved = _sbAliases[saved];
   setSbTheme(saved);
 }
 
@@ -24817,8 +24845,12 @@ function _sheetRows(trips){
     var rv=_finalSheet(t,true), ct=t.contract||{};
     (rv.lines||[]).filter(function(l){return !l.excluded;}).forEach(function(l){
       rows.push([ct.date||t.ts||'',t.id,t.customer,_custCode(t.customer),t.truck||'',t.truckType||'',
-        t.driver||'',ct.transactionType||t.dir||'',l.scm||'',l.service||'',l.description||'',
-        l.from||'',l.to||'',l.odoFrom||'',l.odoTo||'',l.legKm||'',l.band||'',l.um||'',
+        // the calculator writes desc/legFrom/legTo — reading description/from/to
+        // left the export's most useful columns blank
+        t.driver||'',ct.transactionType||t.dir||'',l.scm||'',l.service||'',l.desc||'',
+        l.legFrom||'',l.legTo||'',
+        (l.odoFrom===undefined?'':l.odoFrom),(l.odoTo===undefined?'':l.odoTo),
+        (l.legKm===undefined?'':l.legKm),l.band||'',l.um||'',
         l.qty||0,l.rate||0,l.amount||0,l.justification||'']);
     });
   });
@@ -24936,12 +24968,7 @@ function _financeSheetExport(fmt){
   totals[moneyFrom-1]='الإجمالي';
   var title='Finance Sheet — '+trips.length+' trip(s)';
   if(fmt==='excel'){
-    var lines=[cols.map(function(c){return c[0]+' / '+c[1];})].concat(rows);
-    lines.push([]);lines.push(totals);
-    var tsv=lines.map(function(r){return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join('\t');}).join('\n');
-    var a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob(['﻿'+tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
-    a.download=_expFname(title,'xls');a.click();
+    _xlsDownload(title,cols.map(function(c){return c[0]+' / '+c[1];}),rows,totals);
     toast('⬇ '+rows.length+' رحلة — شيت المالية','ok');
     audit('FIN_SHEET','Excel · '+rows.length+' trips','');
     return;
@@ -24966,6 +24993,43 @@ function _financeSheetExport(fmt){
   if(!w)return;
   audit('FIN_SHEET','PDF · '+rows.length+' trips','');
 }
+// ── Excel that actually has columns ───────────────────────────────
+// Tab-separated text lands in Excel as one column per row: with Arabic
+// content and a non-English locale the tab is not taken as a delimiter.
+// A real HTML table in an .xls wrapper opens with the columns intact, the
+// header styled, and the encoding correct.
+function _xlsDownload(title,headers,rows,totals){
+  var esc=function(v){
+    return String(v==null?'':v)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  };
+  var cell=function(v){
+    // numbers right-aligned and kept as numbers; everything else as text
+    var n=(v!==''&&v!=null&&!isNaN(v)&&typeof v!=='boolean');
+    return n
+      ? '<td style="mso-number-format:General" align="right">'+esc(v)+'</td>'
+      : '<td style="mso-number-format:\\@">'+esc(v)+'</td>';
+  };
+  var html=
+    '<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8"/>'+
+    '<style>'+
+      'table{border-collapse:collapse}'+
+      'th{background:#1E1453;color:#fff;font-weight:700;border:1px solid #999;padding:5px 7px;white-space:nowrap}'+
+      'td{border:1px solid #ccc;padding:4px 7px;vertical-align:top}'+
+      'tr.tot td{font-weight:800;background:#F0ECFB}'+
+    '</style></head><body>'+
+    '<table>'+
+    '<thead><tr>'+headers.map(function(h){return '<th>'+esc(h)+'</th>';}).join('')+'</tr></thead>'+
+    '<tbody>'+
+    rows.map(function(r){return '<tr>'+r.map(cell).join('')+'</tr>';}).join('')+
+    (totals&&totals.length?'<tr class="tot">'+totals.map(cell).join('')+'</tr>':'')+
+    '</tbody></table></body></html>';
+  var a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob(['﻿'+html],{type:'application/vnd.ms-excel;charset=utf-8'}));
+  a.download=_expFname(title,'xls');
+  document.body.appendChild(a);a.click();document.body.removeChild(a);
+  setTimeout(function(){try{URL.revokeObjectURL(a.href);}catch(e){}},8000);
+}
 function _sheetExport(fmt){
   var trips=_sheetChosen();
   if(!trips.length){toast('اختر رحلة واحدة على الأقل','err');return;}
@@ -24974,12 +25038,8 @@ function _sheetExport(fmt){
   var total=rows.reduce(function(s,r){return s+(+r[20]||0);},0);
   var title='Final Sheet'+(trips.length===1?' — '+trips[0].id:' — '+trips.length+' trips');
   if(fmt==='excel'){
-    var lines=[SHEET_COLS].concat(rows);
-    lines.push([]);lines.push(['','','','','','','','','','','','','','','','','','','','TOTAL',total,'']);
-    var tsv=lines.map(function(r){return r.map(function(v){return '"'+String(v==null?'':v).replace(/"/g,'""')+'"';}).join('\t');}).join('\n');
-    var a=document.createElement('a');
-    a.href=URL.createObjectURL(new Blob(['﻿'+tsv],{type:'application/vnd.ms-excel;charset=utf-8;'}));
-    a.download=_expFname(title,'xls');a.click();
+    var tot=SHEET_COLS.map(function(_,i){return i===19?'TOTAL':(i===20?total:'');});
+    _xlsDownload(title,SHEET_COLS,rows,tot);
     toast('⬇ '+rows.length+' line(s) exported','ok');
     audit('SHEET_EXPORT','Excel · '+trips.length+' trip(s) · '+rows.length+' lines','');
     return;
