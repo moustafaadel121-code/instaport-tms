@@ -2720,157 +2720,149 @@ body[data-dark="1"]{
   --iq-shadow:0 4px 20px rgba(0,0,0,.45);
 }
 
-/* ── The rail ─────────────────────────────────────────────────── */
+/* ── The rail carries the colour ──────────────────────────────────
+   The accent lives on the sidebar and the command bar is white, so the
+   navigation is the coloured edge of the app and the working area above
+   the content stays quiet. The rail follows whichever skin is chosen. */
 body.iq .sidebar{
-  background:var(--iq-rail)!important;
-  border-right:1px solid var(--iq-border);
+  background:var(--c1,#1a64b7)!important;
+  border-right:none;
   width:212px;
 }
-/* dark mode: the rail and the page darken, the accent stays the accent */
-body.iq[data-dark="1"] .sidebar{background:var(--iq-rail)!important}
-body.iq[data-dark="1"] #sidebar,
-body.iq[data-dark="1"] #sidebar.sb-light{color:var(--iq-rail-text)}
-body.iq[data-dark="1"] #sidebar.sb-light .sbi{color:var(--iq-rail-text)}
-body.iq[data-dark="1"] #sidebar.sb-light .sb-user-name,
-body.iq[data-dark="1"] #sb-tenant-name,
-body.iq[data-dark="1"] #sidebar.sb-light #sb-tenant-name{color:var(--iq-text)!important}
-body.iq[data-dark="1"] .sb-logo-box svg path,
-body.iq[data-dark="1"] #sidebar.sb-light .sb-logo-box svg path{fill:var(--c1,#1a64b7)!important}
-body.iq[data-dark="1"] #sidebar.sb-light .sb-section-title{color:var(--iq-faint)}
-body.iq .sidebar::after{display:none}            /* no purple glow */
+body.iq .sidebar::after{display:none}            /* no gradient glow */
 body.iq #sidebar,
-body.iq #sidebar.sb-light{color:var(--iq-rail-text)}
+body.iq #sidebar.sb-light{color:rgba(255,255,255,.72)}
 body.iq .sbi,
 body.iq #sidebar.sb-light .sbi{
-  color:var(--iq-rail-text);
+  color:rgba(255,255,255,.72)!important;
   font-size:13px; font-weight:600;
   padding:10px 14px; margin:1px 6px;
   border-radius:4px; gap:11px;
+  box-shadow:none;
 }
 body.iq .sbi:hover,
 body.iq #sidebar.sb-light .sbi:hover{
-  background:var(--iq-rail2)!important;
-  color:var(--iq-text)!important;
+  background:rgba(255,255,255,.13)!important;
+  color:#fff!important;
 }
 body.iq .sbi.active,
 body.iq #sidebar.sb-light .sbi.active{
-  background:var(--c1,#1a64b7)!important;
+  background:rgba(255,255,255,.20)!important;
   color:#fff!important;
   box-shadow:none;
-  border-left:3px solid rgba(255,255,255,.55);
-  padding-left:10px;
+  border-left:3px solid #fff;
+  padding-left:11px;
 }
 body.iq .sbi-icon{
   width:18px; height:18px; font-size:13px;
-  background:none; border-radius:0;
+  background:none!important; border-radius:0;
 }
-body.iq .sbi.active .sbi-icon{background:none}
 body.iq .sbi-label{font-size:13px;font-weight:600}
 body.iq .sb-section-title,
 body.iq #sidebar.sb-light .sb-section-title{
   font-size:10px; font-weight:800; letter-spacing:1.1px;
-  text-transform:uppercase; color:var(--iq-faint);
+  text-transform:uppercase; color:rgba(255,255,255,.5)!important;
   padding:9px 14px 3px;
 }
-body.iq .sb-divider{background:var(--iq-border)}
-body.iq .sb-user{border-top:1px solid var(--iq-border)}
-body.iq .sb-user:hover{background:var(--iq-rail2)}
-body.iq .sb-user-name{color:var(--iq-text)!important}
-body.iq .sb-user-role{color:var(--iq-rail-text)!important}
-body.iq .sb-logo-box svg path{fill:var(--c1,#1a64b7)!important}
-body.iq #sb-tenant-name{color:var(--iq-text)!important}
-body.iq .sb-theme-row{border-top:1px solid var(--iq-border)}
-body.iq .sb-sw-lbl{color:var(--iq-faint)!important}
+body.iq .sb-divider,
+body.iq #sidebar.sb-light .sb-divider{background:rgba(255,255,255,.16)!important}
+body.iq .sb-user,
+body.iq #sidebar.sb-light .sb-user{border-top:1px solid rgba(255,255,255,.16)!important}
+body.iq .sb-user:hover,
+body.iq #sidebar.sb-light .sb-user:hover{background:rgba(255,255,255,.12)!important}
+body.iq .sb-user-name,
+body.iq #sidebar.sb-light .sb-user-name{color:#fff!important}
+body.iq .sb-user-role,
+body.iq #sidebar.sb-light .sb-user-role{color:rgba(255,255,255,.7)!important}
+body.iq .sb-user-arrow,
+body.iq #sidebar.sb-light .sb-user-arrow{color:rgba(255,255,255,.55)!important}
+body.iq .sb-user-av{border-color:rgba(255,255,255,.35)!important}
+body.iq #sb-tenant-badge,
+body.iq #sidebar.sb-light #sb-tenant-badge{
+  background:rgba(255,255,255,.16)!important;color:rgba(255,255,255,.85)!important;
+}
+body.iq #sb-tenant-badge-name{color:#fff!important}
+body.iq .sb-theme-row,
+body.iq #sidebar.sb-light .sb-theme-row{border-top:1px solid rgba(255,255,255,.16)!important}
+body.iq .sb-sw-lbl,
+body.iq #sidebar.sb-light .sb-sw-lbl{color:rgba(255,255,255,.55)!important}
+body.iq .sb-sw.on,
+body.iq #sidebar.sb-light .sb-sw.on{border-color:#fff!important}
 
-/* ── The mark, at the top where it belongs ───────────────────────
-   InstaQ leads with its logo. Ours was a small glyph beside the name and
-   read as decoration; centred and given room it reads as the product. */
-/* The mark is white artwork, which disappears on a white rail. InstaQ sits
-   its logo on an accent tile; ours does the same, so it reads whatever the
-   rail colour and whichever skin is chosen. */
+/* Brand: white artwork on the coloured rail needs no tile */
 body.iq .sb-brandbar{
   flex-direction:column;
   gap:9px;
   padding:20px 16px 15px;
-  border-bottom:1px solid var(--iq-border);
+  border-bottom:1px solid rgba(255,255,255,.16);
 }
 body.iq .sb-mark{
   height:46px;width:46px;
-  background:var(--c1,#1a64b7);
-  border-radius:11px;
-  padding:7px;
+  background:none;
+  border-radius:0;
+  padding:0;
   filter:none;
-  box-shadow:0 2px 8px rgba(15,35,60,.18);
+  box-shadow:none;
 }
-/* the bar's own mark sits on the accent already — keep it small and flat */
-body.iq .topbar .ip-logo{height:24px!important;width:auto!important;filter:none!important;background:none}
-body.iq #sb-tenant-name{
-  font-size:15px;text-align:center;color:var(--iq-text);
+body.iq #sb-tenant-name,
+body.iq #sidebar.sb-light #sb-tenant-name{
+  font-size:15px;text-align:center;color:#fff!important;
   line-height:1.25;
 }
-body.iq #sb-tenant-badge{
-  background:var(--iq-rail2)!important;color:var(--iq-rail-text)!important;
-}
-/* the product signature was white on a white rail — invisible */
-body.iq .sb-powered{border-top:1px solid var(--iq-border);margin-top:6px}
-body.iq .sb-powered-txt{color:var(--iq-rail-text)}
-body.iq .sb-powered-txt b{color:var(--c1,#1a64b7)}
-body.iq #ip-build-stamp{color:var(--iq-faint)}
+/* the product signature, legible on the colour */
+body.iq .sb-powered{border-top:1px solid rgba(255,255,255,.16);margin-top:6px}
+body.iq .sb-powered-txt,
+body.iq #sidebar.sb-light .sb-powered-txt{color:rgba(255,255,255,.72)!important}
+body.iq .sb-powered-txt b{color:#fff!important}
+body.iq #ip-build-stamp{color:rgba(255,255,255,.45)}
 
-/* ── The command bar ──────────────────────────────────────────────
-   Solid accent across the top, the way InstaQ reads: the chrome is one
-   confident band and the content below it is quiet. */
+/* ── The command bar is white ─────────────────────────────────────
+   Quiet chrome above the content: a hairline under it, dark text, and no
+   second copy of the logo — the rail already carries the brand. */
 body.iq .main,body.iq #main{background:var(--iq-page)}
 body.iq .topbar{
   height:auto;
   min-height:0;
-  background:var(--c1,#1a64b7);
-  border-bottom:none;
-  box-shadow:0 1px 6px rgba(0,0,0,.14);
-  padding:11px 24px;
+  background:var(--iq-rail);
+  border-bottom:1px solid var(--iq-border);
+  box-shadow:none;
+  padding:9px 20px;
 }
-body.iq .topbar .tb-brand-name,
-body.iq .topbar #tb-tenant-name{color:#fff}
-body.iq .tb-logo-box svg path{fill:#fff!important}
+body.iq .topbar .tb-brand{display:none}          /* the rail is the brand */
 body.iq .tb-search{
-  background:#fff;
-  border:1px solid rgba(255,255,255,.35);
+  background:var(--iq-surface2);
+  border:1px solid var(--iq-border);
   border-radius:6px;
   height:32px;
   padding:0 10px;
 }
-body.iq .tb-search input{font-size:12.5px}
-body.iq .tb-brand-name{font-size:14px}
-body.iq .tb-logo-box{width:26px;height:26px}
-body.iq .tb-icon-btn{width:30px;height:30px;font-size:14px}
-body.iq .tb-theme-toggle{padding:4px 9px;height:30px}
-body.iq .tb-profile{padding:3px 9px;gap:8px;border-radius:6px}
-body.iq .tb-divider{height:22px}
-body.iq .tb-search:focus-within{border-color:#fff}
+body.iq .tb-search:focus-within{border-color:var(--c1,#1a64b7)}
+body.iq .tb-search input{font-size:12.5px;color:var(--iq-text)}
 body.iq .tb-icon-btn,
 body.iq .tb-theme-toggle{
-  background:rgba(255,255,255,.14);
-  border-color:rgba(255,255,255,.25);
-  color:#fff;
+  background:var(--iq-rail);
+  border:1px solid var(--iq-border);
+  color:var(--iq-rail-text);
   border-radius:6px;
 }
+body.iq .tb-icon-btn{width:30px;height:30px;font-size:14px}
+body.iq .tb-theme-toggle{padding:4px 9px;height:30px}
 body.iq .tb-icon-btn:hover,
 body.iq .tb-theme-toggle:hover{
-  background:rgba(255,255,255,.26);
-  border-color:rgba(255,255,255,.5);
-  color:#fff;
+  border-color:var(--c1,#1a64b7);
+  color:var(--c1,#1a64b7);
+  background:var(--iq-surface2);
 }
-body.iq .tb-theme-lbl{color:rgba(255,255,255,.92)}
-body.iq .tb-divider{background:rgba(255,255,255,.25)}
-body.iq .tb-profile:hover{background:rgba(255,255,255,.14)}
-body.iq .tb-profile .tb-name{color:#fff!important}
-body.iq .tb-profile .tb-role,
-body.iq .topbar #tb-role{color:rgba(255,255,255,.8)!important}
-body.iq #tb-uname{color:#fff!important}
+body.iq .tb-theme-lbl{color:var(--iq-rail-text)}
+body.iq .tb-divider{background:var(--iq-border);height:22px}
+body.iq .tb-profile{padding:3px 9px;gap:8px;border-radius:6px}
+body.iq .tb-profile:hover{background:var(--iq-surface2)}
+body.iq #tb-uname{color:var(--iq-text)!important}
+body.iq #tb-role{color:var(--iq-rail-text)!important}
 body.iq .tb-avatar{
-  background:rgba(255,255,255,.22);
-  border:1px solid rgba(255,255,255,.4);
-  width:32px;height:32px;
+  background:var(--c1,#1a64b7);
+  border:none;
+  width:32px;height:32px;color:#fff;
 }
 
 /* ── Density: cards, tables, forms, buttons ───────────────────── */
@@ -3293,7 +3285,7 @@ body.iq #content [style*="margin-bottom:13px"]{margin-bottom:9px!important}
 // localhost → full app including SA panel
 // github.io → staff login only, SA panel hidden
 // ══════════════════════════════════════════════════
-var IP_BUILD='2026-09-02 · rows3';   // build stamp — shown in the sidebar so the running version is verifiable
+var IP_BUILD='2026-09-02 · inverted';   // build stamp — shown in the sidebar so the running version is verifiable
 
 // ══════════════════════════════════════════════════
 // STALE BUILD SELF-HEAL
