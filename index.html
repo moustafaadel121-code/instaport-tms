@@ -3636,7 +3636,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval','ip_dmgpos','ip_formsigs'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval','ip_dmgpos','ip_formsigs','ip_drvsheet'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -14050,6 +14050,7 @@ function rAdminOperations(){
     '</div>'+
     _wfChainHTML()+
     _formSigsHTML()+
+    _drvCfgHTML()+
     _apvConfigHTML()+
     '<div style="font-size:11px;color:var(--t3);text-align:center">Changes apply immediately to the Operations screen. Existing shipments keep their recorded data.</div>'+
     '</div>';
@@ -21272,18 +21273,148 @@ function _drvTripCard(t){
 // driver reads it, never retypes it, so the sheet cannot disagree with the
 // plan it belongs to.
 // ══════════════════════════════════════════════════════════════════
-var DRV_SHEET_DOC='TR2001A-I/04';
-// Yes/no questions asked before the vehicle is allowed to load
-var DRV_CHECKS=[
-  {k:'photoSent',  label:'تصوير الداتا لوجر والسنسور ووحدة التبريد في مكانها الصحيح وإرسال الصورة إلى غرفة التحكم'},
-  {k:'unifiedApp', label:'استخدام تطبيق هيئة الشراء الموحد'},
-  {k:'ctrlOk',     label:'الاتصال بغرفة المراقبة لاعتماد درجة الحرارة وأخذ الإذن بالتحميل'},
-  {k:'loadOk',     label:'الحمولة مطابقة للحد المسموح'}
-];
-// The hourly temperature log across the working day
+
+// ── The sheet's shape is the organisation's, not ours ──────────────
+// The working day the temperature log covers, the questions asked before
+// loading, and the moments recorded at each customer are all configured in
+// Admin → Operations. The paper form's own values are the defaults.
+var DRV_CFG_DEFAULT={
+  doc:'TR2001A-I/04',
+  ctrlPhone:'01099330052',
+  tempFrom:2, tempTo:11, tempStep:30,     // hours of the day, minutes per slot
+  checks:[
+    {k:'photoSent',  label:'تصوير الداتا لوجر والسنسور ووحدة التبريد في مكانها الصحيح وإرسال الصورة إلى غرفة التحكم'},
+    {k:'unifiedApp', label:'استخدام تطبيق هيئة الشراء الموحد'},
+    {k:'ctrlOk',     label:'الاتصال بغرفة المراقبة لاعتماد درجة الحرارة وأخذ الإذن بالتحميل'},
+    {k:'loadOk',     label:'الحمولة مطابقة للحد المسموح'}
+  ],
+  stamps:[
+    {k:'outWh',    label:'خروج المخزن',  en:'Left warehouse'},
+    {k:'arrive',   label:'وصول العميل',  en:'Arrived at customer'},
+    {k:'doorOpen', label:'فتح الباب',    en:'Door opened'},
+    {k:'doorClose',label:'غلق الباب',    en:'Door closed'},
+    {k:'depart',   label:'خروج العميل',  en:'Left customer'},
+    {k:'backWh',   label:'وصول المخزن',  en:'Back at warehouse'}
+  ]
+};
+function _drvCfg(){
+  var c={};
+  try{c=JSON.parse(localStorage.getItem('ip_drvsheet')||'{}');}catch(e){c={};}
+  var out=Object.assign({},DRV_CFG_DEFAULT,c);
+  if(!out.checks||!out.checks.length)out.checks=DRV_CFG_DEFAULT.checks.slice();
+  if(!out.stamps||!out.stamps.length)out.stamps=DRV_CFG_DEFAULT.stamps.slice();
+  return out;
+}
+function _drvCfgSave(c){
+  try{localStorage.setItem('ip_drvsheet',JSON.stringify(c));}catch(e){}
+}
+// ── Editing the sheet's shape ──────────────────────────────────────
+function _drvCfgSet(k,v){
+  var c=_drvCfg();
+  if(k==='tempFrom'||k==='tempTo'||k==='tempStep')v=+v;
+  c[k]=v;_drvCfgSave(c);_pxOpsRerender();
+}
+// A moment already recorded on a live trip cannot be taken off the sheet
+function _drvStampInUse(k){
+  return (S.trips||[]).some(function(t){
+    return (((t.contract||{}).destinations)||[]).some(function(d){return !!_drvStampOf(d,k);});
+  });
+}
+function _drvCfgListSet(list,i,field,v){
+  var c=_drvCfg();
+  if(!c[list]||!c[list][i])return;
+  if(field==='k'){
+    v=String(v||'').trim().replace(/[^A-Za-z0-9_]/g,'');
+    if(!v)return;
+    if(c[list].some(function(x,j){return j!==i&&x.k===v;})){toast('معرّف مكرر','err');_pxOpsRerender();return;}
+  }
+  c[list][i][field]=v;_drvCfgSave(c);_pxOpsRerender();
+}
+function _drvCfgListMove(list,i,dir){
+  var c=_drvCfg(),L=c[list],j=i+dir;
+  if(!L||j<0||j>=L.length)return;
+  var tmp=L[i];L[i]=L[j];L[j]=tmp;
+  _drvCfgSave(c);_pxOpsRerender();
+}
+function _drvCfgListDel(list,i){
+  var c=_drvCfg(),L=c[list];
+  if(!L||!L[i])return;
+  if(L.length<=1){toast('لا بد من بند واحد على الأقل','err');return;}
+  if(list==='stamps'&&_drvStampInUse(L[i].k)){toast('هذا التوقيت مسجّل في رحلة قائمة — لا يمكن حذفه','err');return;}
+  L.splice(i,1);_drvCfgSave(c);_pxOpsRerender();
+}
+function _drvCfgListAdd(list){
+  var c=_drvCfg(),L=c[list];
+  var n=1,k;
+  do{k=(list==='stamps'?'moment':'check')+(n++);}while(L.some(function(x){return x.k===k;}));
+  L.push(list==='stamps'?{k:k,label:'توقيت جديد',en:'New moment'}:{k:k,label:'سؤال جديد'});
+  _drvCfgSave(c);_pxOpsRerender();
+}
+function _drvCfgReset(){
+  if(!confirm('استرجاع الشكل الافتراضي لبيان تشغيل السيارة؟'))return;
+  try{localStorage.removeItem('ip_drvsheet');}catch(e){}
+  _pxOpsRerender();
+}
+function _drvCfgHTML(){
+  var c=_drvCfg();
+  var slots=_drvTempSlots();
+  var listBlock=function(list,title,hint){
+    var L=c[list];
+    return '<div style="margin-bottom:14px">'+
+      '<div style="font-size:12px;font-weight:800;color:var(--c1);margin-bottom:2px">'+title+'</div>'+
+      '<div style="font-size:11px;color:var(--t2);margin-bottom:8px">'+hint+'</div>'+
+      L.map(function(x,i){
+        var used=list==='stamps'&&_drvStampInUse(x.k);
+        return '<div style="display:flex;align-items:center;gap:7px;padding:7px 0;border-bottom:1px solid var(--bd)">'+
+          '<span style="font-size:10.5px;font-weight:800;color:#6C3FF5;min-width:20px">'+(i+1)+'</span>'+
+          '<input value="'+String(x.label||'').replace(/"/g,'&quot;')+'" onchange="_drvCfgListSet(\''+list+'\','+i+',\'label\',this.value)" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;font-size:12px;background:var(--bg);color:var(--t)"/>'+
+          '<span onclick="_drvCfgListMove(\''+list+'\','+i+',-1)" style="cursor:'+(i===0?'not-allowed':'pointer')+';opacity:'+(i===0?'.3':'1')+';font-size:15px;padding:0 3px">▲</span>'+
+          '<span onclick="_drvCfgListMove(\''+list+'\','+i+',1)" style="cursor:'+(i===L.length-1?'not-allowed':'pointer')+';opacity:'+(i===L.length-1?'.3':'1')+';font-size:15px;padding:0 3px">▼</span>'+
+          '<span onclick="_drvCfgListDel(\''+list+'\','+i+')" style="cursor:pointer;color:'+(used?'#CBD5E1':'#EF4444')+';font-size:16px;padding:0 3px" title="'+(used?'مسجّل في رحلة قائمة':'Remove')+'">×</span>'+
+        '</div>';
+      }).join('')+
+      '<button class="btn btn-outline btn-sm" style="margin-top:8px" onclick="_drvCfgListAdd(\''+list+'\')">+ إضافة</button>'+
+    '</div>';
+  };
+  var num=function(k,label,v,min,max){
+    return '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:3px">'+label+'</label>'+
+      '<input type="number" min="'+min+'" max="'+max+'" value="'+v+'" onchange="_drvCfgSet(\''+k+'\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>';
+  };
+  return '<div class="card">'+
+    '<div style="font-size:14px;font-weight:800;margin-bottom:4px">🚚 Driver Sheet</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">The vehicle operation sheet the driver fills in. The working day its temperature log covers, the questions asked before loading, and the moments recorded at each customer — all set here.</div>'+
+    '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px;margin-bottom:6px">'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:3px">رقم المستند</label>'+
+        '<input value="'+String(c.doc||'').replace(/"/g,'&quot;')+'" onchange="_drvCfgSet(\'doc\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:3px">رقم غرفة التحكم</label>'+
+        '<input value="'+String(c.ctrlPhone||'').replace(/"/g,'&quot;')+'" onchange="_drvCfgSet(\'ctrlPhone\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:12px;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
+      num('tempFrom','بداية اليوم (ساعة)',c.tempFrom,0,23)+
+      num('tempTo','نهاية اليوم (ساعة)',c.tempTo,0,23)+
+      '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2);display:block;margin-bottom:3px">كل (دقيقة)</label>'+
+        '<select onchange="_drvCfgSet(\'tempStep\',this.value)" style="width:100%;padding:7px;border:1.5px solid var(--bd);border-radius:8px;font-size:13px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)">'+
+        [15,20,30,60].map(function(m){return '<option value="'+m+'"'+(+c.tempStep===m?' selected':'')+'>'+m+'</option>';}).join('')+'</select></div>'+
+    '</div>'+
+    '<div style="font-size:11px;color:var(--t3);margin-bottom:14px">سجل الحرارة: <b>'+slots.length+'</b> خانة — من '+slots[0]+' إلى '+slots[slots.length-1]+'</div>'+
+    listBlock('checks','أسئلة ما قبل التحميل','Yes/no questions the driver must answer before the vehicle loads.')+
+    listBlock('stamps','توقيتات المحطة','Stamped in this order at every customer. A moment already recorded on a live trip cannot be removed.')+
+    '<div style="border-top:1px solid var(--bd);padding-top:10px">'+
+      '<button class="btn btn-outline btn-sm" onclick="_drvCfgReset()">↺ Reset to default</button></div>'+
+  '</div>';
+}
+function _drvChecks(){return _drvCfg().checks;}
+function _drvStampsCfg(){return _drvCfg().stamps;}
+// The temperature log across the configured working day
 function _drvTempSlots(){
+  var c=_drvCfg();
+  var from=Math.max(0,Math.min(23,+c.tempFrom||0));
+  var to=Math.max(from,Math.min(23,+c.tempTo===undefined?11:+c.tempTo));
+  var step=[15,20,30,60].indexOf(+c.tempStep)>-1?+c.tempStep:30;
+  // the closing hour is included whole, so 2→11 ends at 11:30, not 11:00
   var out=[];
-  for(var h=2;h<=11;h++){out.push(h+':00');out.push(h+':30');}
+  for(var m=from*60;m<(to+1)*60;m+=step){
+    var h=Math.floor(m/60), mm=m%60;
+    out.push(h+':'+('0'+mm).slice(-2));
+  }
   return out;
 }
 function _drvSheet(t){
@@ -21358,7 +21489,7 @@ function drvSheetSign(id,who){
   var sh=_drvSheet(t);
   if(who==='driver'){
     if(sh.signed){toast('وقّعت بالفعل','err');return;}
-    var miss=DRV_CHECKS.find(function(c){return !sh.checks[c.k];});
+    var miss=_drvChecks().find(function(c){return !sh.checks[c.k];});
     if(miss){toast('أجب على: '+miss.label,'err');return;}
     if(!sh.logger){toast('سجّل حالة الداتا لوجر','err');return;}
     if(!sh.rms){toast('سجّل حالة الـRMS','err');return;}
@@ -21373,8 +21504,8 @@ function drvSheetSign(id,who){
       if(who==='driver')sh.signed=s; else sh.supSigned=s;
       if(!t.tl)t.tl=[];
       t.tl.push({ts:s.at,user:s.by,action:'✍️ بيان تشغيل السيارة — '+(who==='driver'?'توقيع السائق':'توقيع المشرف'),
-        detail:DRV_SHEET_DOC+' · مصروفات '+_drvExpTotal(t)+' ج.م'});
-      audit('DRV_SHEET_SIGN',DRV_SHEET_DOC+' '+who+' @ '+s.at+' ('+s.src+')',id);
+        detail:_drvCfg().doc+' · مصروفات '+_drvExpTotal(t)+' ج.م'});
+      audit('DRV_SHEET_SIGN',_drvCfg().doc+' '+who+' @ '+s.at+' ('+s.src+')',id);
       _lcSave&&_lcSave();syncTrip&&syncTrip(t);
       rDriverContract();
       toast('✅ تم التوقيع '+s.time,'ok');
@@ -21395,7 +21526,7 @@ function _drvSheetHTML(t){
     ['نوع السيارة',    t.truckType||''],
     ['رقم السيارة',    t.truck||''],
     ['الدرجة المطلوبة',t.condition||''],
-    ['رقم غرفة التحكم','01099330052']
+    ['رقم غرفة التحكم',_drvCfg().ctrlPhone||'']
   ];
   var yn=function(k,label,v){
     return '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;background:var(--bg);border-radius:9px;padding:8px 11px;margin-bottom:6px">'+
@@ -21412,7 +21543,7 @@ function _drvSheetHTML(t){
       '<div style="font-size:14px;font-weight:800">📋 بيان تشغيل السيارة ومتابعة درجات الحرارة</div>'+
       (lock?'<span style="font-size:10.5px;font-weight:800;padding:3px 10px;border-radius:20px;background:#F0FDF4;color:#059669">🔒 موقّع</span>':'')+
     '</div>'+
-    '<div style="font-size:11px;color:var(--t2);margin-bottom:12px">'+DRV_SHEET_DOC+' — وبيان مصروفات السيارة وإيصال استلام العهدة</div>'+
+    '<div style="font-size:11px;color:var(--t2);margin-bottom:12px">'+_drvCfg().doc+' — وبيان مصروفات السيارة وإيصال استلام العهدة</div>'+
 
     // ── from the plan, read-only
     '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin-bottom:6px">بيانات الرحلة <span style="font-weight:600;color:var(--t3)">— من خطة النقل، غير قابلة للتعديل</span></div>'+
@@ -21435,7 +21566,7 @@ function _drvSheetHTML(t){
       '<div><label style="font-size:10.5px;font-weight:700;color:var(--t2)">درجة حرارة السيارة عند الخروج (°C)</label>'+
         '<input '+ro+'type="number" step="0.1" value="'+(sh.tempOut===undefined?'':sh.tempOut)+'" onchange="drvSheetSet(\''+t.id+'\',\'tempOut\',this.value)" style="width:100%;padding:8px;border:1.5px solid var(--bd);border-radius:9px;font-size:14px;font-weight:700;text-align:center;background:var(--bg);color:var(--t)"/></div>'+
     '</div>'+
-    DRV_CHECKS.map(function(c){return yn(c.k,c.label,sh.checks[c.k]);}).join('')+
+    _drvChecks().map(function(c){return yn(c.k,c.label,sh.checks[c.k]);}).join('')+
 
     // ── hourly temperature log
     '<div style="font-size:11.5px;font-weight:800;color:var(--c1);margin:14px 0 6px">بيان التشغيل اليومي — درجات الحرارة</div>'+
@@ -21498,7 +21629,7 @@ function printDriverSheet(id){
   var w=_docOpen({
     title:'بيان تشغيل سيارة ومتابعة درجات الحرارة',
     sub:esc(t.id)+' — '+esc(t.customer),
-    docNo:DRV_SHEET_DOC+' / '+t.id,
+    docNo:_drvCfg().doc+' / '+t.id,
     status:sh.signed?'موقّع':'غير موقّع',
     rtl:true, width:1050, height:820,
     css:'body{direction:rtl}'+
@@ -21517,16 +21648,16 @@ function printDriverSheet(id){
     '<div class="ev"><b>قبل التحميل</b><br><span style="font-size:11px">'+
       'حالة الداتا لوجر: <b>'+esc(sh.logger||'—')+'</b> &nbsp;·&nbsp; حالة الـRMS: <b>'+esc(sh.rms||'—')+'</b>'+
       ' &nbsp;·&nbsp; درجة حرارة السيارة عند الخروج: <b>'+esc(sh.tempOut===''?'—':sh.tempOut)+'°C</b>'+
-      ' &nbsp;·&nbsp; رقم غرفة التحكم: <b>01099330052</b><br>'+
-      DRV_CHECKS.map(function(c){return esc(c.label)+': <b>'+esc(sh.checks[c.k]||'—')+'</b>';}).join('<br>')+
+      ' &nbsp;·&nbsp; رقم غرفة التحكم: <b>'+esc(_drvCfg().ctrlPhone||'—')+'</b><br>'+
+      _drvChecks().map(function(c){return esc(c.label)+': <b>'+esc(sh.checks[c.k]||'—')+'</b>';}).join('<br>')+
     '</span></div>'+
     // stops
     '<table><tr><th>ملاحظات</th><th>عدد الفواتير</th>'+
-      DRV_STAMPS.slice().reverse().map(function(s){return '<th>'+s.label+'</th>';}).join('')+
+      _drvStampsCfg().slice().reverse().map(function(s){return '<th>'+s.label+'</th>';}).join('')+
       '<th>محمل / فارغ</th><th>اسم العميل</th><th style="width:26px">م</th></tr>'+
     (ds.length?ds.map(function(d,i){
       return '<tr><td>'+esc(d.notes)+'</td><td style="text-align:center">'+esc(d.invoices)+'</td>'+
-        DRV_STAMPS.slice().reverse().map(function(s){
+        _drvStampsCfg().slice().reverse().map(function(s){
           var v=_drvStampOf(d,s.k);
           return '<td style="text-align:center">'+(v?esc(v.time):'—')+'</td>';
         }).join('')+
@@ -21556,7 +21687,7 @@ function printDriverSheet(id){
       return '<div><b>'+x[0]+'</b><br><br>'+(s?'وقّع: '+esc(s.by)+'<br><span style="font-size:10px;color:#666">'+esc(s.at)+(s.src==='server'?' 🔒':'')+'</span>':'التوقيع/التاريخ: ....................')+'</div>';
     }).join('')+'</div>');
   if(!w)return;
-  audit('DRV_SHEET_PDF',DRV_SHEET_DOC,id);
+  audit('DRV_SHEET_PDF',_drvCfg().doc,id);
 }
 function _drvDestRow(t,d,i,started,isActive){
   var ok=!!d.completed;
@@ -21622,18 +21753,11 @@ function _drvPickLoad(el){
   row.dataset.picked=el.dataset.v;
 }
 // ══ Driver time stamps ═════════════════════════════════════════════
-// The vehicle operation sheet (TR2001A-I/04) records six moments at every
-// customer. The driver does not type any of them: one tap each, taken from
-// the trusted clock, written once and never re-tapped — so a recorded time
-// cannot be moved later, and changing the phone's clock does not move it.
-var DRV_STAMPS=[
-  {k:'outWh',    label:'خروج المخزن',  en:'Left warehouse'},
-  {k:'arrive',   label:'وصول العميل',  en:'Arrived at customer'},
-  {k:'doorOpen', label:'فتح الباب',    en:'Door opened'},
-  {k:'doorClose',label:'غلق الباب',    en:'Door closed'},
-  {k:'depart',   label:'خروج العميل',  en:'Left customer'},
-  {k:'backWh',   label:'وصول المخزن',  en:'Back at warehouse'}
-];
+// The vehicle operation sheet records a moment at each point of the visit —
+// which moments is configured, the paper form's six being the default. The
+// driver types none of them: one tap each, taken from the trusted clock, in
+// order, written once and never re-tapped, so a recorded time cannot be
+// moved later and changing the phone's clock does not move it.
 function _drvStampOf(d,k){
   if(k==='arrive')return d.arriveStamp||(d.arriveTime?{time:d.arriveTime}:null);
   if(k==='depart')return d.departStamp||(d.departTime?{time:d.departTime}:null);
@@ -21641,9 +21765,9 @@ function _drvStampOf(d,k){
 }
 function _drvStampRow(t,d,i){
   return '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(112px,1fr));gap:7px;direction:rtl">'+
-    DRV_STAMPS.map(function(sp,n){
+    _drvStampsCfg().map(function(sp,n){
       var s=_drvStampOf(d,sp.k);
-      var prev=n===0?null:DRV_STAMPS[n-1];
+      var prev=n===0?null:_drvStampsCfg()[n-1];
       var ready=!prev||!!_drvStampOf(d,prev.k);
       return '<div style="border:1.5px solid '+(s?'#A7F3D0':'var(--bd)')+';background:'+(s?'#F0FDF4':'var(--surf)')+';border-radius:10px;padding:8px 9px">'+
         '<div style="font-size:10.5px;font-weight:800;color:'+(s?'#065F46':'var(--t2)')+'">'+sp.label+'</div>'+
@@ -21659,11 +21783,11 @@ function _drvStampRow(t,d,i){
 function drvStamp(id,i,which){
   var t=S.trips.find(function(x){return x.id===id;});if(!t)return;
   var c=_shipNormalize(t),d=c.destinations[i];if(!d)return;
-  var sp=DRV_STAMPS.find(function(x){return x.k===which;});if(!sp)return;
+  var sp=_drvStampsCfg().find(function(x){return x.k===which;});if(!sp)return;
   if(_drvStampOf(d,which)){toast(sp.label+' — مسجّل بالفعل ولا يمكن تغييره','err');return;}
   // the six moments happen in order; you cannot record one out of sequence
-  var n=DRV_STAMPS.indexOf(sp);
-  if(n>0&&!_drvStampOf(d,DRV_STAMPS[n-1].k)){toast('سجّل «'+DRV_STAMPS[n-1].label+'» أولاً','err');return;}
+  var n=_drvStampsCfg().indexOf(sp);
+  if(n>0&&!_drvStampOf(d,_drvStampsCfg()[n-1].k)){toast('سجّل «'+_drvStampsCfg()[n-1].label+'» أولاً','err');return;}
   _tcSync(function(){
     var s=_tc();s.by=S.user?S.user.name:'';
     if(which==='arrive'){d.arriveStamp=s;d.arriveTime=s.time;}
@@ -21742,7 +21866,7 @@ function drvCompleteDest(id,i){
   var prevKm=i===0?(+c.startKm||0):(+((c.destinations[i-1]||{}).km)||0);
   if(km<prevKm){toast('KM ('+km+') cannot be less than the previous reading ('+prevKm+')','err');return;}
   // every moment the sheet asks for has to be stamped before the stop closes
-  var miss=DRV_STAMPS.find(function(sp){return !_drvStampOf(d,sp.k);});
+  var miss=_drvStampsCfg().find(function(sp){return !_drvStampOf(d,sp.k);});
   if(miss){toast('سجّل «'+miss.label+'» أولاً','err');return;}
   var now=_tc();
   var _lr=document.querySelector('.drv-load-row[data-tid="'+id+'"][data-idx="'+i+'"]');
