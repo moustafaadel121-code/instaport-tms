@@ -17,6 +17,7 @@ const cfg = require('./integrations/config');
 
 const express = require('express');
 const path    = require('path');
+const fs      = require('fs');
 const crypto  = require('crypto');
 const cors    = require('cors');
 const helmet  = require('helmet');
@@ -306,6 +307,27 @@ app.post('/api/auth/verify', (req, res) => {
 // ═══════════════════════════════════════════════════════
 const apiRouter = require('./integrations/api');
 app.use('/api/v1', apiRouter);
+
+// What this server is actually serving. Lets anyone confirm in one look
+// whether the page in their browser came from here or from a cache.
+app.get('/api/version', (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  let build = 'unknown', size = 0, mtime = null, features = {};
+  try {
+    const html = fs.readFileSync(_indexPath, 'utf8');
+    size = html.length;
+    mtime = fs.statSync(_indexPath).mtime.toISOString();
+    build = (html.match(/'(\d{4}-\d{2}-\d{2}[^']*)'/) || [])[1] || 'unknown';
+    features = {
+      startOver: html.includes('Start Over'),
+      purgeTrips: html.includes('purgeTrips'),
+      damageReport: html.includes('_dmgPalletSVG'),
+      driverSheet: html.includes('drvSheetSign'),
+      trustedClock: html.includes('/api/time'),
+    };
+  } catch (e) { build = 'index.html unreadable: ' + e.message; }
+  res.json({ serving: _indexPath, build, size, mtime, features });
+});
 
 // Authoritative clock. Every operational timestamp — inspection start/end,
 // driver arrival and departure — is stamped from here, so changing the clock

@@ -4755,10 +4755,10 @@ const PAGES={
     {id:'final_sheet',icon:'🧾',l:'Final Sheets'},{id:'billing',icon:'📄',l:'Invoices'},{id:'fuel',icon:'⛽',l:'Fuel'},
     {id:'esg',icon:'🌿',l:'ESG Report'},
     {id:'admin_mgmt',icon:'⚙️',l:'Admin'},{id:'analytics',icon:'📈',l:'Analytics'},
-    {id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'audit',icon:'📜',l:'Audit Trail'},
+    {id:'audit',icon:'📜',l:'Audit Trail'},
     {id:'pm_schedule',icon:'📅',l:'PM Scheduler'},{id:'vendors',icon:'🏪',l:'Vendors'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}
   ],
-  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'operation',icon:'📷',l:'Operations'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'exceptions',icon:'⚠️',l:'Exceptions'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
+  supervisor:   [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'operation',icon:'📷',l:'Operations'},{id:'fleet',icon:'🚛',l:'Fleet'},{id:'trips',icon:'📋',l:'Trips'},{id:'fuel',icon:'⛽',l:'Fuel'},{id:'esg',icon:'🌿',l:'ESG'},{id:'nr_trip',icon:'🔄',l:'Non-Revenue'},{id:'hr',icon:'👤',l:'HR & Compliance'},{id:'fleet_map',icon:'🗺',l:'Fleet Map'}],
   quality:      [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'quality',icon:'🧪',l:'Quality Check'},{id:'trips',icon:'📋',l:'Trips'}],
   account_manager:[{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'trips',icon:'📋',l:'My Trips'}],
   control_room: [{id:'dashboard',icon:'📊',l:'Dashboard'},{id:'controlroom',icon:'🎛️',l:'Control Room'},{id:'trips',icon:'📋',l:'Trips'}],
@@ -5904,7 +5904,7 @@ const ALL_PAGES_MASTER=[
   {id:'esg',         icon:'🌿',l:'ESG Report'},
   {id:'analytics',   icon:'📈',l:'Analytics / CO₂'},
   {id:'audit',       icon:'📜',l:'Audit Trail'},
-  {id:'exceptions',  icon:'⚠️',l:'Exceptions'},
+  
   {id:'ai',          icon:'🤖',l:'AI Assistant'},
   {id:'my_trips',    icon:'🚛',l:'My Trips (Driver)'},
   {id:'operation',   icon:'📷',l:'Operations'},
@@ -9613,7 +9613,7 @@ function rAdmin(){
   '<div class="tab'+(tab==='assignments'?' on':'')+'" onclick="S.adminTab=\'assignments\';rAdmin()">&#128101; AM Assign</div>'+
   '<div class="tab'+(tab==='sysconfig'?' on':'')+'" onclick="S.adminTab=\'sysconfig\';rAdmin()">&#9881; System</div>'+
   '<div class="tab'+(tab==='import'?' on':'')+'" onclick="S.adminTab=\'import\';rAdmin()">&#128229; Import CSV</div>'+
-  '<div class="tab'+(tab==='exceptions'?' on':'')+'" onclick="S.adminTab=\'exceptions\';rAdmin()">&#9888;&#65039; Exceptions</div>'+
+  // Exceptions tab retired — the monitor was noise, not signal
   '<div class="tab'+(tab==='security'?' on':'')+'" onclick="S.adminTab=\'security\';rAdmin()">🔐 Security</div>'+
   '<div class="tab'+(tab==='apikeys'?' on':'')+'" onclick="S.adminTab=\'apikeys\';rAdmin()">🔑 API Keys</div>'+
   '<div class="tab'+(tab==='branding'?' on':'')+'" onclick="S.adminTab=\'branding\';rAdmin()">🎨 Branding</div>'+

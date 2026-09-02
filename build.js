@@ -116,12 +116,33 @@ async function build() {
   console.log('\n✅ Level 1 build complete!\n');
 
   // ── Copy assets to dist/ ──────────────────────
+  // Images only need copying once; sw.js and manifest.json are code and must
+  // be refreshed every build, or the browser keeps serving an old worker.
   ['truck.png','truck-widget.png','logo.png'].forEach(function(f) {
     const src = path.join(__dirname, f);
     const dst = path.join(__dirname, 'dist', f);
     if (fs.existsSync(src) && !fs.existsSync(dst)) {
       fs.copyFileSync(src, dst);
       console.log('  Copied', f);
+    }
+  });
+
+  // ── Service worker: always fresh, and cache-busted per build ───
+  // The cache name carries the build stamp, so activating a new worker
+  // deletes every cache from an older build instead of serving from it.
+  const stamp = (src.match(/IP_BUILD\s*=\s*'([^']*)'/) || [])[1] || String(Date.now());
+  const swSrc = path.join(__dirname, 'sw.js');
+  if (fs.existsSync(swSrc)) {
+    let sw = fs.readFileSync(swSrc, 'utf8');
+    sw = sw.replace(/const CACHE = '[^']*';/, "const CACHE = 'instaport-" + stamp.replace(/[^A-Za-z0-9.-]+/g, '-') + "';");
+    fs.writeFileSync(path.join(__dirname, 'dist', 'sw.js'), sw, 'utf8');
+    console.log('  sw.js  → cache instaport-' + stamp.replace(/[^A-Za-z0-9.-]+/g, '-'));
+  }
+  ['manifest.json'].forEach(function(f) {
+    const s2 = path.join(__dirname, f);
+    if (fs.existsSync(s2)) {
+      fs.copyFileSync(s2, path.join(__dirname, 'dist', f));
+      console.log('  Refreshed', f);
     }
   });
 }
