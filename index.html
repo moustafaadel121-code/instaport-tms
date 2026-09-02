@@ -3636,7 +3636,7 @@ window.addEventListener('beforeunload',function(){if(S.user)_lcSaveNow();});
 // GENERIC CLOUD STATE SYNC — mirrors key localStorage data to Supabase
 // (table: app_state — tenant_id, key, value, updated_at)
 // ══════════════════════════════════════════════════
-var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval','ip_dmgpos'];
+var _ST_SYNC_KEYS=['ip_core','ip_workflow','ip_invoices','ip_fuellogs','ip_fuelcfg','ip_pmsch','ip_vendors','ip_shifts','ip_driverprofiles','ip_exrules','ip_exceptions','ip_custtempsla','ip_billingcfg','ip_esgcfg','ip_branding','ip_rolepages','ip_feature_gates','ip_workshopconfig','ip_opsconfig','ip_pwresets','ip_secpolicy','ip_notifprefs','ip_customroles','ip_slacards','ip_custcodes','ip_wfsteps','ip_wfchain','ip_approval','ip_dmgpos','ip_formsigs'];
 var _stateLoading=false;
 (function(){
   var orig=localStorage.setItem.bind(localStorage);
@@ -4928,6 +4928,7 @@ async function doLogin(){
       try{_lcLoad();}catch(e){console.warn('local restore',e);}
       try{_rolesLoad();}catch(e){console.warn('custom roles',e);}
       try{_wfLoadChain();}catch(e){}
+      try{_formSigsApply();}catch(e){console.warn('form approvals',e);}
       try{_wfMigrate();}catch(e){console.warn('wf migrate',e);}
       try{buildSB();}catch(e){console.error('buildSB',e);}
       try{_loadFeatureGates();}catch(e){}
@@ -14048,6 +14049,7 @@ function rAdminOperations(){
       '<button class="btn btn-primary btn-sm" onclick="_opsAddChk()">+ Add</button></div>'+
     '</div>'+
     _wfChainHTML()+
+    _formSigsHTML()+
     _apvConfigHTML()+
     '<div style="font-size:11px;color:var(--t3);text-align:center">Changes apply immediately to the Operations screen. Existing shipments keep their recorded data.</div>'+
     '</div>';
@@ -22622,6 +22624,119 @@ var INSPECTION_FORMS={
     note:'يُحرَّر التقرير فور اكتشاف التلف ويُرفق بمستندات الاستلام، ويُعتمد من مسئول الاستلام ومشرف المخزن ومسئول الجودة.'
   }
 };
+// ══ Who signs each form ════════════════════════════════════════════
+// The approvals printed on an inspection document are the organisation's
+// own procedure, not ours. Each form's signature list is stored and edited
+// from Admin → Operations: rename an approval, change which role gives it,
+// reorder them, add one, remove one. The code only reads the list.
+var FORM_SIG_DEFAULT={};
+function _formSigSnapshot(){
+  if(Object.keys(FORM_SIG_DEFAULT).length)return;
+  Object.keys(INSPECTION_FORMS).forEach(function(k){
+    FORM_SIG_DEFAULT[k]=INSPECTION_FORMS[k].signatures.map(function(s){return Object.assign({},s);});
+  });
+}
+function _formSigsStored(){
+  _formSigSnapshot();
+  var out={};
+  try{out=JSON.parse(localStorage.getItem('ip_formsigs')||'{}');}catch(e){out={};}
+  Object.keys(FORM_SIG_DEFAULT).forEach(function(k){
+    if(!out[k]||!out[k].length)out[k]=FORM_SIG_DEFAULT[k].map(function(s){return Object.assign({},s);});
+  });
+  return out;
+}
+function _formSigsApply(){
+  var st=_formSigsStored();
+  Object.keys(st).forEach(function(k){
+    if(INSPECTION_FORMS[k])INSPECTION_FORMS[k].signatures=st[k];
+  });
+  return st;
+}
+function _formSigsSave(st){
+  try{localStorage.setItem('ip_formsigs',JSON.stringify(st));}catch(e){}
+  _formSigsApply();
+}
+// An approval that a shipment has already given cannot be taken away
+function _formSigInUse(formId,sigId){
+  return (S.trips||[]).some(function(t){
+    var f=t.forms&&t.forms[formId];
+    return !!(f&&f.signatures&&f.signatures[sigId]);
+  });
+}
+function _formSigSet(formId,i,k,v){
+  var st=_formSigsStored();
+  if(!st[formId]||!st[formId][i])return;
+  if(k==='id'){
+    v=String(v||'').trim().replace(/[^A-Za-z0-9_]/g,'');
+    if(!v)return;
+    if(st[formId].some(function(s,j){return j!==i&&s.id===v;})){toast('معرّف مكرر','err');_pxOpsRerender();return;}
+  }
+  st[formId][i][k]=v;
+  _formSigsSave(st);_pxOpsRerender();
+}
+function _formSigMove(formId,i,dir){
+  var st=_formSigsStored(),L=st[formId];
+  var j=i+dir; if(!L||j<0||j>=L.length)return;
+  var tmp=L[i];L[i]=L[j];L[j]=tmp;
+  _formSigsSave(st);_pxOpsRerender();
+}
+function _formSigDel(formId,i){
+  var st=_formSigsStored(),L=st[formId];
+  if(!L||!L[i])return;
+  if(L.length<=1){toast('لا بد من اعتماد واحد على الأقل','err');return;}
+  if(_formSigInUse(formId,L[i].id)){toast('هذا الاعتماد مستخدم في شحنة قائمة — لا يمكن حذفه','err');return;}
+  L.splice(i,1);_formSigsSave(st);_pxOpsRerender();
+}
+function _formSigAdd(formId){
+  var st=_formSigsStored(),L=st[formId];
+  var n=1,id;
+  do{id='approver'+(n++);}while(L.some(function(s){return s.id===id;}));
+  L.push({id:id,label:'اعتماد جديد',labelEn:'New approval',role:'operation'});
+  _formSigsSave(st);_pxOpsRerender();
+}
+function _formSigsReset(formId){
+  if(!confirm('استرجاع الاعتمادات الافتراضية لهذا النموذج؟'))return;
+  var st=_formSigsStored();
+  st[formId]=FORM_SIG_DEFAULT[formId].map(function(s){return Object.assign({},s);});
+  _formSigsSave(st);_pxOpsRerender();
+}
+function _pxOpsRerender(){
+  if(typeof rAdmin==='function'&&document.getElementById('admin-content')){rAdmin();return;}
+  if(S.page==='operation'&&typeof rOperation==='function')rOperation();
+}
+function _formSigsHTML(){
+  var st=_formSigsStored();
+  var roles=Object.keys(RL);
+  var block=function(fid){
+    var form=INSPECTION_FORMS[fid];if(!form)return '';
+    var L=st[fid]||[];
+    return '<div style="margin-bottom:16px">'+
+      '<div style="font-size:12px;font-weight:800;color:var(--c1);margin-bottom:2px;direction:rtl;text-align:right">'+form.title+'</div>'+
+      '<div style="font-size:11px;color:var(--t2);margin-bottom:8px;direction:rtl;text-align:right">'+form.doc+' — '+L.length+' اعتماد، بالترتيب</div>'+
+      L.map(function(s,i){
+        var used=_formSigInUse(fid,s.id);
+        return '<div style="display:flex;align-items:center;gap:7px;padding:8px 0;border-bottom:1px solid var(--bd)">'+
+          '<span style="font-size:10.5px;font-weight:800;color:#6C3FF5;min-width:22px">'+(i+1)+'</span>'+
+          '<input value="'+String(s.label||'').replace(/"/g,'&quot;')+'" onchange="_formSigSet(\''+fid+'\','+i+',\'label\',this.value)" style="flex:1;min-width:0;padding:6px 8px;border:1px solid var(--bd);border-radius:6px;font-size:12px;background:var(--bg);color:var(--t)"/>'+
+          '<select onchange="_formSigSet(\''+fid+'\','+i+',\'role\',this.value)" style="padding:6px;border:1px solid var(--bd);border-radius:6px;font-size:11.5px;background:var(--bg);color:var(--t)">'+
+            roles.map(function(r){return '<option value="'+r+'"'+(s.role===r?' selected':'')+'>'+(RL[r]||r)+'</option>';}).join('')+'</select>'+
+          '<span onclick="_formSigMove(\''+fid+'\','+i+',-1)" style="cursor:'+(i===0?'not-allowed':'pointer')+';opacity:'+(i===0?'.3':'1')+';font-size:15px;padding:0 3px" title="Up">▲</span>'+
+          '<span onclick="_formSigMove(\''+fid+'\','+i+',1)" style="cursor:'+(i===L.length-1?'not-allowed':'pointer')+';opacity:'+(i===L.length-1?'.3':'1')+';font-size:15px;padding:0 3px" title="Down">▼</span>'+
+          '<span onclick="_formSigDel(\''+fid+'\','+i+')" style="cursor:pointer;color:'+(used?'#CBD5E1':'#EF4444')+';font-size:16px;padding:0 3px" title="'+(used?'مستخدم في شحنة قائمة':'Remove')+'">×</span>'+
+        '</div>';
+      }).join('')+
+      '<div style="display:flex;gap:8px;margin-top:8px">'+
+        '<button class="btn btn-outline btn-sm" onclick="_formSigAdd(\''+fid+'\')">+ إضافة اعتماد</button>'+
+        '<button class="btn btn-outline btn-sm" onclick="_formSigsReset(\''+fid+'\')">↺ الافتراضي</button>'+
+      '</div></div>';
+  };
+  return '<div class="card">'+
+    '<div style="font-size:14px;font-weight:800;margin-bottom:4px">✍️ Form Approvals</div>'+
+    '<div style="font-size:12px;color:var(--t2);margin-bottom:14px">Who signs each inspection document, and in what order. Rename an approval, hand it to another role, reorder, add or remove one. An approval a shipment has already given cannot be removed.</div>'+
+    Object.keys(INSPECTION_FORMS).map(block).join('')+
+  '</div>';
+}
+
 // Where a damaged carton sat on the pallet. Numbered to match the diagram on
 // the paper form; renameable per organisation.
 var DMG_POS_DEFAULT=[
