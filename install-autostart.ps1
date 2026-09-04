@@ -25,24 +25,37 @@ Write-Host "Node       : $node"
 Write-Host "Supervisor : $keep"
 
 # Remove any previous registration so re-running this is safe.
-schtasks /Query /TN "$name" *> $null
-if ($LASTEXITCODE -eq 0) {
+# schtasks writes to stderr when the task is absent, which PowerShell would
+# otherwise treat as a fatal error, so this query is deliberately quiet.
+$prev = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
+if ($prev) {
   Write-Host "Removing previous task..."
-  schtasks /Delete /TN "$name" /F | Out-Null
+  Unregister-ScheduledTask -TaskName $name -Confirm:$false
 }
 
-$action    = New-ScheduledTaskAction  -Execute $node -Argument "`"$keep`"" -WorkingDirectory $root
-$trigger   = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
-$settings  = New-ScheduledTaskSettingsSet `
-               -AllowStartIfOnBatteries `
-               -DontStopIfGoingOnBatteries `
-               -StartWhenAvailable `
-               -RestartCount 999 `
-               -RestartInterval (New-TimeSpan -Minutes 1) `
-               -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
+$action = New-ScheduledTaskAction -Execute $node -Argument "`"$keep`"" -WorkingDirectory $root
+
+# Two triggers. At logon covers a restart of the machine. The repeating one
+# covers everything else: Windows counts a killed process as a normal exit,
+# so RestartCount never fires — but a task that tries every two minutes and
+# is told to skip when already running will always bring it back.
+$tLogon  = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+# An empty Duration is how the task scheduler spells "repeat forever";
+# TimeSpan::MaxValue is rejected as out of range.
+$tRepeat = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) `
+             -RepetitionInterval (New-TimeSpan -Minutes 2)
+$tRepeat.Repetition.Duration = ''
+$tRepeat.Repetition.StopAtDurationEnd = $false
+
+$settings = New-ScheduledTaskSettingsSet `
+              -AllowStartIfOnBatteries `
+              -DontStopIfGoingOnBatteries `
+              -StartWhenAvailable `
+              -MultipleInstances IgnoreNew `
+              -ExecutionTimeLimit (New-TimeSpan -Seconds 0)
 $principal = New-ScheduledTaskPrincipal -UserId "$env:USERDOMAIN\$env:USERNAME" -LogonType Interactive -RunLevel Limited
 
-Register-ScheduledTask -TaskName $name -Action $action -Trigger $trigger `
+Register-ScheduledTask -TaskName $name -Action $action -Trigger @($tLogon,$tRepeat) `
   -Settings $settings -Principal $principal `
   -Description 'Keeps the InstaPort TMS server running on http://localhost:7434' | Out-Null
 
